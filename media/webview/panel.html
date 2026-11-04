@@ -91,14 +91,18 @@
   .loading { position: absolute; inset: 31px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: var(--bg); z-index: 1; }
   .loading[hidden] { display: none; }
   .loading .bar2 { position: absolute; top: 0; left: 0; right: 0; height: 2px; overflow: hidden; }
-  .loading .bar2::after { content: ""; position: absolute; top: 0; width: 30%; height: 100%; background: var(--accent); animation: slide 1.4s ease-in-out infinite; }
+  .loading .bar2::after { content: ""; position: absolute; top: 0; width: 30%; height: 100%; background: var(--vscode-progressBar-background, var(--accent)); animation: slide 1.4s ease-in-out infinite; }
   .spin { position: relative; width: 48px; height: 48px; }
   .spin i { position: absolute; inset: 0; border-radius: 50%; border: 3px solid transparent; animation: spin 1.1s cubic-bezier(.5, .1, .5, .9) infinite; }
-  .spin i:nth-child(1) { border-top-color: var(--accent); }
-  .spin i:nth-child(2) { inset: 7px; border-right-color: var(--m-put); animation-duration: 1.6s; animation-direction: reverse; }
+  .spin i:nth-child(1) { border-top-color: var(--vscode-progressBar-background, var(--accent)); }
+  .spin i:nth-child(2) { inset: 7px; border-right-color: var(--vscode-textLink-foreground, var(--m-put)); animation-duration: 1.6s; animation-direction: reverse; }
   .spin i:nth-child(3) { inset: 14px; border-bottom-color: var(--ok); animation-duration: .9s; }
   .ld-label b { font-weight: 400; animation: blink 1.2s infinite; } .ld-label b:nth-child(2) { animation-delay: .2s; } .ld-label b:nth-child(3) { animation-delay: .4s; }
   .ld-sub { font: 11px var(--mono); color: var(--muted); max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* varian sebaris moonage (.loading.inline): request lain sedang berjalan */
+  .loading.inline { position: static; inset: auto; flex-direction: row; justify-content: flex-start; gap: 6px; padding: 0; background: none; border: 0; color: var(--muted); font-size: 12px; cursor: pointer; }
+  .loading.inline .spin { width: 24px; height: 24px; } .loading.inline .spin i { border-width: 2px; }
+  .loading.inline .spin i:nth-child(2) { inset: 4px; } .loading.inline .spin i:nth-child(3) { inset: 8px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes slide { from { left: -30%; } to { left: 100%; } }
   @keyframes blink { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
@@ -260,7 +264,7 @@
     <button type="button" data-r="rtimeline">Timeline</button>
     <button type="button" data-r="rtests">Tests<span class="n" id="nTests"></span></button>
     <button type="button" data-r="rconsole">Console<span class="n" id="nConsole"></span></button>
-    <div class="right" id="meta"><span class="fmt" id="fmt"></span><span class="status" id="st"></span><span id="ms"></span><span id="sz"></span></div>
+    <div class="right" id="meta"><button type="button" class="loading inline" id="others" hidden title="Show running requests"><span class="spin"><i></i><i></i><i></i></span><span id="othersText"></span></button><span class="fmt" id="fmt"></span><span class="status" id="st"></span><span id="ms"></span><span id="sz"></span></div>
   </div>
   <div class="loading" id="loading" hidden aria-live="polite">
     <div class="bar2"></div>

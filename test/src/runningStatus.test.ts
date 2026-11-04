@@ -52,3 +52,10 @@ test('historyItems: ikon status, METHOD /path, deskripsi status · Environment �
     { id: 'd', label: '$(circle-slash) DELETE /z', description: 'Cancelled · dev · just now', detail: undefined },
   ]);
 });
+
+test('stageText: urutan tahap loading pre-script → sending → redirect n/10 → post-script', async () => {
+  const { stageText } = await import('../../src/runningStatus');
+  assert.deepEqual([
+    stageText({ kind: 'pre', script: 'pre-request.js' }), stageText({ kind: 'send' }), stageText({ kind: 'redirect', n: 2 }), stageText({ kind: 'post', script: './save-token.js' }),
+  ], ['Running pre-request.js', 'Sending request', 'Following redirect 2/10', 'Running save-token.js']);
+});

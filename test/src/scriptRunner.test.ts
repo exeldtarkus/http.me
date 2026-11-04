@@ -159,3 +159,10 @@ test('overlayKV: set / unset terlihat langsung di script, perubahan dikumpulkan 
   assert.throws(() => none.kv.set('a', '1'), /No active Environment/);
   assert.equal(none.kv.get('a'), undefined);
 });
+
+test('runChain onScript: nama script dilaporkan sebelum dijalankan, berurutan', async () => {
+  const { runChain } = await import('../../src/scripts');
+  const seen: string[] = [];
+  await runChain([{ file: '/w/a/pre-request.js' }, { inline: '' }], { root: '/w', httpFile: '/w/a/r.http', read: async () => '', onScript: (n) => seen.push(n) }, ctx());
+  assert.deepEqual(seen, ['./pre-request.js', 'inline script']);
+});

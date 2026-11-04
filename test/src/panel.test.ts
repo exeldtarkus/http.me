@@ -123,3 +123,18 @@ test('tab Scripts: insertAt (snippet / Tab di kursor, menggantikan seleksi) + no
   assert.equal(p.lineNumbers('a\nb\n'), '1\n2\n3');
   assert.equal(p.lineNumbers(''), '1');
 });
+
+test('loadingState: running / queued / cancelling / selesai (label tahap, sub-teks, tombol Cancel)', () => {
+  const p = panel as unknown as { loadingState(view: unknown, cancelling: boolean): { hidden: boolean; text: string; sub: string; cancel: string; disabled: boolean } };
+  assert.deepEqual(p.loadingState({ kind: 'running', label: 'POST /pos/log/post · uat' }, false), { hidden: false, text: 'Sending request', sub: 'POST /pos/log/post · uat', cancel: 'Cancel', disabled: false });
+  assert.deepEqual(p.loadingState({ kind: 'running', label: 'GET /x', stage: 'Following redirect 2/10' }, false).text, 'Following redirect 2/10');
+  assert.deepEqual(p.loadingState({ kind: 'queued', label: 'GET /x', position: 'Queued 2/8' }, false).text, 'Queued 2/8');
+  assert.deepEqual(p.loadingState({ kind: 'running', label: 'GET /x' }, true), { hidden: false, text: 'Sending request', sub: 'GET /x', cancel: 'Cancelling…', disabled: true });
+  assert.equal(p.loadingState({ kind: 'response' }, false).hidden, true);
+  assert.equal(p.loadingState(undefined, false).hidden, true);
+});
+
+test('othersText: loading sebaris untuk request di tab lain', () => {
+  const p = panel as unknown as { othersText(n: number): string };
+  assert.deepEqual([p.othersText(0), p.othersText(1), p.othersText(3)], ['', '1 other request running', '3 other requests running']);
+});

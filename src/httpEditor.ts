@@ -16,6 +16,7 @@ import { dropKeepIfUsed, requestFileName } from './store';
 import { DEFAULT_TIMEOUT_MS, RequestError, send } from './http';
 import { responseView, type ResponseView } from './response';
 import { createRunner } from './runner';
+import { stageText, type Stage } from './runningStatus';
 import { errMsg, errorLine, maskValues } from './log';
 import { log, reportError } from './output';
 import type { HoverInfo } from './diagnostics';
@@ -33,7 +34,7 @@ export const REQUEST_VIEW = 'httpme.request';
 export type ScriptsView = { tests: ChainResult['tests']; console: ChainResult['console']; error?: string; skippedNote?: string };
 type View =
   | { kind: 'queued'; label: string; position: string }
-  | { kind: 'running'; label: string }
+  | { kind: 'running'; label: string; /** tahap: Running pre-request.js / Following redirect 2/10 … */ stage?: string }
   | ({ kind: 'response'; scripts?: ScriptsView } & ResponseView)
   | { kind: 'error'; message: string; scripts?: ScriptsView }
   | { kind: 'cancelled' };
@@ -279,6 +280,7 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
   let view: View;
   try {
     const res = await runner.run(key, label, async (signal) => {
+      const setStage = (st: Stage) => { if (s.token === token && !signal.aborted) { s.view = { kind: 'running', label, stage: stageText(st) }; postView(s); } };
       if (s.token === token) { s.view = { kind: 'running', label }; postView(s); }
       const [pre, post] = scriptsOn
         ? await Promise.all([scriptChain(root, doc.uri.fsPath, original, 'pre'), scriptChain(root, doc.uri.fsPath, original, 'post')])
@@ -289,7 +291,8 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
       const chainOpts = { root, httpFile: doc.uri.fsPath, read: readScript, signal };
       /** satu tahap: hasil digabung ke tab Tests / Console, perubahan Environment disimpan; error = log ERROR */
       const stage = async (chain: Awaited<ReturnType<typeof scriptChain>>, what: string): Promise<ChainResult> => {
-        const out = await runChain(chain, chainOpts, ctx!);
+        const kind = what === 'Pre-request' ? 'pre' : 'post';
+        const out = await runChain(chain, { ...chainOpts, onScript: (script) => setStage({ kind, script }) }, ctx!);
         scripts.tests.push(...out.tests);
         scripts.console.push(...out.console.map((x) => ({ ...x, text: maskValues(x.text, secrets) })));
         const changes = overlay!.take();
@@ -320,12 +323,14 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
         parsed = again?.request ?? changed;
         secrets = [...secrets, ...(again?.secrets ?? [])]; // secret baru dari script ikut di-mask
       }
+      if (pre.length) setStage({ kind: 'send' });
       await dropBodyFile(s);
       await fs.mkdir(bodyDir, { recursive: true, mode: 0o700 });
       const r = await toHttpRequestWithFile(parsed, (p) => readBodyFile(doc, p));
       const cookies = await session?.cookies(parsed);
       const once = () => send(r, {
         signal, bodyFile: bodyPath(key), followRedirects: parsed.followRedirects, insecure: parsed.insecure, cookies,
+        onRedirect: (n) => setStage({ kind: 'redirect', n }),
         onError: (where, e) => log().error(errorLine(where, e)),
         timeoutMs: parsed.timeoutSec !== undefined ? parsed.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS,
       });
@@ -408,6 +413,8 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   });
 
   const postMsg = (x: unknown) => void panel.webview.postMessage(x);
+  /** jumlah request lain (tab / file lain) yang sedang berjalan atau antre: loading sebaris */
+  const postOthers = () => postMsg({ type: 'others', n: runner.jobs().filter((j) => j.key !== doc.uri.toString() && !j.key.startsWith(`${doc.uri.toString()}#`)).length });
   let scriptsTimer: ReturnType<typeof setTimeout> | undefined;
   /** tab Scripts: state ulang (urutan, ● belum disimpan) digabung tiap 200 ms */
   const refreshScripts = () => {
@@ -415,10 +422,11 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
     scriptsTimer = setTimeout(() => void scriptsState(doc).then(postMsg, (e) => log().error(errorLine('requestEditor.scriptsState', e))), 200);
   };
   const subs = [
+    onRunnerChange(postOthers),
     panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown }) => {
       try {
         if (await handleScriptsMessage(doc, m, postMsg)) return;
-        if (m.type === 'ready') { postState(); await postVars(panel); await postCookies(panel, doc.uri.toString()); } else if (m.type === 'varHover' && typeof m.name === 'string' && hooks) {
+        if (m.type === 'ready') { postOthers(); postState(); await postVars(panel); await postCookies(panel, doc.uri.toString()); } else if (m.type === 'varHover' && typeof m.name === 'string' && hooks) {
           const info = await hooks.hover(m.name, new Map(parseRequest(doc.getText()).vars.map((v) => [v.name, v.value])));
           void panel.webview.postMessage({ type: 'varHover', name: m.name, info });
         } else if (m.type === 'varGoto' && typeof m.name === 'string') await vscode.commands.executeCommand('httpme.gotoVariable', m.name);
@@ -430,6 +438,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
         else if (m.type === 'openAsText') await openAsText(doc.uri);
         else if (m.type === 'pasteCurl' && typeof m.text === 'string') await importCurlText(m.text, doc);
         else if (m.type === 'cancel') runner.cancel(doc.uri.toString());
+        else if (m.type === 'showRunning') await vscode.commands.executeCommand('httpme.showRunning');
         else if (m.type === 'openBody') await openBody(s);
         else if (m.type === 'saveBody') await saveBody(s);
       } catch (e) {

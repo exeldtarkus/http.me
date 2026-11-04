@@ -252,13 +252,17 @@ export async function runScript(code: string, opts: RunOptions, c: ScriptContext
 
 // ---- rantai script satu tahap (pre / post) ----
 export type ChainResult = { tests: TestResult[]; console: ConsoleLine[]; error?: string; skipped: boolean };
-export type ChainOptions = { root: string; httpFile: string; read(file: string): Promise<string>; signal?: AbortSignal; limits?: RunOptions['limits'] };
+export type ChainOptions = {
+  root: string; httpFile: string; read(file: string): Promise<string>; signal?: AbortSignal; limits?: RunOptions['limits'];
+  /** nama script sebelum dijalankan (label loading `Running pre-request.js`) */ onScript?: (name: string) => void;
+};
 
 /** jalankan rantai berurutan dengan konteks yang sama; script yang gagal menghentikan rantai */
 export async function runChain(chain: readonly ScriptRef[], o: ChainOptions, c: ScriptContext): Promise<ChainResult> {
   const out: ChainResult = { tests: [], console: [], skipped: false };
   for (const ref of chain) {
     const name = 'file' in ref ? relScriptPath(dirname(o.httpFile), ref.file) : 'inline script';
+    o.onScript?.(name);
     let code: string;
     try {
       code = 'file' in ref ? await o.read(ref.file) : ref.inline;

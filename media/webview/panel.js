@@ -94,7 +94,22 @@
     return Array.from({ length: text.split('\n').length }, (_x, i) => String(i + 1)).join('\n');
   }
 
-  const api = { METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
+  /** tampilan loading response per state: tahap (pre-script / sending / redirect / post-script), sub-teks, Cancel / Cancelling… */
+  function loadingState(view, cancelling) {
+    const on = !!view && (view.kind === 'running' || view.kind === 'queued');
+    return {
+      hidden: !on,
+      text: !on ? '' : view.kind === 'queued' ? view.position : view.stage || 'Sending request',
+      sub: on ? view.label : '',
+      cancel: cancelling ? 'Cancelling…' : 'Cancel',
+      disabled: !!cancelling,
+    };
+  }
+
+  /** loading sebaris (spinner 24 px) di bar response: request lain yang sedang berjalan */
+  const othersText = (n) => (n > 0 ? `${n} other request${n === 1 ? '' : 's'} running` : '');
+
+  const api = { othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -411,16 +426,19 @@
 
   /** view dari host: running | response | error | cancelled | undefined (belum pernah Send) */
   let running = false;
+  let cancelling = false; // Cancel diklik: tombol tetap "Cancelling…" sampai request benar-benar berhenti
   function renderView(view) {
     running = view?.kind === 'running' || view?.kind === 'queued';
     $('send').textContent = running ? 'Cancel' : 'Send';
     $('send').classList.toggle('busy', running);
     $('send').title = running ? 'Cancel (Escape)' : 'Send (Ctrl+Enter)';
-    $('ldCancel').disabled = false;
-    $('ldCancel').textContent = 'Cancel';
-    $('loading').hidden = !running;
-    $('ldSub').textContent = running ? view.label : '';
-    $('ldText').textContent = view?.kind === 'queued' ? view.position : 'Sending request';
+    if (!running) cancelling = false;
+    const ld = loadingState(view, cancelling);
+    $('ldCancel').disabled = ld.disabled;
+    $('ldCancel').textContent = ld.cancel;
+    $('loading').hidden = ld.hidden;
+    $('ldSub').textContent = ld.sub;
+    $('ldText').textContent = ld.text;
     const res = view?.kind === 'response' ? view : undefined;
     $('st').textContent = res ? res.status : view?.kind === 'cancelled' ? 'Cancelled' : view?.kind === 'error' ? 'Error' : '';
     $('st').className = `status ${res ? res.statusClass : view?.kind === 'error' ? 'st-5' : 'st-1'}`;
@@ -459,6 +477,7 @@
     post({ type: 'send', req });
   }
   function cancel() {
+    cancelling = true;
     $('ldCancel').disabled = true;
     $('ldCancel').textContent = 'Cancelling…';
     post({ type: 'cancel' });
@@ -486,6 +505,7 @@
     req.timeoutSec = n > 0 ? n : undefined;
     changed();
   };
+  $('others').onclick = () => post({ type: 'showRunning' });
   $('openBody').onclick = () => post({ type: 'openBody' });
   $('openAsText').onclick = () => post({ type: 'openAsText' });
   $('saveBody').onclick = () => post({ type: 'saveBody' });
@@ -631,6 +651,7 @@
       $('reqCookiesNote').textContent = m.off ? 'Send saved cookies is off for this request (Settings).' : m.list.length ? 'These saved cookies are sent with the request (values masked). Manage them in the Cookies view of the http.me sidebar.' : 'No saved cookie matches this URL yet. Cookies from responses are saved automatically.';
     }
     if (m.type === 'scripts') { scripts = m; renderScripts(); }
+    if (m.type === 'others') { $('others').hidden = !m.n; $('othersText').textContent = othersText(m.n); }
     if (m.type === 'scriptSelect') { scripts && renderScripts(); const it = scItems().find((x) => x.file === m.path); if (it) scSelect(it); }
     if (m.type === 'scriptText' && m.path === scPath && m.text !== $('scText').value) {
       // dokumen script berubah (editor VS Code / Undo): isi editor panel ikut, posisi kursor dipertahankan sebisanya

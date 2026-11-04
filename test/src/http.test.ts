@@ -264,3 +264,18 @@ test('cancel saat upload body besar ke server yang tidak membaca', async () => {
     await new Promise((ok) => srv.close(ok));
   }
 });
+
+test('onRedirect: dipanggil tiap hop berurutan (n/10) sebelum hop berikutnya', async () => {
+  const srv = await startServer(async (req) => {
+    const n = Number(req.url!.slice(1));
+    return n < 3 ? { status: 302, headers: { location: `/${n + 1}` } } : { body: 'end' };
+  });
+  try {
+    const hops: number[] = [];
+    const res = await send({ method: 'GET', url: `${srv.url}/0`, headers: [] }, { onRedirect: (n) => hops.push(n) });
+    assert.equal(res.status, 200);
+    assert.deepEqual(hops, [1, 2, 3]);
+  } finally {
+    await srv.close();
+  }
+});

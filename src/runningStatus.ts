@@ -64,3 +64,8 @@ export function historyItems(entries: HistorySummary[], now: number): { id: stri
     return { id: e.id, label: `${icon} ${e.method} ${shortPath(e.url)}`, description: parts.join(' · '), detail: e.error ?? (e.file ? decodeURIComponent(e.file.split('/').pop() ?? '') : undefined) };
   });
 }
+
+/** tahap request berjalan untuk label loading panel */
+export type Stage = { kind: 'pre' | 'post'; script: string } | { kind: 'send' } | { kind: 'redirect'; n: number };
+export const stageText = (s: Stage): string =>
+  s.kind === 'send' ? 'Sending request' : s.kind === 'redirect' ? `Following redirect ${s.n}/10` : `Running ${s.script.split('/').pop()}`;

@@ -15,6 +15,7 @@ export type SendOptions = {
   /** file tujuan body utuh bila body > maxMemory atau biner (tidak dibuat untuk body kecil) */ bodyFile?: string;
   /** cookie jar: header Cookie per hop + Set-Cookie tiap hop disimpan (redirect login ikut tercatat) */
   cookies?: { get(url: URL): string | undefined; set(url: URL, setCookies: string[]): void };
+  /** hop redirect ke-n (1..10) akan diikuti: label loading `Following redirect n/10` */ onRedirect?: (n: number) => void;
 };
 export type HttpResponse = {
   status: number; statusText: string; headers: [string, string][];
@@ -183,6 +184,7 @@ export async function send(req: HttpRequest, opts: SendOptions = {}): Promise<Ht
       res.resume(); // body halaman redirect tidak dipakai
       if (redirects.length >= MAX_REDIRECTS) throw new RequestError(`Too many redirects (${MAX_REDIRECTS})`, 'network');
       redirects.push({ status, url: url.href, ...(setCookies.length ? { setCookies } : {}) });
+      opts.onRedirect?.(redirects.length);
       const next = parseUrl(location, url);
       if (status === 303 ? method !== 'HEAD' : (status === 301 || status === 302) && method === 'POST') {
         method = 'GET';
