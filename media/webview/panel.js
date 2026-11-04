@@ -465,7 +465,9 @@
   let cancelling = false; // Cancel diklik: tombol tetap "Cancelling…" sampai request benar-benar berhenti
   function renderView(view) {
     running = view?.kind === 'running' || view?.kind === 'queued';
-    $('send').textContent = running ? 'Cancel' : 'Send';
+    $('sendIcon').hidden = running;
+    $('sendLabel').hidden = !running;
+    $('send').setAttribute('aria-label', running ? 'Cancel request' : 'Send request');
     $('send').classList.toggle('busy', running);
     $('send').title = running ? 'Cancel (Escape)' : 'Send (Ctrl+Enter)';
     if (!running) cancelling = false;
