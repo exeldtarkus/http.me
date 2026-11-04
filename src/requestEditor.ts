@@ -205,3 +205,21 @@ export async function newRequest(): Promise<void> {
   await vscode.workspace.applyEdit(edit);
   await vscode.commands.executeCommand('vscode.openWith', uri, REQUEST_VIEW);
 }
+
+/** dokumen request di tab aktif: panel http.me atau editor teks .http */
+async function activeRequestDoc(): Promise<vscode.TextDocument | undefined> {
+  const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+  if (input instanceof vscode.TabInputCustom && input.viewType === REQUEST_VIEW) return vscode.workspace.openTextDocument(input.uri);
+  const doc = vscode.window.activeTextEditor?.document;
+  return doc && /\.http$/i.test(doc.uri.path) ? doc : undefined;
+}
+
+/** command Send Request: kirim request di tab aktif (tetap jalan walau tab lalu disembunyikan) */
+export async function sendActive(): Promise<void> {
+  const doc = await activeRequestDoc();
+  if (!doc) return void vscode.window.showInformationMessage('Open a .http request to send it.');
+  await sendRequest(doc, stateOf(doc), parseRequest(doc.getText()));
+}
+
+/** state tampilan per dokumen (dipakai itest lewat exports extension) */
+export const viewOf = (uri: string): View | undefined => docs.get(uri)?.view;

@@ -32,6 +32,11 @@
         "category": "http.me"
       },
       {
+        "command": "httpme.sendRequest",
+        "title": "Send Request",
+        "category": "http.me"
+      },
+      {
         "command": "httpme.whatsNew",
         "title": "What's New",
         "category": "http.me"
