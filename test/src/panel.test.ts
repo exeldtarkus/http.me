@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 type Param = { key: string; value: string; enabled: boolean };
@@ -12,6 +13,21 @@ const panel = require(join(__dirname, '..', '..', '..', 'media', 'webview', 'pan
   completionPrefix(before: string): string | undefined;
 };
 type Vars = { ok: string[]; nulls: string[]; names: string[] };
+
+test('request panel Flight deck: Send idle berikon SVG saja, Cancel berlabel teks', () => {
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const html = readFileSync(join(dir, 'panel.html'), 'utf8');
+  const js = readFileSync(join(dir, 'panel.js'), 'utf8');
+  const send = html.match(/<button[^>]*id="send"[^>]*>[\s\S]*?<\/button>/)?.[0] ?? '';
+  assert.match(send, /aria-label="Send request"/);
+  assert.match(send, /title="Send \(Ctrl\+Enter\)"/);
+  assert.match(send, /<svg[^>]*aria-hidden="true"/);
+  assert.doesNotMatch(send.replace(/<svg[\s\S]*?<\/svg>/, ''), />\s*Send\s*</);
+  assert.match(js, /Cancel request/);
+  assert.match(js, /Cancel \(Escape\)/);
+  assert.match(js, /Send request/);
+  assert.match(js, /Send \(Ctrl\+Enter\)/);
+});
 
 test('urlToParams: query URL jadi baris Params (nilai mentah, {{var}} utuh)', () => {
   assert.deepEqual(panel.urlToParams('https://a.test/p?x=1&user={{username}}&flag&e=a%20b#top'), [
