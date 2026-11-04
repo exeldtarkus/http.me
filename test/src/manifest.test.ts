@@ -43,3 +43,9 @@ test('.vscodeignore mengecualikan test & md, tetap membawa yaml + README', () =>
     assert.ok(ignore.includes(p), `.vscodeignore tidak berisi ${p}`);
   }
 });
+
+test('script install:local + package tersedia', () => {
+  assert.equal(pkg.scripts?.['install:local'], 'node scripts/install-local.js');
+  assert.equal(pkg.scripts?.package, 'vsce package --skip-license');
+  assert.ok(existsSync(join(root, 'scripts', 'install-local.js')), 'scripts/install-local.js belum ada');
+});

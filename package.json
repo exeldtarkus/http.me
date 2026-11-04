@@ -30,7 +30,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test": "npm run compile && node --test out/test/src/*.test.js",
-    "package": "vsce package --skip-license"
+    "package": "vsce package --skip-license",
+    "install:local": "node scripts/install-local.js"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
