@@ -1,0 +1,3 @@
+### Contoh GET (npm run dev)
+GET https://httpbin.org/get?hello=world
+Accept: application/json

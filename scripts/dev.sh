@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Buka Extension Development Host (setara F5) dengan extension dari folder ini, tanpa install.
-# run: npm run dev   (`npm run dev -- <folder>` untuk folder lain; default test-extension/ berisi contoh .http)
+# run: npm run dev   (`npm run dev -- <folder>` untuk folder lain; default test-extension/ berisi contoh .http (1 request per file))
 # Di WSL, `code` remote-cli tidak mendukung --extensionDevelopmentPath, jadi pakai `code` Windows (path Linux diubah otomatis oleh ekstensi Remote WSL).
 # shortcut: jendela dev yang sudah terbuka hanya di-reload dengan folder lamanya (moonage memakai handler onUri, http.me tidak boleh); tutup dulu jendela dev bila ganti folder.
 set -euo pipefail

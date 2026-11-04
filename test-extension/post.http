@@ -1,0 +1,7 @@
+### Contoh POST JSON (npm run dev)
+POST https://httpbin.org/post
+Content-Type: application/json
+
+{
+  "name": "http.me"
+}
