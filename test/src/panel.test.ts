@@ -208,6 +208,16 @@ test('review R25: tabel key/value (Params / Headers / form): Value tidak bisa di
   assert.match(fs.readFileSync(join(dir, 'panel.html'), 'utf8'), /\.kv input\[type=text\]:disabled \{[^}]*cursor: not-allowed;[^}]*\}/);
 });
 
+test('review R26: baris URL ringkas: semua kontrol setinggi --ctl-h, Send ikon 32px, hitungan tab jadi badge', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const css = fs.readFileSync(join(__dirname, '..', '..', '..', 'media', 'webview', 'panel.html'), 'utf8');
+  assert.match(css, /--ctl-h: 30px;/);
+  assert.match(css, /\.urlbox \{[^}]*height: var\(--ctl-h\);/);
+  assert.match(css, /#send \{[^}]*width: 32px;[^}]*height: var\(--ctl-h\);/);
+  assert.match(css, /#save \{[^}]*height: var\(--ctl-h\);/);
+  assert.match(css, /\.subtabs \.n:not\(:empty\) \{[^}]*background: var\(--vscode-badge-background/);
+});
+
 test('review R7: body form / none menyembunyikan pembungkus editor teks (bukan hanya textarea)', () => {
   const fs = require('node:fs') as typeof import('node:fs');
   const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
