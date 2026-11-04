@@ -175,3 +175,10 @@ test('review R5: defaultScript = script pertama yang jalan (file ada / inline), 
   assert.equal(p.defaultScript([own]), own, 'belum ada script: This request (kosong)');
   assert.equal(p.defaultScript([{ file: '/w/r.pre-request.js', source: 'own', exists: true }])?.file, '/w/r.pre-request.js');
 });
+
+test('review R6: urutan Tab tabel key/value = Key → Value → ✕ → Key baris berikutnya', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  assert.match(fs.readFileSync(join(dir, 'panel.html'), 'utf8'), /\.kv tr:hover \.del, \.kv tr:focus-within \.del \{ visibility: visible; \}/);
+  assert.match(fs.readFileSync(join(dir, 'panel.js'), 'utf8'), /el\('input', \{ type: 'checkbox', checked: row\.enabled, title: '[^']*', tabIndex: -1 \}\)/);
+});

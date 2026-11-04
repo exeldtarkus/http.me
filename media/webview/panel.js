@@ -159,7 +159,8 @@
     tbody.replaceChildren();
     const addRow = (row, isNew) => {
       const tr = el('tr', { className: row.enabled ? '' : 'off' });
-      const on = el('input', { type: 'checkbox', checked: row.enabled, title: 'Enabled' });
+      // checkbox di luar urutan Tab: Tab dari Value → ✕ → Key baris berikutnya (klik tetap bisa)
+      const on = el('input', { type: 'checkbox', checked: row.enabled, title: 'Enabled (click to turn on / off)', tabIndex: -1 });
       const k = el('input', { type: 'text', value: row[keyName], placeholder: isNew ? 'Key' : '', spellcheck: false });
       const v = el('input', { type: 'text', value: row.value, placeholder: isNew ? 'Value' : '', spellcheck: false });
       const del = el('button', { className: 'del', type: 'button', title: 'Remove', textContent: '✕' });
