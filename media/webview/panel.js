@@ -113,6 +113,12 @@
   function clampSplit(h, total, minReq = 80, minRes = 120) {
     return Math.max(minReq, Math.min(h, total - minRes));
   }
+  /** grid body per layout: single = tinggi area request (baris), two = lebar request (kolom); tanpa ukuran / panel = bawaan CSS */
+  function layoutGrid(layout, size, total) {
+    if (size === undefined || layout === 'panel') return { rows: '', cols: '' };
+    if (layout === 'two') return { rows: '', cols: `${clampSplit(size, total, 240, 240)}px 5px minmax(240px, 1fr)` };
+    return { rows: `auto auto ${clampSplit(size, total)}px 5px minmax(120px, 1fr)`, cols: '' };
+  }
 
   /** item tab Scripts yang dibuka pertama: script pertama yang jalan (file ada / inline); belum ada script = This request (kosong) */
   function defaultScript(items) {
@@ -303,7 +309,7 @@
     return `\n${/^ */.exec(line)[0]}${/[{[]\s*$/.test(line) ? '  ' : ''}`;
   }
 
-  const api = { bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
+  const api = { layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -909,29 +915,56 @@
     $('consoleNone').hidden = lines.length > 0;
   }
 
-  // ---- batas request / response yang bisa di-drag; tinggi disimpan di state webview (tetap saat tab dibuka lagi) ----
+  // ---- layout response (single / two pane / panel bawah) + batas yang bisa di-drag; ukuran disimpan di state webview ----
   const SASH = 5;
-  const splitTotal = () => window.innerHeight - $('reqPanes').getBoundingClientRect().top - SASH;
-  function applySplit(h) {
-    if (h === undefined) { document.body.style.gridTemplateRows = ''; return; }
-    document.body.style.gridTemplateRows = `auto auto ${clampSplit(h, splitTotal())}px ${SASH}px minmax(120px, 1fr)`;
+  let layout = 'single';
+  const two = () => layout === 'two';
+  const sizeKey = () => (two() ? 'reqWidth' : 'reqHeight');
+  const splitTotal = () => (two() ? window.innerWidth : window.innerHeight - $('reqPanes').getBoundingClientRect().top) - SASH;
+  function applySplit(size) {
+    const g = layoutGrid(layout, size, splitTotal());
+    document.body.style.gridTemplateRows = g.rows;
+    document.body.style.gridTemplateColumns = g.cols;
   }
-  function saveSplit(h) { vscode.setState({ ...(vscode.getState() || {}), reqHeight: h }); }
-  applySplit((vscode.getState() || {}).reqHeight);
+  function saveSplit(size) { vscode.setState({ ...(vscode.getState() || {}), [sizeKey()]: size }); }
+  const savedSplit = () => (vscode.getState() || {})[sizeKey()];
+  function applyLayout(l) {
+    layout = ['single', 'two', 'panel'].includes(l) ? l : 'single';
+    // panel bawah (response saja) tidak ikut berubah bentuk; hanya tanda pilihan di menu
+    if (!document.body.classList.contains('only-resp')) {
+      document.body.classList.toggle('l-two', layout === 'two');
+      document.body.classList.toggle('l-panel', layout === 'panel');
+      $('sash').setAttribute('aria-orientation', two() ? 'vertical' : 'horizontal');
+      applySplit(savedSplit());
+    }
+    for (const b of $('layoutMenu').querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset.l === layout));
+  }
+  const closeLayoutMenu = () => { $('layoutMenu').hidden = true; $('layoutBtn').setAttribute('aria-expanded', 'false'); };
+  $('layoutBtn').onclick = (e) => {
+    e.stopPropagation();
+    $('layoutMenu').hidden = !$('layoutMenu').hidden;
+    $('layoutBtn').setAttribute('aria-expanded', String(!$('layoutMenu').hidden));
+  };
+  for (const b of $('layoutMenu').querySelectorAll('button')) {
+    b.onclick = () => { closeLayoutMenu(); applyLayout(b.dataset.l); post({ type: 'layout', layout: b.dataset.l }); };
+  }
+  document.addEventListener('click', (e) => { if (!$('layoutMenu').hidden && !e.target.closest('.layout')) closeLayoutMenu(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('layoutMenu').hidden) closeLayoutMenu(); });
+  applySplit(savedSplit());
   $('sash').addEventListener('pointerdown', (e) => {
     e.preventDefault();
     const sash = $('sash');
     sash.setPointerCapture(e.pointerId);
     sash.classList.add('drag');
     document.body.classList.add('resizing');
-    const top = $('reqPanes').getBoundingClientRect().top;
-    let h;
-    const move = (ev) => { h = clampSplit(ev.clientY - top, splitTotal()); applySplit(h); };
+    const start = two() ? 0 : $('reqPanes').getBoundingClientRect().top;
+    let size;
+    const move = (ev) => { size = clampSplit((two() ? ev.clientX : ev.clientY) - start, splitTotal(), two() ? 240 : 80, two() ? 240 : 120); applySplit(size); };
     const up = () => {
       sash.classList.remove('drag');
       document.body.classList.remove('resizing');
       sash.removeEventListener('pointermove', move);
-      if (h !== undefined) saveSplit(h);
+      if (size !== undefined) saveSplit(size);
     };
     sash.addEventListener('pointermove', move);
     sash.addEventListener('pointerup', up, { once: true });
@@ -939,13 +972,15 @@
   });
   $('sash').addEventListener('dblclick', () => { applySplit(undefined); saveSplit(undefined); });
   $('sash').addEventListener('keydown', (e) => {
-    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    const keys = two() ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown'];
+    if (!keys.includes(e.key)) return;
     e.preventDefault();
-    const h = clampSplit($('reqPanes').getBoundingClientRect().height + (e.key === 'ArrowUp' ? -20 : 20), splitTotal());
-    applySplit(h);
-    saveSplit(h);
+    const r = $('reqPanes').getBoundingClientRect();
+    const size = (two() ? r.width : r.height) + (e.key === keys[0] ? -20 : 20);
+    applySplit(size);
+    saveSplit(size);
   });
-  window.addEventListener('resize', () => applySplit((vscode.getState() || {}).reqHeight));
+  window.addEventListener('resize', () => applySplit(savedSplit()));
 
   // ---- Beautify body JSON / XML (dirapikan di host: token variable tetap utuh, bisa Undo) ----
   function beautify() {
@@ -989,6 +1024,8 @@
       t.selectionStart = t.selectionEnd = Math.min(at, m.text.length);
       scPaint();
     }
+    if (m.type === 'mode') document.body.classList.toggle('only-resp', !!m.responseOnly);
+    if (m.type === 'layout') applyLayout(m.layout);
     if ('view' in m) renderView(m.view);
   });
   window.addEventListener('blur', flush);
