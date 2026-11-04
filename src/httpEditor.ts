@@ -10,6 +10,7 @@ import { webviewPage } from './webviewPage';
 import { NEW_REQUEST_TEXT, newRequestName } from './newRequest';
 import { parseRequest, serializeRequest, splitBlocks, toHttpRequestWithFile, type ParsedRequest } from './httpFile';
 import { prettyJson } from './response';
+import { beautifyBody } from './beautify';
 import { importCurl } from './curl';
 import { defaultFileName } from './sidebarModel';
 import { dropKeepIfUsed, requestFileName } from './store';
@@ -439,6 +440,12 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
         else if (m.type === 'pasteCurl' && typeof m.text === 'string') await importCurlText(m.text, doc);
         else if (m.type === 'cancel') runner.cancel(doc.uri.toString());
         else if (m.type === 'showRunning') await vscode.commands.executeCommand('httpme.showRunning');
+        else if (m.type === 'beautify') {
+          const r = parseRequest(doc.getText());
+          const out = beautifyBody(r.body, r.bodyType);
+          if (out.text !== undefined && out.text !== r.body) await writeDocument(doc, serializeRequest({ ...r, body: out.text }));
+          void panel.webview.postMessage({ type: 'beautifyResult', error: out.error });
+        }
         else if (m.type === 'openBody') await openBody(s);
         else if (m.type === 'saveBody') await saveBody(s);
       } catch (e) {

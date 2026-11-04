@@ -109,7 +109,12 @@
   /** loading sebaris (spinner 24 px) di bar response: request lain yang sedang berjalan */
   const othersText = (n) => (n > 0 ? `${n} other request${n === 1 ? '' : 's'} running` : '');
 
-  const api = { othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
+  /** tinggi area request saat batas di-drag: request min 80 px, response min 120 px */
+  function clampSplit(h, total, minReq = 80, minRes = 120) {
+    return Math.max(minReq, Math.min(h, total - minRes));
+  }
+
+  const api = { clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -203,6 +208,8 @@
     $('bodyFileNote').textContent = req.bodyFile ? `The body is read from ${req.bodyFile} when the request is sent.` : '';
     for (const r of document.getElementsByName('bt')) r.checked = r.value === req.bodyType;
     const form = req.bodyType === 'form';
+    $('beautify').hidden = !['json', 'xml'].includes(req.bodyType) || !!req.bodyFile;
+    $('beautifyNote').hidden = true;
     $('bodyText').hidden = form || req.bodyType === 'none';
     $('formTable').hidden = !form;
     if (form) {
@@ -634,6 +641,55 @@
     $('consoleNone').hidden = lines.length > 0;
   }
 
+  // ---- batas request / response yang bisa di-drag; tinggi disimpan di state webview (tetap saat tab dibuka lagi) ----
+  const SASH = 5;
+  const splitTotal = () => window.innerHeight - $('reqPanes').getBoundingClientRect().top - SASH;
+  function applySplit(h) {
+    if (h === undefined) { document.body.style.gridTemplateRows = ''; return; }
+    document.body.style.gridTemplateRows = `auto auto ${clampSplit(h, splitTotal())}px ${SASH}px minmax(120px, 1fr)`;
+  }
+  function saveSplit(h) { vscode.setState({ ...(vscode.getState() || {}), reqHeight: h }); }
+  applySplit((vscode.getState() || {}).reqHeight);
+  $('sash').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const sash = $('sash');
+    sash.setPointerCapture(e.pointerId);
+    sash.classList.add('drag');
+    document.body.classList.add('resizing');
+    const top = $('reqPanes').getBoundingClientRect().top;
+    let h;
+    const move = (ev) => { h = clampSplit(ev.clientY - top, splitTotal()); applySplit(h); };
+    const up = () => {
+      sash.classList.remove('drag');
+      document.body.classList.remove('resizing');
+      sash.removeEventListener('pointermove', move);
+      if (h !== undefined) saveSplit(h);
+    };
+    sash.addEventListener('pointermove', move);
+    sash.addEventListener('pointerup', up, { once: true });
+    sash.addEventListener('pointercancel', up, { once: true });
+  });
+  $('sash').addEventListener('dblclick', () => { applySplit(undefined); saveSplit(undefined); });
+  $('sash').addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    const h = clampSplit($('reqPanes').getBoundingClientRect().height + (e.key === 'ArrowUp' ? -20 : 20), splitTotal());
+    applySplit(h);
+    saveSplit(h);
+  });
+  window.addEventListener('resize', () => applySplit((vscode.getState() || {}).reqHeight));
+
+  // ---- Beautify body JSON / XML (dirapikan di host: token variable tetap utuh, bisa Undo) ----
+  function beautify() {
+    if (!req || !['json', 'xml'].includes(req.bodyType)) return;
+    flush();
+    post({ type: 'beautify' });
+  }
+  $('beautify').onclick = beautify;
+  $('bodyText').addEventListener('keydown', (e) => {
+    if (e.key === 'F' && e.shiftKey && e.altKey) { e.preventDefault(); beautify(); }
+  });
+
   window.addEventListener('message', (e) => {
     const m = e.data;
     if (m.type === 'state') {
@@ -651,6 +707,7 @@
       $('reqCookiesNote').textContent = m.off ? 'Send saved cookies is off for this request (Settings).' : m.list.length ? 'These saved cookies are sent with the request (values masked). Manage them in the Cookies view of the http.me sidebar.' : 'No saved cookie matches this URL yet. Cookies from responses are saved automatically.';
     }
     if (m.type === 'scripts') { scripts = m; renderScripts(); }
+    if (m.type === 'beautifyResult') { $('beautifyNote').hidden = !m.error; $('beautifyNote').textContent = m.error || ''; }
     if (m.type === 'others') { $('others').hidden = !m.n; $('othersText').textContent = othersText(m.n); }
     if (m.type === 'scriptSelect') { scripts && renderScripts(); const it = scItems().find((x) => x.file === m.path); if (it) scSelect(it); }
     if (m.type === 'scriptText' && m.path === scPath && m.text !== $('scText').value) {

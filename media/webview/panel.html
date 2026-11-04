@@ -18,7 +18,7 @@
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body { margin: 0; color: var(--fg); background: var(--bg); font-family: var(--vscode-font-family); font-size: 13px; line-height: 1.45;
-    display: grid; grid-template-rows: auto auto minmax(80px, 1fr) 1px minmax(120px, 1.4fr); }
+    display: grid; grid-template-rows: auto auto minmax(80px, 1fr) 5px minmax(120px, 1.2fr); }
   button, select, input, textarea { font: inherit; color: inherit; }
   button { cursor: pointer; }
   :focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
@@ -53,7 +53,22 @@
   .subtabs button.on { color: var(--fg); border-bottom-color: var(--accent); }
   .subtabs button:disabled { opacity: .45; cursor: not-allowed; }
   .subtabs .n { font-size: 11px; margin-left: 3px; font-variant-numeric: tabular-nums; }
-  .reqpanes { min-height: 0; overflow: auto; } /* isi panjang (Scripts, Headers) scroll di area request, tidak menimpa response */
+  /* area request: pane aktif mengisi tinggi (editor Body / Scripts ikut besar), isi panjang scroll di sini, tidak menimpa response */
+  .reqpanes { min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+  .reqpanes > .pane { flex: 1 1 auto; }
+  /* batas request / response yang bisa di-drag (seperti sash panel Output VS Code) */
+  .sash { position: relative; cursor: row-resize; touch-action: none; }
+  .sash::before { content: ""; position: absolute; left: 0; right: 0; top: 2px; height: 1px; background: var(--line); }
+  .sash:hover::before, .sash.drag::before, .sash:focus-visible::before { top: 0.5px; height: 4px; background: var(--vscode-sash-hoverBorder, var(--focus)); transition: background .1s .15s; }
+  .sash:focus-visible { outline: none; }
+  body.resizing { cursor: row-resize; user-select: none; }
+  /* scrollbar ikut tema VS Code (bukan scrollbar bawaan berpanah) */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background, #79797966); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground, #646464b3); }
+  ::-webkit-scrollbar-thumb:active { background: var(--vscode-scrollbarSlider-activeBackground, #bfbfbf66); }
+  ::-webkit-scrollbar-button { display: none; }
   .pane { overflow: auto; padding: 8px 14px 12px; min-height: 0; }
   .pane[hidden] { display: none; }
   table.kv { width: 100%; border-collapse: collapse; }
@@ -72,9 +87,13 @@
   .multi p { max-width: 460px; margin: 0; }
   .radios { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 8px; font-size: 12px; }
   .radios label { display: flex; gap: 4px; align-items: center; }
-  .body-pane { display: flex; flex-direction: column; }
+  .body-pane { display: flex; flex-direction: column; gap: 6px; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+  .bar .radios { margin: 0; flex: 1; }
+  .bar .note { margin: 0; }
   .body-pane[hidden] { display: none; }
   #bodyText { flex: 1; min-height: 90px; width: 100%; resize: none; font: 12px/1.55 var(--mono); padding: 6px 8px; tab-size: 2; }
+  #bodyText:focus, .sc-editor:focus-within { border-color: var(--focus); outline: none; }
   #bodyText[hidden] { display: none; }
   .subtabs .right { margin-left: auto; display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .resp { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
@@ -95,7 +114,11 @@
   .bodynote { margin: 8px 14px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--warn); }
   .bodynote span { margin-right: auto; }
   .bodynote .btn[hidden] { display: none; }
-  .form { display: grid; grid-template-columns: max-content minmax(0, 240px); gap: 8px 12px; align-items: center; font-size: 12px; }
+  .form { max-width: 680px; border: 1px solid var(--line); border-radius: 4px; font-size: 12px; }
+  .form .row { display: grid; grid-template-columns: minmax(0, 1fr) 180px; align-items: center; gap: 12px; padding: 8px 12px; }
+  .form .row + .row { border-top: 1px solid var(--line); }
+  .form label { display: flex; flex-direction: column; gap: 1px; }
+  .form label small { color: var(--muted); font-size: 11.5px; }
   .form select, .form input { padding: 3px 6px; }
   .allow { margin: 8px 14px 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; font-size: 12px; }
   .allow b { font: 600 12px var(--mono); margin-right: 8px; }
@@ -156,7 +179,8 @@
   .matching { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 2; font-size: 11px; color: var(--muted); background: var(--input); padding: 0 4px; }
   .dot { display: inline-block; width: 6px; height: 6px; margin-left: 5px; border-radius: 50%; background: var(--ok); vertical-align: 1px; }
   .dot[hidden] { display: none; }
-  .scripts-pane { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 12px; }
+  .scripts-pane { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 14px; }
+  .scripts-pane .sc-side { border-right: 1px solid var(--line); padding-right: 10px; }
   .scripts-pane[hidden] { display: none; }
   .sc-side { display: flex; flex-direction: column; gap: 2px; }
   .sc-side button { text-align: left; background: none; border: 0; border-left: 2px solid transparent; padding: 4px 10px; color: var(--muted); white-space: nowrap; }
@@ -173,9 +197,9 @@
   .chain li .grip { cursor: grab; color: var(--muted); }
   .chain li .ord { color: var(--muted); font-size: 10px; }
   .sc-preview { margin: 0; font: 11.5px var(--mono); color: var(--muted); white-space: pre-wrap; }
-  .sc-editor { flex: 1; display: flex; min-height: 96px; border: 1px solid var(--line); border-radius: 3px; background: var(--input); }
+  .sc-editor { flex: 1; display: flex; min-height: 120px; border: 1px solid var(--line); border-radius: 3px; background: var(--input); }
   .sc-editor pre { margin: 0; padding: 6px 6px 6px 8px; min-width: 32px; text-align: right; color: var(--muted); font: 12px/1.55 var(--mono); border-right: 1px solid var(--line); overflow: hidden; user-select: none; }
-  .sc-editor textarea { flex: 1; border: 0; border-radius: 0; resize: none; padding: 6px 8px; font: 12px/1.55 var(--mono); white-space: pre; overflow: auto; tab-size: 2; }
+  .sc-editor textarea { flex: 1; min-width: 0; border: 0; border-radius: 0; resize: none; outline: none; padding: 6px 8px; font: 12px/1.55 var(--mono); white-space: pre; overflow: auto; tab-size: 2; }
   .sc-editor textarea[readonly] { color: var(--muted); }
   ul.tests { margin: 0; padding: 0; list-style: none; font-size: 12px; }
   ul.tests li { padding: 2px 0; } ul.tests .pass { color: var(--ok); } ul.tests .fail { color: var(--err); }
@@ -215,7 +239,7 @@
   <button type="button" data-p="scripts" id="scriptsTab">Scripts<span class="dot" id="scriptsDot" hidden title="This request has its own scripts"></span></button>
   <button type="button" data-p="settings">Settings</button>
 </div>
-<div class="reqpanes">
+<div class="reqpanes" id="reqPanes">
   <div class="pane" id="p-params">
     <table class="kv"><thead><tr><th></th><th>Key</th><th>Value</th><th></th></tr></thead><tbody id="paramRows"></tbody></table>
     <p class="note">Params stay in sync with the URL query.</p>
@@ -224,12 +248,16 @@
     <table class="kv"><thead><tr><th></th><th>Key</th><th>Value</th><th></th></tr></thead><tbody id="headerRows"></tbody></table>
   </div>
   <div class="pane body-pane" id="p-body" hidden>
-    <div class="radios" role="radiogroup" aria-label="Body type" id="bodyTypes">
-      <label><input type="radio" name="bt" value="none"> none</label>
-      <label><input type="radio" name="bt" value="json"> JSON</label>
-      <label><input type="radio" name="bt" value="text"> Text</label>
-      <label><input type="radio" name="bt" value="xml"> XML</label>
-      <label><input type="radio" name="bt" value="form"> x-www-form-urlencoded</label>
+    <div class="bar">
+      <div class="radios" role="radiogroup" aria-label="Body type" id="bodyTypes">
+        <label><input type="radio" name="bt" value="none"> none</label>
+        <label><input type="radio" name="bt" value="json"> JSON</label>
+        <label><input type="radio" name="bt" value="text"> Text</label>
+        <label><input type="radio" name="bt" value="xml"> XML</label>
+        <label><input type="radio" name="bt" value="form"> x-www-form-urlencoded</label>
+      </div>
+      <span class="note warn" id="beautifyNote" hidden></span>
+      <button class="btn ghost sm" id="beautify" type="button" title="Format the JSON / XML body (Shift+Alt+F)" hidden>Beautify</button>
     </div>
     <textarea id="bodyText" spellcheck="false" aria-label="Body"></textarea>
     <table class="kv" id="formTable" hidden><thead><tr><th></th><th>Key</th><th>Value</th><th></th></tr></thead><tbody id="formRows"></tbody></table>
@@ -259,21 +287,16 @@
   </div>
   <div class="pane" id="p-settings" hidden>
     <div class="form">
-      <label for="redir">Follow redirects</label>
-      <select id="redir"><option value="yes">Yes (max 10)</option><option value="no">No</option></select>
-      <label for="tls">SSL certificate</label>
-      <select id="tls"><option value="verify">Verify</option><option value="ignore">Ignore (dev servers)</option></select>
-      <label for="tmo">Timeout (seconds)</label>
-      <input id="tmo" type="number" min="1" step="1" placeholder="30">
-      <label for="ckSend">Send saved cookies</label>
-      <select id="ckSend"><option value="yes">Yes</option><option value="no">No</option></select>
-      <label for="ckSave">Save cookies from response</label>
-      <select id="ckSave"><option value="yes">Yes</option><option value="no">No</option></select>
+      <div class="row"><label for="redir">Follow redirects<small>Follow 3xx responses automatically, up to 10 hops.</small></label><select id="redir"><option value="yes">Yes (max 10)</option><option value="no">No</option></select></div>
+      <div class="row"><label for="tls">SSL certificate<small>Ignore only for local or dev servers with a self-signed certificate.</small></label><select id="tls"><option value="verify">Verify</option><option value="ignore">Ignore (dev servers)</option></select></div>
+      <div class="row"><label for="tmo">Timeout (seconds)<small>Empty = 30 seconds.</small></label><input id="tmo" type="number" min="1" step="1" placeholder="30"></div>
+      <div class="row"><label for="ckSend">Send saved cookies<small>Cookies of the active Environment that match the URL.</small></label><select id="ckSend"><option value="yes">Yes</option><option value="no">No</option></select></div>
+      <div class="row"><label for="ckSave">Save cookies from response<small>Set-Cookie of every redirect hop goes to the cookie jar.</small></label><select id="ckSave"><option value="yes">Yes</option><option value="no">No</option></select></div>
     </div>
     <p class="note">Saved in the .http file as # @no-redirect, # @insecure, # @timeout, # @no-send-cookies and # @no-save-cookies.</p>
   </div>
 </div>
-<div style="background: var(--line)"></div>
+<div class="sash" id="sash" role="separator" aria-orientation="horizontal" aria-label="Resize request and response" tabindex="0" title="Drag to resize · double-click to reset"></div>
 <section class="resp" aria-label="Response">
   <div class="subtabs" role="tablist" aria-label="Response" id="resTabs">
     <button type="button" data-r="rbody" class="on" id="resBodyTab">Body</button>

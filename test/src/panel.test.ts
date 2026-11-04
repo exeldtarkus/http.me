@@ -149,3 +149,19 @@ test('review R1/R2: petunjuk di bawah URL diganti popup bantuan; daftar pilihan 
   assert.match(html, /body\.vscode-dark \{ color-scheme: dark; \}/);
   assert.doesNotMatch(html, /grid-template-rows: auto auto auto minmax/, 'baris grid petunjuk ikut dihapus');
 });
+
+test('review R3: clampSplit menjaga tinggi request & response minimum saat batas di-drag', () => {
+  const p = panel as unknown as { clampSplit(h: number, total: number): number };
+  assert.equal(p.clampSplit(300, 800), 300);
+  assert.equal(p.clampSplit(20, 800), 80, 'request minimal 80 px');
+  assert.equal(p.clampSplit(790, 800), 680, 'response minimal 120 px');
+  assert.equal(p.clampSplit(500, 150), 80, 'jendela terlalu pendek: request tetap 80 px');
+});
+
+test('review R3/R4: sash bisa di-drag (separator), scrollbar ikut tema, toolbar Body punya Beautify', () => {
+  const html = require('node:fs').readFileSync(join(__dirname, '..', '..', '..', 'media', 'webview', 'panel.html'), 'utf8') as string;
+  assert.match(html, /<div class="sash" id="sash" role="separator" aria-orientation="horizontal"[^>]*tabindex="0"/);
+  assert.match(html, /::-webkit-scrollbar-thumb \{ background: var\(--vscode-scrollbarSlider-background/);
+  assert.match(html, /<button[^>]*id="beautify"[^>]*>Beautify<\/button>/);
+  assert.match(html, /\.reqpanes > \.pane \{ flex: 1 1 auto;/);
+});
