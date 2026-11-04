@@ -39,6 +39,7 @@
     "watch": "tsc -watch -p ./",
     "dev": "npm run compile && bash scripts/dev.sh",
     "test": "npm run compile && node --test out/test/src/*.test.js",
+    "test:it": "npm run compile && node out/test/src/it/run.js",
     "package": "vsce package --skip-license",
     "install:local": "node scripts/install-local.js",
     "deploy": "bash scripts/deploy-v2.sh"
@@ -46,6 +47,7 @@
   "devDependencies": {
     "@types/node": "^20.19.43",
     "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",
     "typescript": "^5.4.0"
   }
