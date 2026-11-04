@@ -60,6 +60,18 @@
         "command": "httpme.clearCache",
         "title": "Clear Cache",
         "category": "http.me"
+      },
+      {
+        "command": "httpme.openInPanel",
+        "title": "Open in http.me Panel",
+        "category": "http.me",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "httpme.openAsText",
+        "title": "Open as Text",
+        "category": "http.me",
+        "icon": "$(go-to-file)"
       }
     ],
     "customEditors": [
@@ -85,7 +97,31 @@
           ".http"
         ]
       }
-    ]
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "httpme.openInPanel",
+          "when": "resourceExtname == .http && activeCustomEditorId != httpme.request",
+          "group": "navigation"
+        },
+        {
+          "command": "httpme.openAsText",
+          "when": "activeCustomEditorId == httpme.request",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "httpme.openInPanel",
+          "when": "resourceExtname == .http && activeCustomEditorId != httpme.request"
+        },
+        {
+          "command": "httpme.openAsText",
+          "when": "activeCustomEditorId == httpme.request"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

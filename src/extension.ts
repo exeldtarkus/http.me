@@ -3,7 +3,7 @@ import { isNewerMinor, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
 import { errMsg } from './log';
 import { log, reportError } from './output';
-import { applyPanelEdit, cancelActive, cancelBlock, cancelFile, newRequest, openAsText, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
+import { applyPanelEdit, cancelActive, cancelBlock, cancelFile, newRequest, openAsText, openInPanel, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
 import { registerActivity } from './activity';
 
@@ -54,6 +54,8 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   ctx.subscriptions.push(registerActivity());
   const run = (name: string, fn: () => Promise<unknown> | unknown) => Promise.resolve().then(fn).catch((e) => reportError(name, e, `http.me: ${errMsg(e)}`));
   const docOf = (uri: vscode.Uri) => vscode.workspace.openTextDocument(uri);
+  // uri tab aktif: editor teks maupun custom editor
+  const activeUri = () => (vscode.window.tabGroups.activeTabGroup.activeTab?.input as { uri?: vscode.Uri } | undefined)?.uri;
   const lenses = new RequestLenses();
   ctx.subscriptions.push(
     lenses,
@@ -65,8 +67,12 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
     vscode.commands.registerCommand('httpme.showResponse', (key: string) => run('showResponse', () => showResponse(key))),
     vscode.commands.registerCommand('httpme.showLog', () => log().show(true)),
     vscode.commands.registerCommand('httpme.openAsText', (uri?: vscode.Uri) => run('openAsText', async () => {
-      const target = uri ?? (vscode.window.tabGroups.activeTabGroup.activeTab?.input as { uri?: vscode.Uri } | undefined)?.uri;
+      const target = uri ?? activeUri();
       if (target) await openAsText(target);
+    })),
+    vscode.commands.registerCommand('httpme.openInPanel', (uri?: vscode.Uri) => run('openInPanel', async () => {
+      const target = uri ?? activeUri();
+      if (target) await openInPanel(target);
     })),
   );
 

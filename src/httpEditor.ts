@@ -252,6 +252,11 @@ export function releaseDocument(doc: vscode.TextDocument): void {
   }
 }
 
+/** Open in http.me Panel: editor teks .http -> panel request (dokumen yang sama) */
+export async function openInPanel(uri: vscode.Uri): Promise<void> {
+  await vscode.commands.executeCommand('vscode.openWith', uri, REQUEST_VIEW);
+}
+
 /** Open as Text: tutup panel, buka file yang sama di editor teks */
 export async function openAsText(uri: vscode.Uri): Promise<void> {
   await vscode.commands.executeCommand('vscode.openWith', uri, 'default');
