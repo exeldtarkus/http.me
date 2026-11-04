@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { parseRequest, serializeRequest, toHttpRequest, type ParsedRequest } from '../../src/httpFile';
+import { emptyRequest, parseRequest, serializeRequest, toHttpRequest, type ParsedRequest } from '../../src/httpFile';
 
 test('parseRequest: baris request, header, body; baris lain di atas disimpan apa adanya', () => {
   const r = parseRequest('### Log page view\n# @name logPageView\n\nPOST https://api.test/log?a=1 HTTP/1.1\nContent-Type: application/json\nX-Id: 7\n\n{"a":1}\n');
-  assert.deepEqual(r.preamble, ['### Log page view', '# @name logPageView']);
+  assert.deepEqual([r.title, r.name, r.preamble], ['Log page view', 'logPageView', []]);
   assert.equal(r.method, 'POST');
   assert.equal(r.url, 'https://api.test/log?a=1');
   assert.deepEqual(r.headers, [
@@ -18,7 +18,7 @@ test('parseRequest: baris request, header, body; baris lain di atas disimpan apa
 test('parseRequest: URL saja = GET, file kosong = GET kosong, method huruf kecil dinormalkan', () => {
   assert.equal(parseRequest('https://a.test/x\n').method, 'GET');
   assert.equal(parseRequest('https://a.test/x\n').url, 'https://a.test/x');
-  assert.deepEqual(parseRequest(''), { preamble: [], method: 'GET', url: '', headers: [], disabledParams: [], body: '', bodyType: 'none', followRedirects: true, insecure: false, timeoutSec: undefined });
+  assert.deepEqual(parseRequest(''), emptyRequest());
   assert.equal(parseRequest('query https://a.test\n').method, 'QUERY');
 });
 
@@ -46,7 +46,7 @@ test('bodyType dari Content-Type', () => {
 
 test('serializeRequest: urutan rapi (preamble, metadata, request, header, body) dan round-trip', () => {
   const r: ParsedRequest = {
-    preamble: ['### Title'], method: 'POST', url: 'https://a.test/p?x=1',
+    ...emptyRequest(), title: 'Title', method: 'POST', url: 'https://a.test/p?x=1',
     headers: [{ name: 'Content-Type', value: 'application/json', enabled: true }, { name: 'X-Off', value: '1', enabled: false }],
     disabledParams: [{ key: 'debug', value: 'true' }], body: '{\n  "a": 1\n}', bodyType: 'json',
     followRedirects: false, insecure: true, timeoutSec: 10,
@@ -62,4 +62,30 @@ test('toHttpRequest: hanya header aktif, body tidak dikirim bila kosong', () => 
   const r = parseRequest('# @disabled X-Off: 1\nPOST https://a.test\nContent-Type: text/plain\n\nhi\n');
   assert.deepEqual(toHttpRequest(r), { method: 'POST', url: 'https://a.test', headers: [['Content-Type', 'text/plain']], body: 'hi' });
   assert.deepEqual(toHttpRequest(parseRequest('GET https://a.test\nX-A: 1\n')), { method: 'GET', url: 'https://a.test', headers: [['X-A', '1']], body: undefined });
+});
+
+test('### judul tampil, # @name ID (juga // @name), komentar # dan // dipertahankan', () => {
+  const r = parseRequest('### Log page view\n# @name logPageView\n# catatan tim\n// lihat tiket 12\nGET https://a.test\n');
+  assert.equal(r.title, 'Log page view');
+  assert.equal(r.name, 'logPageView');
+  assert.deepEqual(r.preamble, ['# catatan tim', '// lihat tiket 12']);
+  assert.equal(parseRequest('// @name x\nGET https://a\n').name, 'x');
+  assert.equal(parseRequest('###\nGET https://a\n').title, '');
+  assert.equal(parseRequest('GET https://a\n').title, undefined);
+});
+
+test('round-trip: parse → serialize → parse sama untuk file tulisan tangan; isi tidak hilang', () => {
+  const samples = [
+    'GET https://a.test\n',
+    '### T\n# @name t\nPOST https://a.test/p HTTP/1.1\nContent-Type: application/json\n\n{"a":1}\n',
+    '# komentar\n\n\nGET https://a.test?x=1\nAccept: */*\n\n',
+    '###   Spasi judul  \r\n// @name w\r\nDELETE https://a.test/1\r\n',
+  ];
+  for (const s of samples) {
+    const once = parseRequest(s);
+    const text = serializeRequest(once);
+    assert.deepEqual(parseRequest(text), once, s);
+    assert.equal(serializeRequest(parseRequest(text)), text, 'serialize stabil');
+  }
+  assert.equal(serializeRequest(parseRequest('### T\n# @name t\n# c\nGET https://a\n')), '### T\n# @name t\n# c\nGET https://a\n');
 });

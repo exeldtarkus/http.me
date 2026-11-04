@@ -1,11 +1,12 @@
 // baca/tulis satu request file .http (format REST Client / JetBrains), tanpa vscode.
-// shortcut: Fase 1 hanya 1 request per file; `###` multi-request, variabel file, script `<` / `>` dan metadata lain
-// disimpan apa adanya di preamble — parser lengkap dibuat di Fase 2
+// Satu file = satu request (Save selalu 1 request); file multi-request dipecah splitBlocks lalu tiap blok di-parse.
 export type BodyType = 'none' | 'json' | 'text' | 'xml' | 'form';
 export type Header = { name: string; value: string; enabled: boolean };
 export type Param = { key: string; value: string };
 export type ParsedRequest = {
-  /** baris di atas request yang tidak dipahami Fase 1 (### judul, # @name, komentar, @var, < script) */
+  /** teks setelah `###` = judul tampil (tab, sidebar, History); undefined = tanpa baris ### */ title: string | undefined;
+  /** `# @name` = ID request standar */ name: string | undefined;
+  /** komentar & baris lain di atas request yang bukan metadata http.me, dipertahankan apa adanya */
   preamble: string[];
   method: string; url: string; headers: Header[];
   /** query param yang dimatikan (# @disabled key=value); yang aktif ada di URL */
@@ -27,15 +28,23 @@ export function bodyTypeOf(contentType: string | undefined, body: string): BodyT
   return 'text';
 }
 
+export const emptyRequest = (): ParsedRequest => ({
+  title: undefined, name: undefined, preamble: [], method: 'GET', url: '', headers: [], disabledParams: [], body: '', bodyType: 'none',
+  followRedirects: true, insecure: false, timeoutSec: undefined,
+});
+
 export function parseRequest(text: string): ParsedRequest {
   const lines = text.replace(/\r\n/g, '\n').split('\n');
-  const r: ParsedRequest = { preamble: [], method: 'GET', url: '', headers: [], disabledParams: [], body: '', bodyType: 'none', followRedirects: true, insecure: false, timeoutSec: undefined };
+  const r = emptyRequest();
   const disabled: Header[] = [];
   let i = 0;
   for (; i < lines.length; i++) {
     const t = lines[i].trim();
     if (t === '') continue;
+    const title = /^###(.*)$/.exec(t);
+    if (title && r.title === undefined) { r.title = title[1].trim(); continue; }
     const meta = /^(?:#|\/\/)\s*@([\w-]+)\s*(.*)$/.exec(t);
+    if (meta?.[1] === 'name' && meta[2]) { r.name = meta[2].trim(); continue; }
     if (meta?.[1] === 'no-redirect') { r.followRedirects = false; continue; }
     if (meta?.[1] === 'insecure') { r.insecure = true; continue; }
     if (meta?.[1] === 'timeout' && /^\d+/.test(meta[2])) { r.timeoutSec = parseInt(meta[2], 10); continue; }
@@ -68,12 +77,15 @@ export function parseRequest(text: string): ParsedRequest {
 }
 
 export function serializeRequest(r: ParsedRequest): string {
-  const out = [...r.preamble];
+  const out: string[] = [];
+  if (r.title !== undefined) out.push(`### ${r.title}`.trimEnd());
+  if (r.name) out.push(`# @name ${r.name}`);
   if (!r.followRedirects) out.push('# @no-redirect');
   if (r.insecure) out.push('# @insecure');
   if (r.timeoutSec !== undefined) out.push(`# @timeout ${r.timeoutSec}`);
   for (const h of r.headers) if (!h.enabled) out.push(`# @disabled ${h.name}: ${h.value}`);
   for (const p of r.disabledParams) out.push(`# @disabled ${p.value === '' ? p.key : `${p.key}=${p.value}`}`);
+  out.push(...r.preamble);
   out.push(`${r.method} ${r.url}`);
   for (const h of r.headers) if (h.enabled) out.push(`${h.name}: ${h.value}`);
   if (r.body !== '') out.push('', r.body);

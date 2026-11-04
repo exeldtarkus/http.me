@@ -74,7 +74,8 @@ function isRequest(v: unknown): v is ParsedRequest {
     && Array.isArray(r.preamble) && Array.isArray(r.disabledParams) && typeof r.followRedirects === 'boolean' && typeof r.insecure === 'boolean'
     && r.headers.every((h) => typeof h?.name === 'string' && typeof h.value === 'string' && typeof h.enabled === 'boolean')
     && r.disabledParams.every((p) => typeof p?.key === 'string' && typeof p.value === 'string')
-    && r.preamble.every((l) => typeof l === 'string') && (r.timeoutSec === undefined || Number.isInteger(r.timeoutSec));
+    && r.preamble.every((l) => typeof l === 'string') && (r.timeoutSec === undefined || Number.isInteger(r.timeoutSec))
+    && (r.title === undefined || typeof r.title === 'string') && (r.name === undefined || typeof r.name === 'string');
 }
 
 /** tulis request dari panel ke dokumen (seluruh isi diganti; undo VS Code tetap jalan) */
