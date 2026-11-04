@@ -89,3 +89,8 @@ test('review R15: Save (tombol & Ctrl+S) memicu sync key ke semua Environment, G
   const src = (require('node:fs') as typeof import('node:fs')).readFileSync(join(__dirname, '..', '..', '..', 'src', 'envState.ts'), 'utf8');
   assert.match(src, /vscode\.workspace\.onDidSaveTextDocument\(\(d\) => \{ const name = this\.nameOf\(d\.uri\); if \(name === undefined \|\| name === GLOBALS\) return; void this\.sync\(\)/);
 });
+test('review R22: header tabel (Variable, Initial value, Current value, Secret) tetap terlihat saat scroll', () => {
+  const html = require('node:fs').readFileSync(join(media, 'environment.html'), 'utf8') as string;
+  assert.match(html, /th \{[^}]*position: sticky;[^}]*top: 0;[^}]*background: var\(--bg\)/);
+});
+
