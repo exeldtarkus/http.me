@@ -71,7 +71,7 @@ export const tests: ITests = {
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       await api().envs.setActive(undefined);
       rmSync(dir, { recursive: true, force: true });
-      rmSync(join(root(), '.httpme'), { recursive: true, force: true });
+      rmSync(envFile, { force: true });
       await srv.close();
     }
   },

@@ -1,11 +1,38 @@
 // dijalankan di extension host VS Code: muat tiap out/test/src/*.itest.js lalu jalankan export `tests` satu per satu.
 // shortcut: runner mini tanpa mocha (node:test belum bisa jalan in-process di Node milik VS Code 1.90); ganti bila butuh hook/filter
-import { readdirSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as vscode from 'vscode';
 
 export type ITests = Record<string, () => Promise<void>>;
 
+/** .httpme milik user di test-extension (Environment buatan sendiri) disimpan dulu: beberapa itest menghapus folder itu */
+function protectUserData(): () => void {
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const dir = root && join(root, '.httpme');
+  if (!dir || !existsSync(dir)) return () => undefined;
+  const backup = join(mkdtempSync(join(tmpdir(), 'httpme-it-')), '.httpme');
+  cpSync(dir, backup, { recursive: true });
+  rmSync(dir, { recursive: true, force: true });
+  console.log(`itest: ${dir} disimpan sementara di ${backup}`);
+  return () => {
+    rmSync(dir, { recursive: true, force: true });
+    cpSync(backup, dir, { recursive: true });
+    console.log(`itest: ${dir} dikembalikan`);
+  };
+}
+
 export async function run(): Promise<void> {
+  const restore = protectUserData();
+  try {
+    await runAll();
+  } finally {
+    restore();
+  }
+}
+
+async function runAll(): Promise<void> {
   const dir = join(__dirname, '..');
   const failed: string[] = [];
   let passed = 0;
