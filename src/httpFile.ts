@@ -79,3 +79,10 @@ export function serializeRequest(r: ParsedRequest): string {
   if (r.body !== '') out.push('', r.body);
   return `${out.join('\n')}\n`;
 }
+
+/** request siap kirim: header nonaktif dibuang, body kosong = tanpa body */
+export const toHttpRequest = (r: ParsedRequest): { method: string; url: string; headers: [string, string][]; body: string | undefined } => ({
+  method: r.method, url: r.url,
+  headers: r.headers.filter((h) => h.enabled && h.name !== '').map((h): [string, string] => [h.name, h.value]),
+  body: r.body === '' ? undefined : r.body,
+});

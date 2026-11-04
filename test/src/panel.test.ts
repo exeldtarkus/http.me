@@ -37,3 +37,52 @@ test('URL ↔ Params bolak-balik tanpa perubahan', () => {
     assert.equal(panel.paramsToUrl(url, panel.urlToParams(url)), url);
   }
 });
+
+type Header = { name: string; value: string; enabled: boolean };
+type Req = { headers: Header[]; body: string; bodyType: string };
+const body = panel as unknown as {
+  setBodyType(req: Req, type: string): void;
+  formToRows(body: string): Param[];
+  rowsToForm(rows: Param[]): string;
+};
+const ct = (r: Req) => r.headers.filter((h) => h.enabled && h.name.toLowerCase() === 'content-type').map((h) => h.value);
+
+test('setBodyType: JSON / text / XML / form mengatur Content-Type (satu saja), none menghapus header + body', () => {
+  const r: Req = { headers: [{ name: 'Accept', value: '*/*', enabled: true }], body: '{"a":1}', bodyType: 'text' };
+  body.setBodyType(r, 'json');
+  assert.deepEqual(ct(r), ['application/json']);
+  assert.equal(r.bodyType, 'json');
+  r.headers.find((h) => h.name === 'Content-Type')!.value = 'application/json; charset=utf-8';
+  body.setBodyType(r, 'json');
+  assert.deepEqual(ct(r), ['application/json; charset=utf-8'], 'jenis sama: nilai user dipertahankan');
+  body.setBodyType(r, 'xml');
+  assert.deepEqual(ct(r), ['application/xml']);
+  body.setBodyType(r, 'text');
+  assert.deepEqual(ct(r), ['text/plain']);
+  body.setBodyType(r, 'form');
+  assert.deepEqual(ct(r), ['application/x-www-form-urlencoded']);
+  assert.equal(r.body, '{"a":1}', 'ganti jenis tidak menghapus body');
+  body.setBodyType(r, 'none');
+  assert.deepEqual(ct(r), []);
+  assert.equal(r.body, '');
+  assert.equal(r.bodyType, 'none');
+  assert.deepEqual(r.headers.map((h) => h.name), ['Accept']);
+});
+
+test('x-www-form-urlencoded: body ↔ baris key/value, {{var}} tidak di-encode', () => {
+  assert.deepEqual(body.formToRows('a=1&b=x%20y&e+f=g+h&flag&bad=%E0&v={{token}}'), [
+    { key: 'a', value: '1', enabled: true },
+    { key: 'b', value: 'x y', enabled: true },
+    { key: 'e f', value: 'g h', enabled: true },
+    { key: 'flag', value: '', enabled: true },
+    { key: 'bad', value: '%E0', enabled: true },
+    { key: 'v', value: '{{token}}', enabled: true },
+  ]);
+  assert.equal(body.rowsToForm([
+    { key: 'name', value: 'a b&c=d', enabled: true },
+    { key: 'off', value: '1', enabled: false },
+    { key: 'v', value: 'x{{token}}y', enabled: true },
+    { key: '', value: '', enabled: true },
+  ]), 'name=a%20b%26c%3Dd&v=x{{token}}y');
+  assert.deepEqual(body.formToRows(''), []);
+});

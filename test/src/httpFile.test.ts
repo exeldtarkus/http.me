@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { parseRequest, serializeRequest, type ParsedRequest } from '../../src/httpFile';
+import { parseRequest, serializeRequest, toHttpRequest, type ParsedRequest } from '../../src/httpFile';
 
 test('parseRequest: baris request, header, body; baris lain di atas disimpan apa adanya', () => {
   const r = parseRequest('### Log page view\n# @name logPageView\n\nPOST https://api.test/log?a=1 HTTP/1.1\nContent-Type: application/json\nX-Id: 7\n\n{"a":1}\n');
@@ -56,4 +56,10 @@ test('serializeRequest: urutan rapi (preamble, metadata, request, header, body) 
   assert.deepEqual(parseRequest(text), r);
   assert.equal(serializeRequest(parseRequest('GET https://a.test\n')), 'GET https://a.test\n');
   assert.equal(serializeRequest(parseRequest('GET https://a.test\nAccept: a\n')), 'GET https://a.test\nAccept: a\n');
+});
+
+test('toHttpRequest: hanya header aktif, body tidak dikirim bila kosong', () => {
+  const r = parseRequest('# @disabled X-Off: 1\nPOST https://a.test\nContent-Type: text/plain\n\nhi\n');
+  assert.deepEqual(toHttpRequest(r), { method: 'POST', url: 'https://a.test', headers: [['Content-Type', 'text/plain']], body: 'hi' });
+  assert.deepEqual(toHttpRequest(parseRequest('GET https://a.test\nX-A: 1\n')), { method: 'GET', url: 'https://a.test', headers: [['X-A', '1']], body: undefined });
 });

@@ -55,6 +55,12 @@
   .kv tr:hover .del { visibility: visible; }
   .note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
   .note.warn { color: var(--warn); }
+  .radios { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 8px; font-size: 12px; }
+  .radios label { display: flex; gap: 4px; align-items: center; }
+  .body-pane { display: flex; flex-direction: column; }
+  .body-pane[hidden] { display: none; }
+  #bodyText { flex: 1; min-height: 90px; width: 100%; resize: none; font: 12px/1.55 var(--mono); padding: 6px 8px; tab-size: 2; }
+  #bodyText[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -69,6 +75,7 @@
 <div class="subtabs" role="tablist" aria-label="Request" id="reqTabs">
   <button type="button" data-p="params" class="on">Params<span class="n" id="nParams"></span></button>
   <button type="button" data-p="headers">Headers<span class="n" id="nHeaders"></span></button>
+  <button type="button" data-p="body">Body</button>
 </div>
 <div class="reqpanes">
   <div class="pane" id="p-params">
@@ -77,6 +84,18 @@
   </div>
   <div class="pane" id="p-headers" hidden>
     <table class="kv"><thead><tr><th></th><th>Key</th><th>Value</th><th></th></tr></thead><tbody id="headerRows"></tbody></table>
+  </div>
+  <div class="pane body-pane" id="p-body" hidden>
+    <div class="radios" role="radiogroup" aria-label="Body type" id="bodyTypes">
+      <label><input type="radio" name="bt" value="none"> none</label>
+      <label><input type="radio" name="bt" value="json"> JSON</label>
+      <label><input type="radio" name="bt" value="text"> Text</label>
+      <label><input type="radio" name="bt" value="xml"> XML</label>
+      <label><input type="radio" name="bt" value="form"> x-www-form-urlencoded</label>
+    </div>
+    <textarea id="bodyText" spellcheck="false" aria-label="Body"></textarea>
+    <table class="kv" id="formTable" hidden><thead><tr><th></th><th>Key</th><th>Value</th><th></th></tr></thead><tbody id="formRows"></tbody></table>
+    <p class="note warn" id="bodyWarn" hidden>GET / HEAD cannot send a body. The body is kept; use QUERY to search with a body.</p>
   </div>
 </div>
 <div style="background: var(--line)"></div>
