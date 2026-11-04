@@ -80,9 +80,9 @@ test('review R19: blur saat render() mengganti baris (input masih terhubung) tid
 
 test('review R14: tombol Save di editor Environment & panel request', () => {
   const fs = require('node:fs') as typeof import('node:fs');
-  for (const f of ['environment.html', 'panel.html']) {
-    assert.match(fs.readFileSync(join(media, f), 'utf8'), /<button[^>]*id="save"[^>]*title="Save \(Ctrl\+S\)"[^>]*>Save<\/button>/, f);
-  }
+  assert.match(fs.readFileSync(join(media, 'environment.html'), 'utf8'), /<button[^>]*id="save"[^>]*title="Save \(Ctrl\+S\)"[^>]*>Save<\/button>/);
+  // panel request: Save = ikon (R29 konsep A)
+  assert.match(fs.readFileSync(join(media, 'panel.html'), 'utf8'), /<button[^>]*id="save"[^>]*title="Save \(Ctrl\+S\)" aria-label="Save"/);
   for (const f of ['environment.js', 'panel.js']) assert.match(fs.readFileSync(join(media, f), 'utf8'), /\$\('save'\)\.onclick = \(\) => \{[^}]*post\(\{ type: 'save' \}\)/, f);
 });
 test('review R15: Save (tombol & Ctrl+S) memicu sync key ke semua Environment, Globals tidak', () => {

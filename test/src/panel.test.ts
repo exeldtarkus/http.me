@@ -16,7 +16,7 @@ const panel = require(join(__dirname, '..', '..', '..', 'media', 'webview', 'pan
 };
 type Vars = { ok: string[]; nulls: string[]; names: string[] };
 
-test('request panel Flight deck: Send idle berikon SVG saja, Cancel berlabel teks', () => {
+test('request panel: Send berikon + label, Cancel berlabel teks', () => {
   const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
   const html = readFileSync(join(dir, 'panel.html'), 'utf8');
   const js = readFileSync(join(dir, 'panel.js'), 'utf8');
@@ -24,7 +24,7 @@ test('request panel Flight deck: Send idle berikon SVG saja, Cancel berlabel tek
   assert.match(send, /aria-label="Send request"/);
   assert.match(send, /title="Send \(Ctrl\+Enter\)"/);
   assert.match(send, /<svg[^>]*aria-hidden="true"/);
-  assert.doesNotMatch(send.replace(/<svg[\s\S]*?<\/svg>/, ''), />\s*Send\s*</);
+  assert.match(send, /<span id="sendText">Send<\/span>/, 'konsep A (R29): Send berlabel + petunjuk shortcut');
   assert.match(js, /Cancel request/);
   assert.match(js, /Cancel \(Escape\)/);
   assert.match(js, /Send request/);
@@ -213,11 +213,8 @@ test('review R25: tabel key/value (Params / Headers / form): Value tidak bisa di
 test('review R26: baris URL ringkas: semua kontrol setinggi --ctl-h, Send ikon 32px, hitungan tab jadi badge', () => {
   const fs = require('node:fs') as typeof import('node:fs');
   const css = fs.readFileSync(join(__dirname, '..', '..', '..', 'media', 'webview', 'panel.html'), 'utf8');
-  assert.match(css, /--ctl-h: 30px;/);
+  // Send 32px & badge hitungan diganti konsep A (R29); yang tetap: tinggi baris URL dari --ctl-h
   assert.match(css, /\.urlbox \{[^}]*height: var\(--ctl-h\);/);
-  assert.match(css, /#send \{[^}]*width: 32px;[^}]*height: var\(--ctl-h\);/);
-  assert.match(css, /#save \{[^}]*height: var\(--ctl-h\);/);
-  assert.match(css, /\.subtabs \.n:not\(:empty\) \{[^}]*background: var\(--vscode-badge-background/);
 });
 
 test('review R28: bodyError JSON: posisi + pesan Line/column, {{variable}} boleh jadi nilai', () => {
@@ -260,6 +257,26 @@ test('review R28: markSegments memotong segmen mirror untuk garis merah (token v
   const segs = [{ text: '{"a": ' }, { text: '{{v}}', name: 'v', cls: 'ok' }, { text: ' x}' }];
   assert.deepEqual(panel.markSegments(segs, 12, 13), [{ text: '{"a": ' }, { text: '{{v}}', name: 'v', cls: 'ok' }, { text: ' ' }, { text: 'x', err: true }, { text: '}' }]);
   assert.deepEqual(panel.markSegments([{ text: 'abc' }], 0, 3), [{ text: 'abc', err: true }]);
+});
+
+test('review R29: konsep A (Card): Send di dalam kartu URL, Save ikon + titik belum disimpan, tab pill, tipe body segmented, body none = empty state, response dalam kartu', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const html = fs.readFileSync(join(dir, 'panel.html'), 'utf8');
+  const js = fs.readFileSync(join(dir, 'panel.js'), 'utf8');
+  const card = html.slice(html.indexOf('<div class="urlbox">'), html.indexOf('<div class="tools">'));
+  assert.match(card, /id="send"/, 'Send di dalam kartu URL');
+  assert.match(card, /<kbd id="sendKbd">Ctrl ↵<\/kbd>/);
+  assert.match(html, /<button class="ibtn" id="save" type="button" title="Save \(Ctrl\+S\)" aria-label="Save" disabled><svg[\s\S]*?<span class="dirty"><\/span><\/button>/);
+  assert.match(html, /<button class="ibtn" type="button" id="help" aria-label="How to use" aria-describedby="helpPop"><svg/);
+  assert.match(html, /<div class="bodyempty" id="bodyEmpty" hidden>/);
+  for (const t of ['json', 'form', 'text']) assert.match(html, new RegExp(`<button class="btn ghost sm" type="button" data-bt="${t}">`), t);
+  assert.match(html, /\.subtabs button\.on \{[^}]*border-radius/);
+  assert.match(html, /\.radios label:has\(input:checked\) \{/);
+  assert.match(html, /\.resp \{[^}]*border-radius: 10px;/);
+  assert.match(js, /\$\('bodyEmpty'\)\.hidden = req\.bodyType !== 'none' \|\| !!req\.bodyFile;/);
+  assert.match(js, /for \(const b of \$\('bodyEmpty'\)\.querySelectorAll\('button'\)\)/);
+  assert.match(js, /\$\('sendIdle'\)\.hidden = running;/);
 });
 
 test('review R7: body form / none menyembunyikan pembungkus editor teks (bukan hanya textarea)', () => {
