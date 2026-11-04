@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { emptyRequest, parseRequest, serializeRequest, toHttpRequest, toHttpRequestWithFile, type ParsedRequest } from '../../src/httpFile';
+import { emptyRequest, parseRequest, serializeRequest, toHttpRequest, toHttpRequestWithFile, splitBlocks, type ParsedRequest } from '../../src/httpFile';
 
 test('parseRequest: baris request, header, body; baris lain di atas disimpan apa adanya', () => {
   const r = parseRequest('### Log page view\n# @name logPageView\n\nPOST https://api.test/log?a=1 HTTP/1.1\nContent-Type: application/json\nX-Id: 7\n\n{"a":1}\n');
@@ -151,4 +151,21 @@ test('toHttpRequest: body dari file dibaca lewat fungsi baca yang diberikan', as
   const r = parseRequest('POST https://a\nContent-Type: application/json\n\n< ./body.json\n');
   const req = await toHttpRequestWithFile(r, async (p) => { assert.equal(p, './body.json'); return Buffer.from('{"f":1}'); });
   assert.deepEqual(req.body, Buffer.from('{"f":1}'));
+});
+
+test('splitBlocks: dipecah per ###, variabel di atas file ikut ke tiap blok, blok tanpa request dilewati', () => {
+  const text = '@base = https://a.test\n\n### One\nGET {{base}}/1\n\n### Two\n# @name two\nPOST {{base}}/2\n\n{"x":1}\n\n###\n# kosong\n';
+  const blocks = splitBlocks(text);
+  assert.deepEqual(blocks.map((b) => [b.start, b.end]), [[2, 3], [5, 9]]);
+  assert.equal(parseRequest(blocks[0].text).url, '{{base}}/1');
+  assert.deepEqual(parseRequest(blocks[0].text).vars, [{ name: 'base', value: 'https://a.test' }]);
+  assert.equal(parseRequest(blocks[1].text).name, 'two');
+  assert.equal(parseRequest(blocks[1].text).body, '{"x":1}');
+});
+
+test('splitBlocks: request sebelum ### pertama = blok sendiri; file 1 request = 1 blok mulai baris request', () => {
+  assert.deepEqual(splitBlocks('# c\nGET https://a/0\n###\nGET https://a/1\n').map((b) => [b.start, b.end, parseRequest(b.text).url]), [[0, 1, 'https://a/0'], [2, 3, 'https://a/1']]);
+  assert.deepEqual(splitBlocks('GET https://a\n').map((b) => [b.start, b.end]), [[0, 0]]);
+  assert.deepEqual(splitBlocks(''), []);
+  assert.deepEqual(splitBlocks('# only comment\n'), []);
 });

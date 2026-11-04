@@ -73,6 +73,18 @@
         ],
         "priority": "option"
       }
+    ],
+    "languages": [
+      {
+        "id": "http",
+        "aliases": [
+          "HTTP",
+          "http"
+        ],
+        "extensions": [
+          ".http"
+        ]
+      }
     ]
   },
   "scripts": {

@@ -259,6 +259,7 @@
     changed();
   };
   $('openBody').onclick = () => post({ type: 'openBody' });
+  $('openAsText').onclick = () => post({ type: 'openAsText' });
   $('saveBody').onclick = () => post({ type: 'saveBody' });
 
   window.addEventListener('message', (e) => {
@@ -266,6 +267,8 @@
     if (m.type === 'state') {
       req = m.req;
       renderRequest();
+      $('multi').hidden = !(m.multi > 1);
+      $('multiCount').textContent = `This file has ${m.multi} requests.`;
     }
     if ('view' in m) renderView(m.view);
   });

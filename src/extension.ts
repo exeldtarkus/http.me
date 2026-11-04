@@ -3,7 +3,8 @@ import { isNewerMinor, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
 import { errMsg } from './log';
 import { log, reportError } from './output';
-import { cancelActive, newRequest, registerRequestEditor, runner, sendActive, viewOf } from './requestEditor';
+import { cancelActive, cancelBlock, cancelFile, newRequest, openAsText, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './requestEditor';
+import { HTTP_FILES, RequestLenses } from './codelens';
 import { registerActivity } from './activity';
 
 // versi terakhir yang pernah aktif, untuk What's New sekali per minor
@@ -51,6 +52,23 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.cancelRequest', () =>
     cancelActive().catch((e) => reportError('cancelRequest', e, `Cancel failed: ${errMsg(e)}`))));
   ctx.subscriptions.push(registerActivity());
+  const run = (name: string, fn: () => Promise<unknown> | unknown) => Promise.resolve().then(fn).catch((e) => reportError(name, e, `http.me: ${errMsg(e)}`));
+  const docOf = (uri: vscode.Uri) => vscode.workspace.openTextDocument(uri);
+  const lenses = new RequestLenses();
+  ctx.subscriptions.push(
+    lenses,
+    vscode.languages.registerCodeLensProvider(HTTP_FILES, lenses),
+    vscode.commands.registerCommand('httpme.sendBlock', (uri: vscode.Uri, i: number) => run('sendBlock', async () => sendBlock(await docOf(uri), i))),
+    vscode.commands.registerCommand('httpme.sendAll', (uri: vscode.Uri) => run('sendAll', async () => sendAll(await docOf(uri)))),
+    vscode.commands.registerCommand('httpme.cancelBlock', (uri: vscode.Uri, i: number) => run('cancelBlock', async () => cancelBlock(await docOf(uri), i))),
+    vscode.commands.registerCommand('httpme.cancelFile', (uri: vscode.Uri) => cancelFile(uri.toString())),
+    vscode.commands.registerCommand('httpme.showResponse', (key: string) => run('showResponse', () => showResponse(key))),
+    vscode.commands.registerCommand('httpme.showLog', () => log().show(true)),
+    vscode.commands.registerCommand('httpme.openAsText', (uri?: vscode.Uri) => run('openAsText', async () => {
+      const target = uri ?? (vscode.window.tabGroups.activeTabGroup.activeTab?.input as { uri?: vscode.Uri } | undefined)?.uri;
+      if (target) await openAsText(target);
+    })),
+  );
 
   // aktivasi malas: dicek saat extension pertama dipakai, bukan saat VS Code start
   const version: string = ctx.extension.packageJSON.version;

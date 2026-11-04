@@ -164,3 +164,30 @@ export async function toHttpRequestWithFile(r: ParsedRequest, readFile: (path: s
   const req = toHttpRequest(r);
   return r.bodyFile ? { ...req, body: await readFile(r.bodyFile) } : req;
 }
+
+export type Block = { /** baris ### (atau baris pertama) */ start: number; /** baris terakhir yang tidak kosong */ end: number; text: string };
+
+/**
+ * pecah file multi-request per `###`. Bagian sebelum ### pertama: bila berisi request = blok sendiri,
+ * bila hanya variabel / komentar = variabelnya ikut ke tiap blok. Blok tanpa baris request dilewati.
+ */
+export function splitBlocks(text: string): Block[] {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const cuts = lines.map((l, i) => (l.trim().startsWith('###') ? i : -1)).filter((i) => i > 0);
+  const segments = [0, ...cuts].map((start, k) => ({ start, end: (k < cuts.length ? cuts[k] : lines.length) - 1 }));
+  const hasRequest = (t: string) => parseRequest(t).url !== '';
+  let prefix: string[] = [];
+  const out: Block[] = [];
+  for (const [k, seg] of segments.entries()) {
+    let end = seg.end;
+    while (end > seg.start && lines[end].trim() === '') end--;
+    const body = lines.slice(seg.start, end + 1).join('\n');
+    if (!hasRequest(body)) {
+      // bagian kepala file tanpa request: variabel file dibagikan ke semua blok
+      if (k === 0 && !lines[0].trim().startsWith('###')) prefix = lines.slice(seg.start, end + 1).filter((l) => /^\s*@[\w.-]+\s*=/.test(l));
+      continue;
+    }
+    out.push({ start: seg.start, end, text: [...prefix, body].join('\n') + '\n' });
+  }
+  return out;
+}
