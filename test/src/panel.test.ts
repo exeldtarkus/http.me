@@ -186,6 +186,7 @@ test('review R6: urutan Tab tabel key/value = Key → Value → ✕ → Key bari
 test('review R7: body form / none menyembunyikan pembungkus editor teks (bukan hanya textarea)', () => {
   const fs = require('node:fs') as typeof import('node:fs');
   const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
-  assert.match(fs.readFileSync(join(dir, 'panel.html'), 'utf8'), /\.vwrap\[hidden\] \{ display: none; \}/);
+  // .vwrap.area { display: flex } punya bobot sama: aturan hidden harus lebih kuat
+  assert.match(fs.readFileSync(join(dir, 'panel.html'), 'utf8'), /\.vwrap\[hidden\], \.vwrap\.area\[hidden\] \{ display: none; \}/);
   assert.match(fs.readFileSync(join(dir, 'panel.js'), 'utf8'), /\$\('bodyText'\)\.closest\('\.vwrap'\)\.hidden = \$\('bodyText'\)\.hidden;/);
 });

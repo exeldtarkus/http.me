@@ -95,7 +95,7 @@
   #bodyText { flex: 1; min-height: 90px; width: 100%; resize: none; font: 12px/1.55 var(--mono); padding: 6px 8px; tab-size: 2; }
   #bodyText:focus, .sc-editor:focus-within { border-color: var(--focus); outline: none; }
   #bodyText[hidden] { display: none; }
-  .vwrap[hidden] { display: none; }
+  .vwrap[hidden], .vwrap.area[hidden] { display: none; } /* .vwrap.area (display: flex) ada di bawah: perlu bobot lebih */
   .subtabs .right { margin-left: auto; display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .resp { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
   .resbody { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
