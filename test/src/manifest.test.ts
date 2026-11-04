@@ -79,3 +79,12 @@ test('Workspace Trust: tetap jalan di Restricted Mode (limited), script dilewati
   assert.equal(pkg.capabilities?.untrustedWorkspaces?.supported, 'limited');
   assert.match(pkg.capabilities.untrustedWorkspaces.description, /scripts/i);
 });
+
+test('sidebar welcome: Loading http.me… sebelum aktif, Scanning saat scan, No .http files + New Request', () => {
+  const w = (pkg.contributes.viewsWelcome as { view: string; contents: string; when: string }[]).filter((x) => x.view === 'httpme.sidebar');
+  const find = (text: string) => w.find((x) => x.contents.startsWith(text));
+  assert.match(find('Loading http.me…')?.when ?? '', /!httpme\.loaded/);
+  assert.match(find('Scanning the workspace for .http files…')?.when ?? '', /httpme\.loaded && httpme\.scanning/);
+  assert.match(find('No .http files.')?.contents ?? '', /\[New Request\]\(command:httpme\.newRequest\)/);
+  for (const x of w.filter((y) => y.when.includes('!= empty') && !y.contents.startsWith('Loading'))) assert.match(x.when, /httpme\.loaded/, x.contents);
+});

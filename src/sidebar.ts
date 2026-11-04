@@ -122,7 +122,8 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
   list(): Promise<{ files: vscode.Uri[]; keep: vscode.Uri[] }> {
     if (!this.scan) {
       // selama scan: progress di view + pesan "Scanning…" (viewsWelcome)
-      void vscode.commands.executeCommand('setContext', 'httpme.scanning', true);
+      // urutan penting: scanning dulu, baru loaded (tidak sempat tampil "No .http files" sebelum scan)
+      void vscode.commands.executeCommand('setContext', 'httpme.scanning', true).then(() => vscode.commands.executeCommand('setContext', 'httpme.loaded', true));
       const run = Promise.all([vscode.workspace.findFiles('**/*.http', undefined, MAX_FILES), vscode.workspace.findFiles(`**/${KEEP_FILE}`, undefined, MAX_FILES)])
         .then(([files, keep]) => ({
           files: files.filter((u) => !u.path.includes('/node_modules/')).sort((a, b) => a.path.localeCompare(b.path)),
@@ -256,6 +257,8 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
   }
 
   async getChildren(n?: Node): Promise<Node[]> {
+    // mode selain Collections tidak scan: "Loading http.me…" diganti isi view
+    if (this.mode !== 'collections') void vscode.commands.executeCommand('setContext', 'httpme.loaded', true);
     if (this.mode === 'cookies') return this.cookieChildren(n);
     if (this.mode === 'environments') return this.environmentChildren(n);
     if (this.mode === 'open') return this.openChildrenOf(n);
