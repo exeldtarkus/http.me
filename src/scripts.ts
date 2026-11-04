@@ -101,3 +101,151 @@ export const scriptTemplate = (kind: ScriptKind): string => kind === 'pre'
   ? '// Before request: runs before the request is sent. Throw to stop the request.\n// httpme.request.headers.set(\'X-Request-Id\', crypto.randomUUID());\n'
   : '// After response: runs after the response is received.\n// httpme.test(\'Status is 200\', () => httpme.expect(httpme.response.status).toBe(200));\n';
 
+// ---- runner node:vm: konteks baru per run, API httpme.*, console ditangkap ----
+export type KV = { get(k: string): string | null | undefined; set(k: string, v: string): void; unset(k: string): void; has(k: string): boolean };
+export type ScriptRequest = { method: string; url: string; headers: [string, string][]; body: string | Buffer | undefined };
+export type ScriptResponse = { status: number; headers: [string, string][]; body: string; time: number };
+export type ScriptContext = {
+  /** diubah langsung oleh script pre (method, url, header, body) */ request: ScriptRequest;
+  /** hanya post */ response?: ScriptResponse;
+  environment: KV;
+  /** variable sementara satu request (pre → post), prioritas tertinggi {{var}} */ vars: Map<string, string>;
+  cookies: { get(name: string): string | undefined; all(): { name: string; value: string }[] };
+};
+export type TestResult = { name: string; passed: boolean; error?: string };
+export type ConsoleLine = { level: 'log' | 'info' | 'warn' | 'error'; text: string };
+export type RunResult = { error?: string; skipped: boolean; tests: TestResult[]; console: ConsoleLine[] };
+export type RunOptions = {
+  /** path file script (nama di stack trace, dasar require lokal) */ file: string;
+  /** folder repository: batas require .js lokal */ root: string;
+  signal?: AbortSignal;
+  /** batas waktu: kode sinkron (vm timeout) & total termasuk await; default 5 s / 30 s */ limits?: { syncMs: number; totalMs: number };
+};
+const LIMITS = { syncMs: 5000, totalMs: 30000 };
+const MODULES = ['crypto', 'buffer', 'url', 'querystring', 'util'];
+
+const message = (e: unknown): string => (e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : String(e));
+/** pesan + baris di file script (stack dari realm vm bukan instanceof Error host) */
+function scriptError(e: unknown, file: string): string {
+  const stack = e && typeof e === 'object' && 'stack' in e ? String((e as Error).stack) : '';
+  const at = stack.split('\n').find((l) => l.includes(file));
+  const loc = at && /\(?([^()\s]+:\d+:\d+)\)?\s*$/.exec(at)?.[1];
+  const name = e && typeof e === 'object' && 'name' in e ? String((e as Error).name) : 'Error';
+  return `${name}: ${message(e)}${loc ? ` (${loc})` : ''}`;
+}
+
+const headerApi = (list: [string, string][]) => ({
+  get: (n: string) => list.find(([k]) => k.toLowerCase() === n.toLowerCase())?.[1],
+  has: (n: string) => list.some(([k]) => k.toLowerCase() === n.toLowerCase()),
+  set(n: string, v: unknown) {
+    const i = list.findIndex(([k]) => k.toLowerCase() === n.toLowerCase());
+    if (i >= 0) list[i] = [list[i][0], String(v)]; else list.push([n, String(v)]);
+  },
+  remove(n: string) { for (let i = list.length - 1; i >= 0; i--) if (list[i][0].toLowerCase() === n.toLowerCase()) list.splice(i, 1); },
+  all: () => list.map(([k, v]) => ({ name: k, value: v })),
+});
+
+/** expect(x).toBe(…) gaya Jest, dengan .not */
+function expectApi(actual: unknown, negate = false): Record<string, unknown> {
+  const assert = require('node:assert') as typeof import('node:assert');
+  const check = (ok: boolean, msg: string) => { if (ok === negate) throw new assert.AssertionError({ message: `${negate ? 'Not: ' : ''}${msg}` }); };
+  const show = (v: unknown) => require('node:util').inspect(v) as string;
+  const deepEq = (a: unknown, b: unknown) => { try { assert.deepEqual(a, b); return true; } catch { return false; } };
+  const api = {
+    toBe: (e: unknown) => check(Object.is(actual, e), `expected ${show(actual)} to be ${show(e)}`),
+    toEqual: (e: unknown) => check(deepEq(actual, e), `expected ${show(actual)} to equal ${show(e)}`),
+    toContain: (e: unknown) => check((typeof actual === 'string' || Array.isArray(actual)) && actual.includes(e as never), `expected ${show(actual)} to contain ${show(e)}`),
+    toMatch: (e: RegExp | string) => check(typeof actual === 'string' && (typeof e === 'string' ? actual.includes(e) : new RegExp(e.source, e.flags).test(actual)), `expected ${show(actual)} to match ${show(e)}`),
+    toBeTruthy: () => check(!!actual, `expected ${show(actual)} to be truthy`),
+    toBeFalsy: () => check(!actual, `expected ${show(actual)} to be falsy`),
+    toBeLessThan: (e: number) => check(Number(actual) < e, `expected ${show(actual)} to be less than ${e}`),
+    toBeGreaterThan: (e: number) => check(Number(actual) > e, `expected ${show(actual)} to be greater than ${e}`),
+    toHaveProperty: (p: string) => check(actual !== null && typeof actual === 'object' && p in (actual as object), `expected ${show(actual)} to have property ${p}`),
+  };
+  return negate ? api : { ...api, not: expectApi(actual, true) };
+}
+
+export async function runScript(code: string, opts: RunOptions, c: ScriptContext): Promise<RunResult> {
+  const vm = require('node:vm') as typeof import('node:vm');
+  const { inspect, format } = require('node:util') as typeof import('node:util');
+  const result: RunResult = { skipped: false, tests: [], console: [] };
+  const pending: Promise<void>[] = [];
+  const line = (level: ConsoleLine['level']) => (...args: unknown[]) =>
+    void result.console.push({ level, text: args.map((a) => (typeof a === 'string' ? a : a && typeof a === 'object' && 'stack' in a ? String((a as Error).stack) : inspect(a))).join(' ') });
+  const test = (name: string, fn: () => unknown) => {
+    // slot dipesan saat dipanggil: urutan hasil = urutan httpme.test, juga untuk test async
+    const i = result.tests.push({ name: String(name), passed: false }) - 1;
+    const done = (error?: unknown) => { result.tests[i] = { name: String(name), passed: error === undefined, ...(error === undefined ? {} : { error: message(error) }) }; };
+    try {
+      const p = fn();
+      if (p && typeof (p as Promise<unknown>).then === 'function') pending.push(Promise.resolve(p).then(() => done(), (e) => done(e ?? 'failed')));
+      else done();
+    } catch (e) { done(e ?? 'failed'); } // test gagal = hasil di tab Tests, bukan error program
+  };
+  const res = c.response;
+  const httpme = {
+    request: Object.defineProperties({ headers: headerApi(c.request.headers) }, {
+      method: { get: () => c.request.method, set: (v) => { c.request.method = String(v).toUpperCase(); }, enumerable: true },
+      url: { get: () => c.request.url, set: (v) => { c.request.url = String(v); }, enumerable: true },
+      body: { get: () => (Buffer.isBuffer(c.request.body) ? c.request.body.toString('utf8') : c.request.body), set: (v) => { c.request.body = v === undefined || v === null ? undefined : String(v); }, enumerable: true },
+    }),
+    response: res && { status: res.status, time: res.time, headers: headerApi(res.headers), text: () => res.body, json: () => JSON.parse(res.body), body: res.body },
+    environment: { get: (k: string) => c.environment.get(k) ?? undefined, set: (k: string, v: unknown) => c.environment.set(k, String(v)), unset: (k: string) => c.environment.unset(k), has: (k: string) => c.environment.has(k) },
+    vars: { get: (k: string) => c.vars.get(k), set: (k: string, v: unknown) => void c.vars.set(k, String(v)), unset: (k: string) => void c.vars.delete(k), has: (k: string) => c.vars.has(k) },
+    cookies: c.cookies,
+    test, expect: (v: unknown) => expectApi(v),
+    skip: () => { result.skipped = true; },
+  };
+  const sandbox: Record<string, unknown> = vm.createContext({
+    httpme, console: { log: line('log'), info: line('info'), warn: line('warn'), error: line('error'), debug: line('log') },
+    crypto: require('node:crypto'), Buffer, URL, URLSearchParams, TextEncoder, TextDecoder, atob, btoa, structuredClone,
+    setTimeout, clearTimeout, format,
+  });
+  const limits = opts.limits ?? LIMITS;
+  const runOpts = { timeout: limits.syncMs };
+  const cache = new Map<string, unknown>();
+  /** require terbatas: modul aman + .js lokal di dalam repository (dijalankan di konteks yang sama) */
+  const makeRequire = (fromDir: string) => (id: string): unknown => {
+    const bare = String(id).replace(/^node:/, '');
+    if (MODULES.includes(bare)) return require(`node:${bare}`);
+    const f = /^\.\.?\//.test(id) ? resolve(fromDir, /\.js$/.test(id) ? id : `${id}.js`) : undefined;
+    const rel = f && relative(opts.root, f);
+    if (!f || !rel || rel.startsWith('..') || isAbsolute(rel)) {
+      throw new Error(`require('${id}') is not allowed in http.me scripts (allowed: ${MODULES.join(', ')} and .js files inside the repository)`);
+    }
+    if (cache.has(f)) return cache.get(f);
+    const mod = { exports: {} as unknown };
+    cache.set(f, mod.exports);
+    const src = (require('node:fs') as typeof import('node:fs')).readFileSync(f, 'utf8');
+    const fn = new vm.Script(`(function (exports, require, module, __filename, __dirname) {${src}\n})`, { filename: f }).runInContext(sandbox, runOpts) as Function;
+    fn(mod.exports, makeRequire(dirname(f)), mod, f, dirname(f));
+    cache.set(f, mod.exports);
+    return mod.exports;
+  };
+  sandbox.require = makeRequire(dirname(opts.file));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  try {
+    if (opts.signal?.aborted) throw new Error('Cancelled');
+    // satu baris pembungkus: nomor baris di stack trace = baris file
+    const wrapped = `(async () => {${code}\n})()`;
+    // shortcut: loop tak berujung di callback setTimeout / setelah await tidak bisa diputus vm, hanya kena batas total (eksekusi tetap jalan)
+    const run = (async () => {
+      await (new vm.Script(wrapped, { filename: opts.file }).runInContext(sandbox, runOpts) as Promise<unknown>);
+      await Promise.all(pending);
+    })();
+    await Promise.race([
+      run,
+      new Promise((_ok, fail) => { timer = setTimeout(() => fail(new Error(`Script timed out after ${limits.totalMs / 1000} s`)), limits.totalMs); }),
+      new Promise((_ok, fail) => { onAbort = () => fail(new Error('Cancelled')); opts.signal?.addEventListener('abort', onAbort); }),
+    ]);
+  } catch (e) {
+    // error script = hasil (tab Tests); pemanggil mencatat log ERROR
+    const m = message(e);
+    result.error = m === 'Cancelled' ? m : /^Script execution timed out after (\d+)ms/.test(m) ? `Script timed out after ${limits.syncMs} ms (synchronous code)` : scriptError(e, opts.file);
+  } finally {
+    clearTimeout(timer);
+    if (onAbort) opts.signal?.removeEventListener('abort', onAbort);
+  }
+  return result;
+}
