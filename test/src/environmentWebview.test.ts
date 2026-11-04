@@ -53,3 +53,7 @@ test('review R14: tombol Save di editor Environment & panel request', () => {
   }
   for (const f of ['environment.js', 'panel.js']) assert.match(fs.readFileSync(join(media, f), 'utf8'), /\$\('save'\)\.onclick = \(\) => \{[^}]*post\(\{ type: 'save' \}\)/, f);
 });
+test('review R15: Save di editor Environment ikut sync key ke semua Environment (bukan Globals)', () => {
+  const src = (require('node:fs') as typeof import('node:fs')).readFileSync(join(__dirname, '..', '..', '..', 'src', 'environmentEditor.ts'), 'utf8');
+  assert.match(src, /m\.type === 'save'\) \{ await doc\.save\(\); if \(nameOf\(doc\) !== GLOBALS\) await envs\.sync\(\); \}/);
+});
