@@ -59,3 +59,23 @@ export async function movePath(from: string, toDir: string): Promise<string> {
   await fs.rename(from, to);
   return to;
 }
+
+/** penanda folder kosong supaya ikut ter-commit (git tidak menyimpan folder kosong); disembunyikan di tree */
+export const KEEP_FILE = '.httpmekeep';
+
+/** New Collection / New Folder: folder sungguhan + .httpmekeep */
+export async function createFolder(parent: string, input: string): Promise<string> {
+  const name = siblingName(input, false);
+  if (typeof name !== 'string') throw new Error(name.error);
+  const dir = join(parent, name);
+  if (await exists(dir)) throw new Error(`${name} already exists`);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(join(dir, KEEP_FILE), '');
+  return dir;
+}
+
+/** folder sudah berisi .http: .httpmekeep tidak diperlukan lagi */
+export async function dropKeepIfUsed(dir: string): Promise<void> {
+  const names = await fs.readdir(dir).catch(() => [] as string[]); // folder tidak ada / tidak terbaca: tidak ada yang dibersihkan
+  if (names.includes(KEEP_FILE) && names.some((n) => /\.http$/i.test(n))) await fs.rm(join(dir, KEEP_FILE), { force: true });
+}

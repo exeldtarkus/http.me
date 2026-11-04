@@ -10,6 +10,9 @@ import { webviewPage } from './webviewPage';
 import { NEW_REQUEST_TEXT, newRequestName } from './newRequest';
 import { parseRequest, serializeRequest, splitBlocks, toHttpRequestWithFile, type ParsedRequest } from './httpFile';
 import { prettyJson } from './response';
+import { importCurl } from './curl';
+import { defaultFileName } from './sidebarModel';
+import { dropKeepIfUsed, requestFileName } from './store';
 import { DEFAULT_TIMEOUT_MS, RequestError, send } from './http';
 import { responseView, type ResponseView } from './response';
 import { createRunner } from './runner';
@@ -190,7 +193,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   });
 
   const subs = [
-    panel.webview.onDidReceiveMessage(async (m: { type: string; req?: unknown }) => {
+    panel.webview.onDidReceiveMessage(async (m: { type: string; req?: unknown; text?: unknown }) => {
       try {
         if (m.type === 'ready') postState();
         else if (m.type === 'edit' && isRequest(m.req)) {
@@ -198,6 +201,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
           await writeDocument(doc, written);
         } else if (m.type === 'send') await sendRequest(doc, doc.uri.toString(), isRequest(m.req) ? m.req : parseRequest(doc.getText()));
         else if (m.type === 'openAsText') await openAsText(doc.uri);
+        else if (m.type === 'pasteCurl' && typeof m.text === 'string') await importCurlText(m.text, doc);
         else if (m.type === 'cancel') runner.cancel(doc.uri.toString());
         else if (m.type === 'openBody') await openBody(s);
         else if (m.type === 'saveBody') await saveBody(s);
@@ -272,15 +276,118 @@ export const registerRequestEditor = (cacheDir: string): vscode.Disposable => (b
   responseChanged,
 ));
 
-/** New Request: tab .http untitled berisi GET kosong, langsung di panel request */
-export async function newRequest(): Promise<void> {
+/** tab untitled -> folder tujuan Save (Add request dari folder di Collections) */
+const untitledFolder = new Map<string, vscode.Uri>();
+
+/** New Request: tab .http untitled (GET kosong atau `text`), langsung di panel request; `folder` = tujuan default saat Save */
+export async function newRequest(folder?: vscode.Uri, text = NEW_REQUEST_TEXT): Promise<vscode.Uri> {
   const open = vscode.workspace.textDocuments.filter((d) => d.uri.scheme === 'untitled').map((d) => d.uri.path.split('/').pop() ?? '');
   const uri = vscode.Uri.from({ scheme: 'untitled', path: newRequestName(open) });
   await vscode.workspace.openTextDocument(uri);
   const edit = new vscode.WorkspaceEdit();
-  edit.insert(uri, new vscode.Position(0, 0), NEW_REQUEST_TEXT);
+  edit.insert(uri, new vscode.Position(0, 0), text);
   await vscode.workspace.applyEdit(edit);
+  if (folder) untitledFolder.set(uri.toString(), folder);
   await vscode.commands.executeCommand('vscode.openWith', uri, REQUEST_VIEW);
+  return uri;
+}
+
+/** folder pilihan Save: folder terikat, folder yang berisi .http / .httpmekeep, root workspace */
+async function folderChoices(preferred?: vscode.Uri): Promise<vscode.Uri[]> {
+  const roots = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri);
+  const found = await vscode.workspace.findFiles('{**/*.http,**/.httpmekeep}', '**/node_modules/**', 5000);
+  const dirs = new Map<string, vscode.Uri>();
+  for (const u of [...(preferred ? [preferred] : []), ...roots, ...found.map((f) => vscode.Uri.joinPath(f, '..'))]) dirs.set(u.toString(), u);
+  return [...dirs.values()];
+}
+
+export type SaveInput = { name?: string; folder?: vscode.Uri; replace?: boolean };
+
+/** Save untitled: dialog nama (default dari path URL) + folder (default folder terikat / root) -> file .http baru, dibuka di panel */
+export async function saveUntitled(uri?: vscode.Uri, input: SaveInput = {}): Promise<vscode.Uri | undefined> {
+  const doc = uri ? await vscode.workspace.openTextDocument(uri) : await activeRequestDoc();
+  if (!doc) return undefined;
+  if (doc.uri.scheme !== 'untitled') { await doc.save(); return doc.uri; }
+  const roots = vscode.workspace.workspaceFolders ?? [];
+  if (!roots.length) {
+    // tanpa folder terbuka: dialog simpan bawaan VS Code
+    await vscode.commands.executeCommand('workbench.action.files.saveAs', doc.uri);
+    return undefined;
+  }
+  const bound = untitledFolder.get(doc.uri.toString());
+  let folder = input.folder;
+  if (!folder) {
+    const choices = await folderChoices(bound);
+    const pick = await vscode.window.showQuickPick(choices.map((u) => ({ label: vscode.workspace.asRelativePath(u, roots.length > 1) || u.path.split('/').pop()!, u })),
+      { title: 'Save request as a new .http file', placeHolder: 'Folder' });
+    folder = pick?.u;
+  }
+  if (!folder) return undefined;
+  let name = input.name;
+  for (;;) {
+    name ??= await vscode.window.showInputBox({
+      title: 'Save request as a new .http file', prompt: `File name in ${vscode.workspace.asRelativePath(folder, roots.length > 1)}`,
+      value: defaultFileName(parseRequest(doc.getText()).url),
+      validateInput: (v) => { const n = requestFileName(v); return typeof n === 'string' ? undefined : n.error; },
+    });
+    if (name === undefined) return undefined;
+    const valid = requestFileName(name);
+    if (typeof valid !== 'string') throw new Error(valid.error);
+    const target = vscode.Uri.joinPath(folder, valid);
+    const taken = await Promise.resolve(vscode.workspace.fs.stat(target)).then(() => true, () => false); // stat gagal = nama masih bebas
+    if (taken && !input.replace) {
+      const pick = await vscode.window.showWarningMessage(`${valid} already exists.`, { modal: true }, 'Replace', 'Choose Another Name');
+      if (pick === 'Choose Another Name') { name = undefined; continue; }
+      if (pick !== 'Replace') return undefined;
+    }
+    await vscode.workspace.fs.writeFile(target, Buffer.from(doc.getText(), 'utf8'));
+    if (target.scheme === 'file') await dropKeepIfUsed(vscode.Uri.joinPath(target, '..').fsPath);
+    untitledFolder.delete(doc.uri.toString());
+    await closeUntitled(doc.uri);
+    await vscode.commands.executeCommand('vscode.openWith', target, REQUEST_VIEW);
+    return target;
+  }
+}
+
+/** tutup tab untitled tanpa dialog simpan (isinya sudah ditulis ke file) */
+async function closeUntitled(uri: vscode.Uri): Promise<void> {
+  const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => (t.input as { uri?: vscode.Uri } | undefined)?.uri?.toString() === uri.toString());
+  for (const t of tabs) {
+    await vscode.window.tabGroups.close(t, true).then(undefined, async () => {
+      // close menolak karena dirty: fokus tab lalu revert + close
+      await vscode.commands.executeCommand('vscode.openWith', uri, REQUEST_VIEW);
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    });
+  }
+}
+
+/**
+ * paste cURL di panel / Import from Clipboard: tab untitled diisi langsung; tab tersimpan -> tab Untitled baru
+ * + tombol "Replace current request instead" (WorkspaceEdit ke file asli, bisa Undo)
+ */
+export async function importCurlText(text: string, into?: vscode.TextDocument): Promise<vscode.Uri> {
+  const { request, summary } = importCurl(text);
+  const serialized = serializeRequest(request);
+  if (into?.uri.scheme === 'untitled') {
+    await writeDocument(into, serialized);
+    void vscode.window.showInformationMessage(summary);
+    return into.uri;
+  }
+  const folder = into ? vscode.Uri.joinPath(into.uri, '..') : undefined;
+  const created = await newRequest(folder, serialized);
+  if (into) {
+    void vscode.window.showInformationMessage(summary, 'Replace current request instead').then(async (pick) => {
+      if (!pick) return;
+      try {
+        await writeDocument(into, serialized);
+        await closeUntitled(created);
+        await vscode.commands.executeCommand('vscode.openWith', into.uri, REQUEST_VIEW);
+      } catch (e) {
+        reportError('importCurlText.replace', e, `Replace failed: ${errMsg(e)}`);
+      }
+    });
+  } else void vscode.window.showInformationMessage(summary);
+  return created;
 }
 
 /** dokumen request di tab aktif: panel http.me atau editor teks .http */

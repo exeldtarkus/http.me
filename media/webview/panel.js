@@ -176,6 +176,13 @@
   $('method').replaceChildren(...METHODS.map((m) => el('option', { value: m, textContent: m, className: `m-${m}` })));
   $('method').onchange = () => { req.method = $('method').value; renderMethod(); changed(); };
   $('url').oninput = () => { req.url = $('url').value; renderParams(); changed(); };
+  // paste cURL mentah ke kolom URL: diimpor host (method, header, body, opsi)
+  $('url').addEventListener('paste', (e) => {
+    const text = e.clipboardData?.getData('text') ?? '';
+    if (!/^\s*curl\s/i.test(text)) return;
+    e.preventDefault();
+    post({ type: 'pasteCurl', text });
+  });
   $('bodyText').oninput = () => { req.body = $('bodyText').value; renderMethod(); changed(); };
   for (const r of document.getElementsByName('bt')) {
     r.onchange = () => {

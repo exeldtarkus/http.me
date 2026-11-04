@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { parseCurl, tokenize, toCurl } from '../../src/curl';
+import { importCurl, parseCurl, tokenize, toCurl } from '../../src/curl';
 import { parseRequest } from '../../src/httpFile';
 
 test('tokenize: kutip tunggal, ganda (escape), $\'…\' ANSI-C, backslash, sambungan baris', () => {
@@ -52,4 +52,36 @@ test('toCurl: perintah bash multi-baris dengan kutip aman; dibaca balik sama', (
   const back = parseCurl(cmd).request;
   assert.deepEqual([back.method, back.url, back.body, back.insecure, back.followRedirects], ['POST', 'https://api.test/x?y=1', `{"it's":1}`, true, true]);
   assert.equal(toCurl(parseRequest('GET https://a\n')), `curl 'https://a' \\\n  -L`);
+});
+
+// contoh "Copy as cURL (bash)" Chrome, data disamarkan
+const CHROME = `curl 'https://shop.example.com/pos/log/post' \\
+  -H 'accept: application/json, text/plain, */*' \\
+  -H 'accept-language: en-US,en;q=0.9,id;q=0.8' \\
+  -H 'authorization: Bearer eyJhbGciOi.REDACTED.sig' \\
+  -H 'content-type: application/json' \\
+  -b 'JSESSIONID=ABC123; theme=dark' \\
+  -H 'origin: https://shop.example.com' \\
+  -H 'priority: u=1, i' \\
+  -H 'referer: https://shop.example.com/dashboard' \\
+  -H 'sec-ch-ua: "Chromium";v="142", "Not_A Brand";v="99"' \\
+  -H 'sec-ch-ua-mobile: ?0' \\
+  -H 'sec-ch-ua-platform: "Windows"' \\
+  -H 'sec-fetch-dest: empty' \\
+  -H 'sec-fetch-mode: cors' \\
+  -H 'sec-fetch-site: same-origin' \\
+  -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)' \\
+  --data-raw '{"method":"Activity History","pathUrl":"dashboard"}'`;
+
+test('importCurl: contoh Copy as cURL Chrome -> request lengkap, header browser dimatikan, ringkasan untuk notifikasi', () => {
+  const { request, summary } = importCurl(CHROME);
+  assert.deepEqual([request.method, request.url, request.bodyType], ['POST', 'https://shop.example.com/pos/log/post', 'json']);
+  assert.equal(request.body, '{"method":"Activity History","pathUrl":"dashboard"}');
+  const on = request.headers.filter((h) => h.enabled).map((h) => h.name.toLowerCase());
+  const off = request.headers.filter((h) => !h.enabled).map((h) => h.name.toLowerCase());
+  assert.deepEqual(on, ['accept', 'authorization', 'content-type', 'cookie']);
+  assert.deepEqual(off.sort(), ['accept-language', 'origin', 'priority', 'referer', 'sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform', 'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'user-agent']);
+  assert.equal(summary, 'Imported POST /pos/log/post: 11 browser headers disabled.');
+  assert.equal(request.followRedirects, true, 'Copy as cURL browser tidak pernah memakai -L, padahal browser mengikuti redirect');
+  assert.equal(importCurl(`curl --http2 https://a/x`).summary, 'Imported GET /x. Ignored option --http2');
 });

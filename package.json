@@ -29,7 +29,8 @@
       {
         "command": "httpme.newRequest",
         "title": "New Request",
-        "category": "http.me"
+        "category": "http.me",
+        "icon": "$(add)"
       },
       {
         "command": "httpme.sendRequest",
@@ -72,6 +73,189 @@
         "title": "Open as Text",
         "category": "http.me",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "httpme.showCollections",
+        "title": "Show Collections",
+        "category": "http.me",
+        "icon": "$(layers)"
+      },
+      {
+        "command": "httpme.showCollectionsActive",
+        "title": "Show Collections",
+        "category": "http.me",
+        "icon": "$(layers-active)"
+      },
+      {
+        "command": "httpme.showEnvironments",
+        "title": "Show Environments",
+        "category": "http.me",
+        "icon": "$(symbol-variable)"
+      },
+      {
+        "command": "httpme.showEnvironmentsActive",
+        "title": "Show Environments",
+        "category": "http.me",
+        "icon": "$(variable-group)"
+      },
+      {
+        "command": "httpme.showOpen",
+        "title": "Show Open",
+        "category": "http.me",
+        "icon": "$(folder)"
+      },
+      {
+        "command": "httpme.showOpenActive",
+        "title": "Show Open",
+        "category": "http.me",
+        "icon": "$(folder-active)"
+      },
+      {
+        "command": "httpme.toggleFlat",
+        "title": "View as List",
+        "category": "http.me",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "httpme.toggleFlatOff",
+        "title": "View as Tree",
+        "category": "http.me",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "httpme.filterCollections",
+        "title": "Filter Collections",
+        "category": "http.me",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "httpme.clearFilter",
+        "title": "Clear Filter",
+        "category": "http.me",
+        "icon": "$(filter-filled)"
+      },
+      {
+        "command": "httpme.add",
+        "title": "Add…",
+        "category": "http.me",
+        "icon": "$(add)"
+      },
+      {
+        "command": "httpme.newCollection",
+        "title": "New Collection",
+        "category": "http.me",
+        "icon": "$(repo)"
+      },
+      {
+        "command": "httpme.newFolder",
+        "title": "New Folder",
+        "category": "http.me",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "httpme.newRequestIn",
+        "title": "New Request",
+        "category": "http.me",
+        "icon": "$(add)"
+      },
+      {
+        "command": "httpme.refreshCollections",
+        "title": "Refresh Collections",
+        "category": "http.me",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "httpme.rename",
+        "title": "Rename…",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.duplicate",
+        "title": "Duplicate",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.delete",
+        "title": "Delete",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.revealInExplorer",
+        "title": "Reveal in Explorer View",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.copyAsCurl",
+        "title": "Copy as cURL",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.openShowUnsaved",
+        "title": "Show Unsaved Only",
+        "category": "http.me",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "httpme.openShowAll",
+        "title": "Show All Open",
+        "category": "http.me",
+        "icon": "$(filter-filled)"
+      },
+      {
+        "command": "httpme.saveAll",
+        "title": "Save All",
+        "category": "http.me",
+        "icon": "$(save-all)"
+      },
+      {
+        "command": "httpme.closeAll",
+        "title": "Close All",
+        "category": "http.me",
+        "icon": "$(close-all)"
+      },
+      {
+        "command": "httpme.saveTab",
+        "title": "Save",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.revertTab",
+        "title": "Revert",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.closeTab",
+        "title": "Close",
+        "category": "http.me",
+        "icon": "$(close)"
+      },
+      {
+        "command": "httpme.pinTab",
+        "title": "Pin",
+        "category": "http.me",
+        "icon": "$(pin)"
+      },
+      {
+        "command": "httpme.unpinTab",
+        "title": "Unpin",
+        "category": "http.me",
+        "icon": "$(pinned)"
+      },
+      {
+        "command": "httpme.revealInCollections",
+        "title": "Reveal in Collections",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.saveUntitled",
+        "title": "Save Request",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.importFromClipboard",
+        "title": "Import from Clipboard",
+        "category": "http.me",
+        "icon": "$(clippy)"
       }
     ],
     "customEditors": [
@@ -119,8 +303,323 @@
         {
           "command": "httpme.openAsText",
           "when": "activeCustomEditorId == httpme.request"
+        },
+        {
+          "command": "httpme.showCollectionsActive",
+          "when": "false"
+        },
+        {
+          "command": "httpme.showEnvironmentsActive",
+          "when": "false"
+        },
+        {
+          "command": "httpme.showOpenActive",
+          "when": "false"
+        },
+        {
+          "command": "httpme.toggleFlatOff",
+          "when": "false"
+        },
+        {
+          "command": "httpme.rename",
+          "when": "false"
+        },
+        {
+          "command": "httpme.duplicate",
+          "when": "false"
+        },
+        {
+          "command": "httpme.delete",
+          "when": "false"
+        },
+        {
+          "command": "httpme.revealInExplorer",
+          "when": "false"
+        },
+        {
+          "command": "httpme.copyAsCurl",
+          "when": "false"
+        },
+        {
+          "command": "httpme.saveTab",
+          "when": "false"
+        },
+        {
+          "command": "httpme.revertTab",
+          "when": "false"
+        },
+        {
+          "command": "httpme.closeTab",
+          "when": "false"
+        },
+        {
+          "command": "httpme.pinTab",
+          "when": "false"
+        },
+        {
+          "command": "httpme.unpinTab",
+          "when": "false"
+        },
+        {
+          "command": "httpme.revealInCollections",
+          "when": "false"
+        },
+        {
+          "command": "httpme.newRequestIn",
+          "when": "false"
+        },
+        {
+          "command": "httpme.openShowAll",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "httpme.showCollections",
+          "when": "view == httpme.sidebar && httpme.sidebarMode && httpme.sidebarMode != collections",
+          "group": "navigation@1"
+        },
+        {
+          "command": "httpme.showCollectionsActive",
+          "when": "view == httpme.sidebar && (httpme.sidebarMode == collections || !httpme.sidebarMode)",
+          "group": "navigation@1"
+        },
+        {
+          "command": "httpme.showEnvironments",
+          "when": "view == httpme.sidebar && httpme.sidebarMode != environments",
+          "group": "navigation@2"
+        },
+        {
+          "command": "httpme.showEnvironmentsActive",
+          "when": "view == httpme.sidebar && httpme.sidebarMode == environments",
+          "group": "navigation@2"
+        },
+        {
+          "command": "httpme.showOpen",
+          "when": "view == httpme.sidebar && httpme.sidebarMode != open",
+          "group": "navigation@3"
+        },
+        {
+          "command": "httpme.showOpenActive",
+          "when": "view == httpme.sidebar && httpme.sidebarMode == open",
+          "group": "navigation@3"
+        },
+        {
+          "command": "httpme.add",
+          "when": "view == httpme.sidebar && (httpme.sidebarMode == collections || !httpme.sidebarMode)",
+          "group": "navigation@10"
+        },
+        {
+          "command": "httpme.filterCollections",
+          "when": "view == httpme.sidebar && (httpme.sidebarMode == collections || !httpme.sidebarMode) && !httpme.collectionsFiltered",
+          "group": "navigation@11"
+        },
+        {
+          "command": "httpme.clearFilter",
+          "when": "view == httpme.sidebar && (httpme.sidebarMode == collections || !httpme.sidebarMode) && httpme.collectionsFiltered",
+          "group": "navigation@11"
+        },
+        {
+          "command": "httpme.newRequest",
+          "when": "view == httpme.sidebar && httpme.sidebarMode == open",
+          "group": "navigation@10"
+        },
+        {
+          "command": "httpme.saveAll",
+          "when": "view == httpme.sidebar && httpme.sidebarMode == open",
+          "group": "navigation@11"
+        },
+        {
+          "command": "httpme.closeAll",
+          "when": "view == httpme.sidebar && httpme.sidebarMode == open",
+          "group": "navigation@12"
+        },
+        {
+          "command": "httpme.openShowUnsaved",
+          "when": "view == httpme.sidebar && httpme.sidebarMode == open && !httpme.openOnlyUnsaved",
+          "group": "navigation@13"
+        },
+        {
+          "command": "httpme.openShowAll",
+          "when": "view == httpme.sidebar && httpme.sidebarMode == open && httpme.openOnlyUnsaved",
+          "group": "navigation@13"
+        },
+        {
+          "command": "httpme.toggleFlat",
+          "when": "view == httpme.sidebar && !httpme.sidebarFlat && httpme.sidebarMode != environments",
+          "group": "navigation@20"
+        },
+        {
+          "command": "httpme.toggleFlatOff",
+          "when": "view == httpme.sidebar && httpme.sidebarFlat && httpme.sidebarMode != environments",
+          "group": "navigation@20"
+        },
+        {
+          "command": "httpme.refreshCollections",
+          "when": "view == httpme.sidebar && (httpme.sidebarMode == collections || !httpme.sidebarMode)",
+          "group": "more"
+        },
+        {
+          "command": "httpme.importFromClipboard",
+          "when": "view == httpme.sidebar && (httpme.sidebarMode == collections || !httpme.sidebarMode)",
+          "group": "more"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "httpme.newRequestIn",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpme(Folder|Root)$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "httpme.newFolder",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpme(Folder|Root)$/",
+          "group": "inline@2"
+        },
+        {
+          "command": "httpme.newRequestIn",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpme(Folder|Root)$/",
+          "group": "1_new@1"
+        },
+        {
+          "command": "httpme.newFolder",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpme(Folder|Root)$/",
+          "group": "1_new@2"
+        },
+        {
+          "command": "httpme.openAsText",
+          "when": "view == httpme.sidebar && viewItem == httpmeFile",
+          "group": "1_open@1"
+        },
+        {
+          "command": "httpme.copyAsCurl",
+          "when": "view == httpme.sidebar && viewItem == httpmeFile",
+          "group": "2_copy@1"
+        },
+        {
+          "command": "httpme.rename",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpme(File|Folder)$/",
+          "group": "3_edit@1"
+        },
+        {
+          "command": "httpme.duplicate",
+          "when": "view == httpme.sidebar && viewItem == httpmeFile",
+          "group": "3_edit@2"
+        },
+        {
+          "command": "httpme.delete",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpme(File|Folder)$/",
+          "group": "3_edit@3"
+        },
+        {
+          "command": "httpme.revealInExplorer",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpme(File|Folder|Root)$/",
+          "group": "4_reveal@1"
+        },
+        {
+          "command": "httpme.closeTab",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTab/",
+          "group": "inline@1"
+        },
+        {
+          "command": "httpme.saveTab",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTab/",
+          "group": "1_file@1"
+        },
+        {
+          "command": "httpme.revertTab",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTab/",
+          "group": "1_file@2"
+        },
+        {
+          "command": "httpme.closeTab",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTab/",
+          "group": "1_file@3"
+        },
+        {
+          "command": "httpme.pinTab",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTab(Untitled)?$/",
+          "group": "2_pin@1"
+        },
+        {
+          "command": "httpme.unpinTab",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTabPinned/",
+          "group": "2_pin@1"
+        },
+        {
+          "command": "httpme.revealInCollections",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTab(Pinned)?$/",
+          "group": "3_reveal@1"
         }
       ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "httpme",
+          "title": "http.me",
+          "icon": "media/httpme.svg"
+        }
+      ]
+    },
+    "views": {
+      "httpme": [
+        {
+          "id": "httpme.sidebar",
+          "name": "Collections"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "httpme.saveUntitled",
+        "key": "ctrl+s",
+        "mac": "cmd+s",
+        "when": "resourceScheme == untitled && resourceExtname == .http"
+      }
+    ],
+    "viewsWelcome": [
+      {
+        "view": "httpme.sidebar",
+        "contents": "Open a folder to store your collections.\n[Open Folder](command:vscode.openFolder)\n[New Request](command:httpme.newRequest)",
+        "when": "workbenchState == empty"
+      },
+      {
+        "view": "httpme.sidebar",
+        "contents": "Environments arrive in the next version of http.me.",
+        "when": "workbenchState != empty && httpme.sidebarMode == environments"
+      },
+      {
+        "view": "httpme.sidebar",
+        "contents": "Scanning…",
+        "when": "workbenchState != empty && httpme.scanning && (httpme.sidebarMode == collections || !httpme.sidebarMode)"
+      },
+      {
+        "view": "httpme.sidebar",
+        "contents": "No request matches the filter.\n[Clear Filter](command:httpme.clearFilter)",
+        "when": "workbenchState != empty && !httpme.scanning && httpme.collectionsFiltered && (httpme.sidebarMode == collections || !httpme.sidebarMode)"
+      },
+      {
+        "view": "httpme.sidebar",
+        "contents": "No .http files yet.\n[New Request](command:httpme.newRequest)\n[New Collection](command:httpme.newCollection)",
+        "when": "workbenchState != empty && !httpme.scanning && !httpme.collectionsFiltered && (httpme.sidebarMode == collections || !httpme.sidebarMode)"
+      },
+      {
+        "view": "httpme.sidebar",
+        "contents": "No open requests.\n[New Request](command:httpme.newRequest)",
+        "when": "workbenchState != empty && httpme.sidebarMode == open"
+      }
+    ],
+    "configuration": {
+      "title": "http.me",
+      "properties": {
+        "httpme.collectionsRoot": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "Folder (relative to the workspace folder) where **New Collection** creates collections, for example `api`. Empty = the workspace folder."
+        }
+      }
     }
   },
   "scripts": {

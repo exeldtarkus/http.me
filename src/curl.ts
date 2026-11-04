@@ -149,3 +149,19 @@ export function toCurl(r: ParsedRequest): string {
   if (r.timeoutSec !== undefined) rest.push(`--max-time ${r.timeoutSec}`);
   return [first, ...rest].join(' \\\n  ');
 }
+
+/** header yang hanya dikirim browser: ikut diimpor tapi dimatikan (# @disabled) */
+const BROWSER_HEADER = /^(sec-ch-ua(-.*)?|sec-fetch-.*|sec-gpc|dnt|priority|upgrade-insecure-requests|user-agent|accept-language|accept-encoding|referer|origin|cache-control|pragma)$/i;
+
+/** paste / Import from Clipboard: parseCurl + header browser dimatikan + ringkasan satu kalimat untuk notifikasi */
+export function importCurl(command: string): CurlResult & { summary: string } {
+  const res = parseCurl(command);
+  res.request.followRedirects = true; // perintah dari browser tidak pernah memakai -L, padahal browser mengikuti redirect
+  let off = 0;
+  for (const h of res.request.headers) if (BROWSER_HEADER.test(h.name)) { h.enabled = false; off++; }
+  let where = res.request.url;
+  try { where = new URL(res.request.url).pathname; } catch { /* URL berisi {{var}}: ditampilkan apa adanya */ }
+  const parts = [off ? `${off} browser header${off === 1 ? '' : 's'} disabled` : ''].filter(Boolean);
+  const summary = `Imported ${res.request.method} ${where}${parts.length ? `: ${parts.join(', ')}.` : '.'}${res.warnings.length ? ` ${res.warnings.join('; ')}` : ''}`;
+  return { ...res, summary };
+}

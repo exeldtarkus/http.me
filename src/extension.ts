@@ -3,8 +3,9 @@ import { isNewerMinor, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
 import { errMsg } from './log';
 import { log, reportError } from './output';
-import { applyPanelEdit, cancelActive, cancelBlock, cancelFile, newRequest, openAsText, openInPanel, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
+import { applyPanelEdit, importCurlText, saveUntitled, type SaveInput, cancelActive, cancelBlock, cancelFile, newRequest, openAsText, openInPanel, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
+import { registerSidebar, type Sidebar } from './sidebar';
 import { registerActivity } from './activity';
 
 // versi terakhir yang pernah aktif, untuk What's New sekali per minor
@@ -38,7 +39,7 @@ async function clearCacheCommand(ctx: vscode.ExtensionContext): Promise<void> {
 }
 
 /** API extension: hanya untuk itest (membaca state request di extension host) */
-export type HttpmeApi = { viewOf: typeof viewOf; runningCount: () => number; applyPanelEdit: typeof applyPanelEdit };
+export type HttpmeApi = { viewOf: typeof viewOf; runningCount: () => number; applyPanelEdit: typeof applyPanelEdit; sidebar: Sidebar };
 
 export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   ctx.subscriptions.push(log());
@@ -52,6 +53,8 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.cancelRequest', () =>
     cancelActive().catch((e) => reportError('cancelRequest', e, `Cancel failed: ${errMsg(e)}`))));
   ctx.subscriptions.push(registerActivity());
+  const { sidebar, disposable: sidebarDisposable } = registerSidebar(ctx);
+  ctx.subscriptions.push(sidebarDisposable);
   const run = (name: string, fn: () => Promise<unknown> | unknown) => Promise.resolve().then(fn).catch((e) => reportError(name, e, `http.me: ${errMsg(e)}`));
   const docOf = (uri: vscode.Uri) => vscode.workspace.openTextDocument(uri);
   // uri tab aktif: editor teks maupun custom editor
@@ -66,6 +69,9 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
     vscode.commands.registerCommand('httpme.cancelFile', (uri: vscode.Uri) => cancelFile(uri.toString())),
     vscode.commands.registerCommand('httpme.showResponse', (key: string) => run('showResponse', () => showResponse(key))),
     vscode.commands.registerCommand('httpme.showLog', () => log().show(true)),
+    vscode.commands.registerCommand('httpme.saveUntitled', (uri?: vscode.Uri, input?: SaveInput) =>
+      run('saveUntitled', async () => { await saveUntitled(uri instanceof vscode.Uri ? uri : undefined, input); sidebar.refresh(); })),
+    vscode.commands.registerCommand('httpme.importFromClipboard', () => run('importFromClipboard', async () => importCurlText(await vscode.env.clipboard.readText()))),
     vscode.commands.registerCommand('httpme.openAsText', (uri?: vscode.Uri) => run('openAsText', async () => {
       const target = uri ?? activeUri();
       if (target) await openAsText(target);
@@ -81,7 +87,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   const previous = ctx.globalState.get<string>(VERSION_KEY);
   void ctx.globalState.update(VERSION_KEY, version);
   if (isNewerMinor(version, previous)) openWhatsNew(ctx);
-  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit };
+  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar };
 }
 
 export function deactivate(): void {}

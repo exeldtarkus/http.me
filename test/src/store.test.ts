@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { duplicateFile, movePath, renamePath, requestFileName, siblingName } from '../../src/store';
+import { createFolder, dropKeepIfUsed, duplicateFile, KEEP_FILE, movePath, renamePath, requestFileName, siblingName } from '../../src/store';
 import { withTempDir } from './helpers/tmp';
 
 test('requestFileName: .http otomatis, subfolder boleh, .. / kosong / karakter ilegal ditolak', () => {
@@ -51,4 +51,24 @@ test('movePath: pindah file / folder; bentrok & folder ke dalam dirinya sendiri 
   await assert.rejects(movePath(join(dir, 'x.http'), join(dir, 'api')), /x\.http already exists in api/);
   await assert.rejects(movePath(join(dir, 'other'), join(dir, 'other', 'auth')), /cannot be moved into itself/);
   assert.equal(await movePath(join(dir, 'api', 'x.http'), join(dir, 'api')), join(dir, 'api', 'x.http'), 'folder sama: tidak berubah');
+}));
+
+test('createFolder: folder sungguhan + .httpmekeep (folder kosong ikut ter-commit); nama divalidasi; bentrok ditolak', () => withTempDir(async (dir) => {
+  const f = await createFolder(dir, 'shop-api');
+  assert.equal(f, join(dir, 'shop-api'));
+  assert.equal(readFileSync(join(f, KEEP_FILE), 'utf8'), '');
+  await assert.rejects(createFolder(dir, 'shop-api'), /shop-api already exists/);
+  await assert.rejects(createFolder(dir, 'a/b'), /must not contain/);
+  const nested = await createFolder(f, 'auth');
+  assert.ok(existsSync(join(nested, KEEP_FILE)));
+}));
+
+test('.httpmekeep dihapus begitu folder berisi .http; folder tanpa .http tetap menyimpannya', () => withTempDir(async (dir) => {
+  const f = await createFolder(dir, 'api');
+  await dropKeepIfUsed(f);
+  assert.ok(existsSync(join(f, KEEP_FILE)), 'masih kosong');
+  writeFileSync(join(f, 'login.http'), 'GET https://a\n');
+  await dropKeepIfUsed(f);
+  assert.equal(existsSync(join(f, KEEP_FILE)), false);
+  await dropKeepIfUsed(join(dir, 'missing')); // folder tidak ada: tidak error
 }));
