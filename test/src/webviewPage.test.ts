@@ -39,3 +39,17 @@ test('pageJson: aman di <script type="application/json"> dan bisa di-parse balik
 test('esc: & < > " di-escape', () => {
   assert.equal(esc('a & <b> "c"'), 'a &amp; &lt;b&gt; &quot;c&quot;');
 });
+
+test('media/webview/*.js: tanpa {{placeholder}} (ikut diganti saat di-inline)', () => {
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const js = readdirSync(dir).filter((f) => f.endsWith('.js'));
+  assert.ok(js.includes('panel.js'));
+  assert.deepEqual(js.filter((f) => /\{\{\w+\}\}/.test(readFileSync(join(dir, f), 'utf8'))), []);
+});
+
+test('webviewPage: <script nonce src="panel.js"> diganti isi panel.js (inline, nonce tetap)', () => {
+  const html = webviewPage('panel', { cspSource: 'C', nonce: 'N' });
+  assert.ok(!/<script[^>]* src=/.test(html), 'tidak boleh ada script src tersisa');
+  assert.match(html, /<script nonce="N">\n\/\/ panel request http\.me/);
+  assert.match(html, /script-src 'nonce-N'/);
+});

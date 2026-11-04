@@ -1,0 +1,59 @@
+import { test } from 'node:test';
+import * as assert from 'node:assert/strict';
+import { parseRequest, serializeRequest, type ParsedRequest } from '../../src/httpFile';
+
+test('parseRequest: baris request, header, body; baris lain di atas disimpan apa adanya', () => {
+  const r = parseRequest('### Log page view\n# @name logPageView\n\nPOST https://api.test/log?a=1 HTTP/1.1\nContent-Type: application/json\nX-Id: 7\n\n{"a":1}\n');
+  assert.deepEqual(r.preamble, ['### Log page view', '# @name logPageView']);
+  assert.equal(r.method, 'POST');
+  assert.equal(r.url, 'https://api.test/log?a=1');
+  assert.deepEqual(r.headers, [
+    { name: 'Content-Type', value: 'application/json', enabled: true },
+    { name: 'X-Id', value: '7', enabled: true },
+  ]);
+  assert.equal(r.body, '{"a":1}');
+  assert.equal(r.bodyType, 'json');
+});
+
+test('parseRequest: URL saja = GET, file kosong = GET kosong, method huruf kecil dinormalkan', () => {
+  assert.equal(parseRequest('https://a.test/x\n').method, 'GET');
+  assert.equal(parseRequest('https://a.test/x\n').url, 'https://a.test/x');
+  assert.deepEqual(parseRequest(''), { preamble: [], method: 'GET', url: '', headers: [], disabledParams: [], body: '', bodyType: 'none', followRedirects: true, insecure: false, timeoutSec: undefined });
+  assert.equal(parseRequest('query https://a.test\n').method, 'QUERY');
+});
+
+test('metadata: # @disabled header / param, # @no-redirect, # @insecure, # @timeout', () => {
+  const r = parseRequest('# @no-redirect\n# @insecure\n# @timeout 5\n# @disabled Sec-Fetch-Mode: cors\n# @disabled debug=true\nGET https://a.test/?x=1\nAccept: */*\n');
+  assert.equal(r.followRedirects, false);
+  assert.equal(r.insecure, true);
+  assert.equal(r.timeoutSec, 5);
+  assert.deepEqual(r.headers, [{ name: 'Accept', value: '*/*', enabled: true }, { name: 'Sec-Fetch-Mode', value: 'cors', enabled: false }]);
+  assert.deepEqual(r.disabledParams, [{ key: 'debug', value: 'true' }]);
+  assert.deepEqual(r.preamble, []);
+});
+
+test('bodyType dari Content-Type', () => {
+  const t = (ct: string, body = 'x') => parseRequest(`POST https://a\nContent-Type: ${ct}\n\n${body}\n`).bodyType;
+  assert.equal(t('application/json; charset=utf-8'), 'json');
+  assert.equal(t('application/problem+json'), 'json');
+  assert.equal(t('text/xml'), 'xml');
+  assert.equal(t('application/soap+xml'), 'xml');
+  assert.equal(t('application/x-www-form-urlencoded'), 'form');
+  assert.equal(t('text/plain'), 'text');
+  assert.equal(parseRequest('POST https://a\n\nraw\n').bodyType, 'text');
+  assert.equal(parseRequest('POST https://a\nContent-Type: application/json\n').bodyType, 'none');
+});
+
+test('serializeRequest: urutan rapi (preamble, metadata, request, header, body) dan round-trip', () => {
+  const r: ParsedRequest = {
+    preamble: ['### Title'], method: 'POST', url: 'https://a.test/p?x=1',
+    headers: [{ name: 'Content-Type', value: 'application/json', enabled: true }, { name: 'X-Off', value: '1', enabled: false }],
+    disabledParams: [{ key: 'debug', value: 'true' }], body: '{\n  "a": 1\n}', bodyType: 'json',
+    followRedirects: false, insecure: true, timeoutSec: 10,
+  };
+  const text = serializeRequest(r);
+  assert.equal(text, '### Title\n# @no-redirect\n# @insecure\n# @timeout 10\n# @disabled X-Off: 1\n# @disabled debug=true\nPOST https://a.test/p?x=1\nContent-Type: application/json\n\n{\n  "a": 1\n}\n');
+  assert.deepEqual(parseRequest(text), r);
+  assert.equal(serializeRequest(parseRequest('GET https://a.test\n')), 'GET https://a.test\n');
+  assert.equal(serializeRequest(parseRequest('GET https://a.test\nAccept: a\n')), 'GET https://a.test\nAccept: a\n');
+});
