@@ -353,6 +353,8 @@
   }
 
   function renderSettings() {
+    $('ckSend').value = req.noCookieJar || req.noSendCookies ? 'no' : 'yes';
+    $('ckSave').value = req.noCookieJar || req.noSaveCookies ? 'no' : 'yes';
     $('redir').value = req.followRedirects ? 'yes' : 'no';
     $('tls').value = req.insecure ? 'ignore' : 'verify';
     $('tmo').value = req.timeoutSec === undefined ? '' : String(req.timeoutSec);
@@ -422,6 +424,15 @@
     else $('resBody').textContent = view?.kind === 'error' ? view.message : view?.kind === 'cancelled' ? 'The request was cancelled.' : '';
     $('resHeaders').replaceChildren(...(res ? res.headers : []).map(([k, v]) => el('tr', {}, [el('td', { textContent: k }), el('td', { textContent: v })])));
     $('nResHeaders').textContent = res ? String(res.headers.length) : '';
+    const cookies = res?.cookies ?? [];
+    $('nResCookies').textContent = cookies.length ? String(cookies.length) : '';
+    $('resCookies').replaceChildren(...cookies.map((c) => el('tr', {}, [el('td', { textContent: c.name }), el('td', { textContent: c.value }), el('td', { textContent: c.domain }),
+      el('td', { textContent: c.path }), el('td', { textContent: c.session ? 'Session' : c.expires }), el('td', { textContent: [c.httpOnly ? 'HttpOnly' : '', c.secure ? 'Secure' : ''].filter(Boolean).join(' ') })])));
+    $('resCookiesNote').textContent = res ? (cookies.length ? (req && (req.noCookieJar || req.noSaveCookies) ? 'Not saved: Save cookies from response is off for this request.' : 'Saved to the cookie jar of the active Environment.') : 'The response set no cookies.') : '';
+    $('timeline').replaceChildren(...(res?.timeline ?? []).map((h, i, all) => el('li', {}, [
+      el('b', { className: `status ${h.status >= 400 ? 'st-4' : h.status >= 300 ? 'st-3' : 'st-2'}`, textContent: String(h.status) }), ` ${i < all.length - 1 ? 'redirect from' : 'response'} ${h.url}`,
+      ...(h.cookies.length ? [el('div', { className: 'ck', textContent: `Set-Cookie: ${h.cookies.join(', ')}` })] : []),
+    ])));
     $('allow').hidden = !res?.allow;
     if (res?.allow) $('allow').replaceChildren(el('b', { textContent: 'Allowed methods' }), res.allow.length ? res.allow.join(', ') : 'none listed by the server');
     $('bodyNote').hidden = !res?.note;
@@ -449,6 +460,15 @@
     else if (e.key === 'Escape' && running) { e.preventDefault(); cancel(); }
   });
   $('redir').onchange = () => { req.followRedirects = $('redir').value === 'yes'; changed(); };
+  // @no-cookie-jar lama dipecah jadi dua opsi saat salah satunya diubah
+  const cookieOpt = () => {
+    req.noCookieJar = false;
+    req.noSendCookies = $('ckSend').value === 'no';
+    req.noSaveCookies = $('ckSave').value === 'no';
+    changed();
+  };
+  $('ckSend').onchange = cookieOpt;
+  $('ckSave').onchange = cookieOpt;
   $('tls').onchange = () => { req.insecure = $('tls').value === 'ignore'; changed(); };
   $('tmo').oninput = () => {
     const n = parseInt($('tmo').value, 10);
@@ -470,6 +490,11 @@
     if (m.type === 'vars') { vars = { ok: m.ok, nulls: m.nulls, names: m.names }; syncMirrors(); }
     if (m.type === 'varHover') showHover(m.name, m.info);
     if (m.type === 'matching') $('matching').hidden = !m.on;
+    if (m.type === 'reqCookies') {
+      $('nCookies').textContent = m.list.length ? String(m.list.length) : '';
+      $('reqCookies').replaceChildren(...m.list.map((c) => el('tr', {}, [el('td', { textContent: c.name }), el('td', { textContent: c.value, title: 'Masked' }), el('td', { textContent: c.domain }), el('td', { textContent: c.path })])));
+      $('reqCookiesNote').textContent = m.off ? 'Send saved cookies is off for this request (Settings).' : m.list.length ? 'These saved cookies are sent with the request (values masked). Manage them in the Cookies view of the http.me sidebar.' : 'No saved cookie matches this URL yet. Cookies from responses are saved automatically.';
+    }
     if ('view' in m) renderView(m.view);
   });
   window.addEventListener('blur', flush);

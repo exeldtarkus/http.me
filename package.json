@@ -418,6 +418,74 @@
         "command": "httpme.openRequest",
         "title": "Open Request",
         "category": "http.me"
+      },
+      {
+        "command": "httpme.showCookies",
+        "title": "Show Cookies",
+        "category": "http.me",
+        "icon": "$(key)"
+      },
+      {
+        "command": "httpme.showCookiesActive",
+        "title": "Show Cookies",
+        "category": "http.me",
+        "icon": "$(lock)"
+      },
+      {
+        "command": "httpme.addCookie",
+        "title": "Add Cookie…",
+        "category": "http.me",
+        "icon": "$(add)"
+      },
+      {
+        "command": "httpme.pasteCookies",
+        "title": "Paste Cookies from Browser",
+        "category": "http.me",
+        "icon": "$(clippy)"
+      },
+      {
+        "command": "httpme.editCookie",
+        "title": "Edit Value…",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.deleteCookie",
+        "title": "Delete",
+        "category": "http.me",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "httpme.deleteCookieDomain",
+        "title": "Delete Cookies of Domain",
+        "category": "http.me",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "httpme.clearCookies",
+        "title": "Delete All Cookies",
+        "category": "http.me",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "httpme.setLoginRequest",
+        "title": "Set as Login Request",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.clearLoginRequest",
+        "title": "Clear Login Request",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.login",
+        "title": "Login",
+        "category": "http.me",
+        "icon": "$(key)"
+      },
+      {
+        "command": "httpme.copyAsCurlWithCookies",
+        "title": "Copy as cURL with Cookies",
+        "category": "http.me"
       }
     ],
     "customEditors": [
@@ -631,6 +699,30 @@
         {
           "command": "httpme.openRequest",
           "when": "false"
+        },
+        {
+          "command": "httpme.showCookiesActive",
+          "when": "false"
+        },
+        {
+          "command": "httpme.editCookie",
+          "when": "false"
+        },
+        {
+          "command": "httpme.deleteCookie",
+          "when": "false"
+        },
+        {
+          "command": "httpme.deleteCookieDomain",
+          "when": "false"
+        },
+        {
+          "command": "httpme.copyAsCurlWithCookies",
+          "when": "false"
+        },
+        {
+          "command": "httpme.setLoginRequest",
+          "when": "resourceExtname == .http"
         }
       ],
       "view/title": [
@@ -737,6 +829,31 @@
         {
           "command": "httpme.compareEnvironments",
           "when": "view == httpme.sidebar && httpme.sidebarMode == environments",
+          "group": "navigation@12"
+        },
+        {
+          "command": "httpme.showCookies",
+          "when": "view == httpme.sidebar && httpme.sidebarMode != cookies",
+          "group": "navigation@4"
+        },
+        {
+          "command": "httpme.showCookiesActive",
+          "when": "view == httpme.sidebar && httpme.sidebarMode == cookies",
+          "group": "navigation@4"
+        },
+        {
+          "command": "httpme.addCookie",
+          "when": "view == httpme.sidebar && httpme.sidebarMode == cookies",
+          "group": "navigation@10"
+        },
+        {
+          "command": "httpme.pasteCookies",
+          "when": "view == httpme.sidebar && httpme.sidebarMode == cookies",
+          "group": "navigation@11"
+        },
+        {
+          "command": "httpme.clearCookies",
+          "when": "view == httpme.sidebar && httpme.sidebarMode == cookies",
           "group": "navigation@12"
         }
       ],
@@ -860,6 +977,51 @@
           "command": "httpme.openEnvironmentAsText",
           "when": "view == httpme.sidebar && viewItem =~ /^httpmeEnvironment/ || view == httpme.sidebar && viewItem == httpmeGlobals",
           "group": "3_open@2"
+        },
+        {
+          "command": "httpme.deleteCookie",
+          "when": "view == httpme.sidebar && viewItem == httpmeCookie",
+          "group": "inline"
+        },
+        {
+          "command": "httpme.editCookie",
+          "when": "view == httpme.sidebar && viewItem == httpmeCookie",
+          "group": "1_edit@1"
+        },
+        {
+          "command": "httpme.deleteCookie",
+          "when": "view == httpme.sidebar && viewItem == httpmeCookie",
+          "group": "1_edit@2"
+        },
+        {
+          "command": "httpme.addCookie",
+          "when": "view == httpme.sidebar && viewItem == httpmeCookieDomain",
+          "group": "1_edit@1"
+        },
+        {
+          "command": "httpme.deleteCookieDomain",
+          "when": "view == httpme.sidebar && viewItem == httpmeCookieDomain",
+          "group": "1_edit@2"
+        },
+        {
+          "command": "httpme.pasteCookies",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpmeCookie(Env|Domain)$/",
+          "group": "1_edit@3"
+        },
+        {
+          "command": "httpme.clearCookies",
+          "when": "view == httpme.sidebar && viewItem == httpmeCookieEnv",
+          "group": "2_clear@1"
+        },
+        {
+          "command": "httpme.setLoginRequest",
+          "when": "view == httpme.sidebar && viewItem == httpmeFile",
+          "group": "4_login@1"
+        },
+        {
+          "command": "httpme.copyAsCurlWithCookies",
+          "when": "view == httpme.sidebar && viewItem == httpmeFile",
+          "group": "2_copy@2"
         }
       ]
     },
@@ -958,6 +1120,16 @@
             "Never replace values."
           ],
           "markdownDescription": "When a cURL command is pasted or imported, replace values that equal an Environment or Globals value (URL prefix, query, headers, Bearer token, cookies, JSON / form body) with `{{VARIABLE}}`."
+        },
+        "httpme.login.autoRelogin": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "When a response looks like an expired session (redirect to the login URL, or status 401 / 403), run the **Login request** of the active Environment once and resend the request. Never loops."
+        },
+        "httpme.login.expiredPattern": {
+          "type": "string",
+          "default": "/login",
+          "markdownDescription": "Part of the URL that means \"login page\" (checked on redirects and the final URL) for **Auto re-login**."
         }
       }
     }

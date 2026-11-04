@@ -15,6 +15,9 @@ import { replaceValuesWithVariables, setNullPrompt, setVarHooks } from './httpEd
 import { hoverInfo } from './diagnostics';
 import { resolveRequest } from './vars';
 import { varize, varizeCandidates } from './varize';
+import { Cookies, registerCookieCommands, registerLoginStatus } from './cookies';
+import { cookieFlags } from './httpFile';
+import { sendUri, setSessionHooks } from './httpEditor';
 
 // versi terakhir yang pernah aktif, untuk What's New sekali per minor
 const VERSION_KEY = 'httpme.version';
@@ -49,7 +52,7 @@ async function clearCacheCommand(ctx: vscode.ExtensionContext): Promise<void> {
 /** API extension: hanya untuk itest (membaca state request di extension host) */
 export type HttpmeApi = {
   viewOf: typeof viewOf; runningCount: () => number; applyPanelEdit: typeof applyPanelEdit; sidebar: Sidebar;
-  envs: Environments; envOp: typeof envOp; focusOf: typeof focusOf; compareView: typeof compareView; setNullPrompt: typeof setNullPrompt;
+  envs: Environments; cookies: Cookies; envOp: typeof envOp; focusOf: typeof focusOf; compareView: typeof compareView; setNullPrompt: typeof setNullPrompt;
 };
 
 /** Environment → hook variable panel request / Send / paste */
@@ -91,7 +94,26 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   ctx.subscriptions.push(registerActivity());
   const envs = new Environments(ctx);
   ctx.subscriptions.push(envs.watch(), registerEnvironmentEditor(envs));
-  const { sidebar, disposable: sidebarDisposable } = registerSidebar(ctx, envs);
+  const cookies = new Cookies(ctx, envs);
+  const { sidebar, disposable: sidebarDisposable } = registerSidebar(ctx, envs, cookies);
+  ctx.subscriptions.push(cookies, registerLoginStatus(cookies, envs), registerCookieCommands(cookies, async (uri) => {
+    await sendUri(uri);
+    const v = viewOf(uri.toString());
+    if (v?.kind === 'response') void vscode.window.showInformationMessage(`Login: ${v.status}. ${v.cookies.length ? `${v.cookies.length} cookie${v.cookies.length === 1 ? '' : 's'} saved.` : 'No cookie was set.'}`);
+    else if (v?.kind === 'error') reportError('login', new Error(v.message), `Login failed: ${v.message}`);
+  }), setSessionHooks({
+    onChange: cookies.onDidChange,
+    cookies: (r) => cookies.sendOptions(cookieFlags(r)),
+    relogin: (uri) => {
+      const login = cookies.loginRequest();
+      const cfg = vscode.workspace.getConfiguration('httpme.login');
+      if (!login || login === uri || !cfg.get<boolean>('autoRelogin', true)) return undefined;
+      return { login, pattern: cfg.get<string>('expiredPattern', '/login') };
+    },
+    forUrl: (url) => cookies.forUrl(url),
+    values: () => cookies.values(),
+    paste: (domain, text) => cookies.paste(cookies.env, domain, text),
+  }));
   ctx.subscriptions.push(sidebarDisposable, registerEnvironmentCommands(envs, () => sidebar.redraw()), registerVariables(envs), variableHooks(envs));
   void envs.checkKeys().catch((e) => log().error(errorLine('checkKeys', e)));
   const run = (name: string, fn: () => Promise<unknown> | unknown) => Promise.resolve().then(fn).catch((e) => reportError(name, e, `http.me: ${errMsg(e)}`));
@@ -127,7 +149,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   const previous = ctx.globalState.get<string>(VERSION_KEY);
   void ctx.globalState.update(VERSION_KEY, version);
   if (isNewerMinor(version, previous)) openWhatsNew(ctx);
-  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, envOp, focusOf, compareView, setNullPrompt };
+  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt };
 }
 
 export function deactivate(): void {}

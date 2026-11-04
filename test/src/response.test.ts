@@ -108,3 +108,19 @@ test('responseView: CSV besar dibatasi 1.000 baris tabel + catatan', () => {
   assert.equal((v.bodyHtml.match(/<tr>/g) ?? []).length, 1 + 1000);
   assert.equal(v.note, 'Showing the first 1,000 of 1,500 rows.');
 });
+
+test('responseView: tab Cookies (Set-Cookie semua hop) + Timeline (rantai redirect + cookie per hop)', () => {
+  const v = responseView(res({
+    url: 'http://bima.test/home', status: 200, statusText: 'OK',
+    headers: [['content-type', 'text/html'], ['set-cookie', 'theme=dark; Path=/; Max-Age=60']],
+    redirects: [{ status: 302, url: 'http://bima.test/login', setCookies: ['JSESSIONID=S1; Path=/; HttpOnly'] }],
+  }), 'POST');
+  assert.deepEqual(v.cookies.map((c) => [c.name, c.value, c.domain, c.path, c.httpOnly, c.session]), [
+    ['JSESSIONID', 'S1', 'bima.test', '/', true, true], ['theme', 'dark', 'bima.test', '/', false, false],
+  ]);
+  assert.deepEqual(v.timeline, [
+    { status: 302, url: 'http://bima.test/login', cookies: ['JSESSIONID'] },
+    { status: 200, url: 'http://bima.test/home', cookies: ['theme'] },
+  ]);
+  assert.deepEqual(responseView(res({}), 'GET').cookies, []);
+});

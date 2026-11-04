@@ -8,10 +8,14 @@ import {
 import { createFolder, dropKeepIfUsed, duplicateFile, KEEP_FILE, siblingName } from './store';
 import { splitBlocks, parseRequest } from './httpFile';
 import { toCurl } from './curl';
+import { resolveRequest } from './vars';
 import { newRequest, REQUEST_VIEW } from './httpEditor';
 import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
 import type { Environments } from './envState';
+import type { Cookies } from './cookies';
+import type { Cookie } from './cookieJar';
+import { maskCookie } from './httpEditor';
 import { ENV_DIR } from './environments';
 
 export const VIEW_ID = 'httpme.sidebar';
@@ -34,7 +38,11 @@ type ENone = { kind: 'enone' };
 type Env = { kind: 'env'; name: string };
 type EGlobals = { kind: 'eglobals' };
 type EEmpty = { kind: 'eempty'; what: 'label' | 'create' };
-export type Node = Folder | File | Empty | OFolder | OUntitled | OTab | ENone | Env | EGlobals | EEmpty;
+type CEnv = { kind: 'cenv'; env: string };
+type CDomain = { kind: 'cdomain'; env: string; domain: string };
+type CCookie = { kind: 'cookie'; env: string; cookie: Cookie };
+type CEmpty = { kind: 'cempty' };
+export type Node = Folder | File | Empty | OFolder | OUntitled | OTab | ENone | Env | EGlobals | EEmpty | CEnv | CDomain | CCookie | CEmpty;
 
 const METHOD_COLOR: Record<string, string> = {
   GET: 'charts.green', POST: 'charts.yellow', PUT: 'charts.blue', PATCH: 'charts.purple', DELETE: 'charts.red',
@@ -59,7 +67,7 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
   private filter = '';
   private onlyUnsaved = false;
 
-  constructor(private state: vscode.Memento, private envs: Environments) {}
+  constructor(private state: vscode.Memento, private envs: Environments, private cookies: Cookies) {}
 
   get mode(): SidebarMode { return modeOf(this.state.get(MODE_KEY)); }
   private get flat(): boolean { return this.state.get<boolean>(this.mode === 'open' ? OPEN_FLAT_KEY : FLAT_KEY, false); }
@@ -230,7 +238,25 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
     }
   }
 
+  // ---------- Cookies: Environment → domain → cookie ----------
+  private async cookieChildren(n?: Node): Promise<Node[]> {
+    if (!n) {
+      const envs = await this.cookies.environments();
+      const withCookies = [];
+      for (const env of envs) if ((await this.cookies.jar(env)).length || env === this.cookies.env) withCookies.push(env);
+      const total = (await Promise.all(withCookies.map((e) => this.cookies.jar(e)))).reduce((a, j) => a + j.length, 0);
+      return [...withCookies.map((env): CEnv => ({ kind: 'cenv', env })), ...(total ? [] : [{ kind: 'cempty' } as CEmpty])];
+    }
+    if (n.kind === 'cenv') {
+      const domains = [...new Set((await this.cookies.jar(n.env)).map((c) => c.domain))].sort((a, b) => a.localeCompare(b));
+      return domains.map((domain): CDomain => ({ kind: 'cdomain', env: n.env, domain }));
+    }
+    if (n.kind === 'cdomain') return (await this.cookies.jar(n.env)).filter((c) => c.domain === n.domain).map((cookie): CCookie => ({ kind: 'cookie', env: n.env, cookie }));
+    return [];
+  }
+
   async getChildren(n?: Node): Promise<Node[]> {
+    if (this.mode === 'cookies') return this.cookieChildren(n);
     if (this.mode === 'environments') return this.environmentChildren(n);
     if (this.mode === 'open') return this.openChildrenOf(n);
     return this.collectionChildren(n);
@@ -320,6 +346,32 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
           id: 'eglobals', iconPath: new vscode.ThemeIcon('globe'), description: 'every Environment', tooltip: 'Variables for every Environment, stored on this computer',
           contextValue: 'httpmeGlobals', command: { command: 'httpme.openGlobals', title: 'Open Globals' },
         });
+      case 'cenv': {
+        const n2 = (await this.cookies.jar(n.env)).length;
+        const active = n.env === this.cookies.env;
+        return Object.assign(new vscode.TreeItem(n.env || 'No Environment', n2 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None), {
+          id: `cenv:${n.env}`, iconPath: new vscode.ThemeIcon(active ? 'check' : 'symbol-namespace'),
+          description: [active ? 'active' : '', `${n2} cookie${n2 === 1 ? '' : 's'}`].filter(Boolean).join(' · '), contextValue: 'httpmeCookieEnv',
+        });
+      }
+      case 'cdomain': {
+        const n2 = (await this.cookies.jar(n.env)).filter((c) => c.domain === n.domain).length;
+        return Object.assign(new vscode.TreeItem(n.domain, vscode.TreeItemCollapsibleState.Expanded), {
+          id: `cdomain:${n.env}|${n.domain}`, iconPath: new vscode.ThemeIcon('globe'), description: String(n2), contextValue: 'httpmeCookieDomain',
+        });
+      }
+      case 'cookie': {
+        const c = n.cookie;
+        const exp = c.expires === undefined ? 'session' : c.expires < Date.now() ? 'expired' : `expires ${new Date(c.expires).toISOString().slice(0, 16).replace('T', ' ')}`;
+        return Object.assign(new vscode.TreeItem(c.name), {
+          id: `cookie:${n.env}|${c.domain}|${c.path}|${c.name}`, iconPath: new vscode.ThemeIcon('key'),
+          description: `${maskCookie(c.value)} · ${exp}`,
+          tooltip: `${c.name} (value hidden)\nDomain: ${c.hostOnly ? '' : '.'}${c.domain}\nPath: ${c.path}\n${exp}${c.httpOnly ? '\nHttpOnly' : ''}${c.secure ? '\nSecure' : ''}`,
+          contextValue: 'httpmeCookie',
+        });
+      }
+      case 'cempty':
+        return Object.assign(new vscode.TreeItem('No cookies'), { iconPath: new vscode.ThemeIcon('info'), description: 'cookies from responses are saved here', contextValue: 'httpmeEmpty' });
       case 'eempty':
         return n.what === 'label'
           ? Object.assign(new vscode.TreeItem('No environments'), { iconPath: new vscode.ThemeIcon('info'), description: 'dev, uat, prod… with the same keys', contextValue: 'httpmeEmpty' })
@@ -421,8 +473,8 @@ export async function openRequest(uri: vscode.Uri): Promise<void> {
   else await vscode.commands.executeCommand('vscode.openWith', uri, REQUEST_VIEW);
 }
 
-export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments): { sidebar: Sidebar; disposable: vscode.Disposable } {
-  const sidebar = new Sidebar(ctx.workspaceState, envs);
+export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments, cookies: Cookies): { sidebar: Sidebar; disposable: vscode.Disposable } {
+  const sidebar = new Sidebar(ctx.workspaceState, envs, cookies);
   const view = vscode.window.createTreeView(VIEW_ID, { treeDataProvider: sidebar, dragAndDropController: sidebar, canSelectMany: true, showCollapseAll: true });
   sidebar.view = view;
   void sidebar.applyContext();
@@ -457,10 +509,11 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
     vscode.workspace.onDidChangeTextDocument((e) => { if (isHttpmeFile(e.document.uri)) redrawOpen(); }),
     vscode.workspace.onDidSaveTextDocument(redrawOpen),
     vscode.workspace.onDidChangeWorkspaceFolders(() => sidebar.refresh()),
-    envs.onDidChange(() => { if (sidebar.mode === 'environments') sidebar.redraw(); }),
+    envs.onDidChange(() => { if (sidebar.mode === 'environments' || sidebar.mode === 'cookies') sidebar.redraw(); }),
+    cookies.onDidChange(() => { if (sidebar.mode === 'cookies') sidebar.redraw(); }),
 
     // mode: ikon berbeda untuk mode aktif (fallback `toggled` yang belum didukung kontribusi extension di VS Code 1.90)
-    ...(['collections', 'environments', 'open'] as const).flatMap((m) => {
+    ...(['collections', 'environments', 'open', 'cookies'] as const).flatMap((m) => {
       const name = m[0].toUpperCase() + m.slice(1);
       return [cmd(`httpme.show${name}`, () => sidebar.setMode(m)), cmd(`httpme.show${name}Active`, () => sidebar.setMode(m))];
     }),
@@ -529,15 +582,25 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
       sidebar.refresh();
     }),
     cmd('httpme.revealInExplorer', (a?: Arg) => vscode.commands.executeCommand('revealInExplorer', uriOf(a ?? view.selection[0]))),
-    cmd('httpme.copyAsCurl', async (a?: Arg) => {
+    // Copy as cURL: tanpa cookie; varian "with Cookies" menyertakan header Cookie + cookie jar Environment aktif
+    ...([false, true] as const).map((withCookies) => cmd(withCookies ? 'httpme.copyAsCurlWithCookies' : 'httpme.copyAsCurl', async (a?: Arg) => {
       const uri = uriOf(a ?? view.selection[0]);
       if (!uri) return;
       const text = (await vscode.workspace.openTextDocument(uri)).getText();
       const blocks = splitBlocks(text);
-      const curl = (blocks.length > 1 ? blocks.map((b) => parseRequest(b.text)) : [parseRequest(text)]).map((r) => toCurl(r)).join('\n\n');
-      await vscode.env.clipboard.writeText(curl);
-      void vscode.window.showInformationMessage(blocks.length > 1 ? `${blocks.length} cURL commands copied.` : 'cURL command copied.');
-    }),
+      const reqs = blocks.length > 1 ? blocks.map((b) => parseRequest(b.text)) : [parseRequest(text)];
+      const out: string[] = [];
+      for (const r of reqs) {
+        let jar: string | undefined;
+        if (withCookies) {
+          const url = resolveRequest(r, await envs.scopes(r.vars)).request.url;
+          jar = (await cookies.forUrl(url)).map((c) => `${c.name}=${c.value}`).join('; ') || undefined;
+        }
+        out.push(toCurl(r, { withCookies, jar }));
+      }
+      await vscode.env.clipboard.writeText(out.join('\n\n'));
+      void vscode.window.showInformationMessage(`${blocks.length > 1 ? `${blocks.length} cURL commands` : 'cURL command'} copied${withCookies ? ' with cookies' : ''}.`);
+    })),
     cmd('httpme.moveTo', (uri: vscode.Uri, dest: vscode.Uri) => moveInto([uri], dest).then(() => sidebar.refresh())),
 
     // Open

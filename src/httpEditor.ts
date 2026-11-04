@@ -20,6 +20,10 @@ import { errMsg, errorLine, maskValues } from './log';
 import { log, reportError } from './output';
 import type { HoverInfo } from './diagnostics';
 import type { Replacement } from './varize';
+import { cookieFlags } from './httpFile';
+import { sendWithRelogin, sessionExpired } from './login';
+import { singleFlight } from './runner';
+import type { HttpResponse, SendOptions } from './http';
 
 export const REQUEST_VIEW = 'httpme.request';
 
@@ -104,6 +108,67 @@ async function postVars(panel: vscode.WebviewPanel): Promise<void> {
   }
 }
 
+/** cookie jar & login session: diisi extension.ts */
+export type SessionHooks = {
+  cookies(r: ParsedRequest): Promise<SendOptions['cookies']>;
+  /** auto re-login untuk request dari dokumen `uri`; undefined = mati / tidak ada Login request / request ini login itu sendiri */
+  relogin(uri: string): { login: string; pattern: string } | undefined;
+  /** cookie yang akan dikirim ke URL (tab Cookies panel) */
+  forUrl(url: string): Promise<{ name: string; value: string; domain: string; path: string }[]>;
+  values(): Promise<string[]>;
+  /** simpan cookie (header Cookie hasil import cURL) ke jar Environment aktif */
+  paste(domain: string, text: string): Promise<number>;
+  onChange: vscode.Event<void>;
+};
+let session: SessionHooks | undefined;
+export function setSessionHooks(h: SessionHooks): vscode.Disposable {
+  session = h;
+  return h.onChange(() => { for (const [key, s] of docs) s.panels.forEach((p) => void postCookies(p, key)); });
+}
+/** tab Cookies panel request: cookie jar yang cocok dengan URL (variable sudah diganti) */
+async function postCookies(panel: vscode.WebviewPanel, key: string): Promise<void> {
+  if (!session) return;
+  try {
+    const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === key);
+    if (!doc) return;
+    const parsed = parseRequest(doc.getText());
+    const url = hooks ? (await hooks.resolve(parsed)).request.url : parsed.url;
+    const list = cookieFlags(parsed).send ? await session.forUrl(url) : [];
+    void panel.webview.postMessage({ type: 'reqCookies', list: list.map((c) => ({ ...c, value: maskCookie(c.value) })), off: !cookieFlags(parsed).send });
+  } catch (e) {
+    log().error(errorLine('postCookies', e));
+  }
+}
+/** nilai cookie di UI: 4 karakter awal lalu … */
+export const maskCookie = (v: string): string => (v.length <= 4 ? '••••' : `${v.slice(0, 4)}…`);
+
+/** request login (status bar Login / auto re-login): satu login berjalan per file, request lain menunggu hasil yang sama */
+const loginFlights = new Map<string, () => Promise<HttpResponse>>();
+export function loginOnce(uri: string): Promise<HttpResponse> {
+  let f = loginFlights.get(uri);
+  if (!f) loginFlights.set(uri, (f = singleFlight(() => sendLogin(uri))));
+  return f();
+}
+async function sendLogin(uri: string): Promise<HttpResponse> {
+  const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(uri));
+  const blocks = splitBlocks(doc.getText());
+  const text = blocks.length > 1 ? (blocks.find((b) => parseRequest(b.text).login) ?? blocks[0]).text : doc.getText();
+  let parsed = parseRequest(text);
+  if (hooks) {
+    const r = await hooks.resolve(parsed);
+    if (r.nulls.length) throw new Error(`Login request needs ${r.nulls.join(', ')} (NULL)`);
+    parsed = r.request;
+  }
+  const req = await toHttpRequestWithFile(parsed, (p) => readBodyFile(doc, p));
+  const res = await send(req, {
+    cookies: await session?.cookies({ ...parsed, noSaveCookies: false, noCookieJar: false }), followRedirects: parsed.followRedirects, insecure: parsed.insecure,
+    timeoutMs: parsed.timeoutSec !== undefined ? parsed.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS, onError: (where, e) => log().error(errorLine(where, e)),
+  });
+  log().info(`login ${loginLabel(parsed)} -> ${res.status} ${res.url.replace(/\?.*$/, '')}`);
+  return res;
+}
+const loginLabel = (r: ParsedRequest) => `${r.method} ${r.url.replace(/\?.*$/, '')}`;
+
 export type NullChoice = 'fill' | 'send' | undefined;
 /** Send dengan variable NULL: Fill in now / Send anyway / Cancel (itest mengganti dialog ini) */
 let nullPrompt = async (nulls: string[], env?: string): Promise<NullChoice> => {
@@ -165,6 +230,8 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
     secrets = r.secrets;
   }
   const s = stateFor(key);
+  let relogged = false;
+  secrets = [...secrets, ...((await session?.values()) ?? [])]; // nilai cookie ikut di-mask di log
   const label = `${original.method} ${original.url}`;
   const token = Symbol(label);
   s.token = token;
@@ -176,16 +243,23 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
       await dropBodyFile(s);
       await fs.mkdir(bodyDir, { recursive: true, mode: 0o700 });
       const r = await toHttpRequestWithFile(parsed, (p) => readBodyFile(doc, p));
-      return send(r, {
-        signal, bodyFile: bodyPath(key), followRedirects: parsed.followRedirects, insecure: parsed.insecure,
+      const cookies = await session?.cookies(parsed);
+      const once = () => send(r, {
+        signal, bodyFile: bodyPath(key), followRedirects: parsed.followRedirects, insecure: parsed.insecure, cookies,
         onError: (where, e) => log().error(errorLine(where, e)),
         timeoutMs: parsed.timeoutSec !== undefined ? parsed.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS,
       });
+      // session habis (redirect ke /login, 401/403): login sekali lalu kirim ulang, tidak pernah loop
+      const rl = session?.relogin(doc.uri.toString());
+      const out = await sendWithRelogin(once, (x) => sessionExpired(x, rl!.pattern), rl && (() => loginOnce(rl.login)));
+      relogged = out.relogged;
+      return out.res;
     });
     if (s.token !== token) { if (res.bodyFile) await fs.rm(res.bodyFile, { force: true }); return; } // hasil Send lama: dibuang
     Object.assign(s, { bodyFile: res.bodyFile, contentType: res.headers.find(([k]) => k === 'content-type')?.[1], url: res.url, responseText: responseText(res) });
     responseChanged.fire(responseUri(key));
-    view = { kind: 'response', ...responseView(res, parsed.method) };
+    const rv = responseView(res, parsed.method);
+    view = { kind: 'response', ...rv, note: relogged ? `Session expired: logged in again and resent.${rv.note ? ` ${rv.note}` : ''}` : rv.note };
   } catch (e) {
     if (e instanceof RequestError && e.kind === 'cancelled') view = { kind: 'cancelled' };
     else {
@@ -235,6 +309,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   panel.webview.options = { enableScripts: true };
   panel.webview.html = webviewPage('panel', { cspSource: panel.webview.cspSource, nonce: randomBytes(16).toString('base64') });
   let written: string | undefined; // teks terakhir yang ditulis dari panel: echo-nya tidak dikirim balik
+  let cookieTimer: ReturnType<typeof setTimeout> | undefined;
   const postState = () => void panel.webview.postMessage({
     type: 'state', req: parseRequest(doc.getText()), view: s.view, multi: splitBlocks(doc.getText()).length,
   });
@@ -242,7 +317,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   const subs = [
     panel.webview.onDidReceiveMessage(async (m: { type: string; req?: unknown; text?: unknown; name?: unknown; env?: unknown; key?: unknown }) => {
       try {
-        if (m.type === 'ready') { postState(); await postVars(panel); } else if (m.type === 'varHover' && typeof m.name === 'string' && hooks) {
+        if (m.type === 'ready') { postState(); await postVars(panel); await postCookies(panel, doc.uri.toString()); } else if (m.type === 'varHover' && typeof m.name === 'string' && hooks) {
           const info = await hooks.hover(m.name, new Map(parseRequest(doc.getText()).vars.map((v) => [v.name, v.value])));
           void panel.webview.postMessage({ type: 'varHover', name: m.name, info });
         } else if (m.type === 'varGoto' && typeof m.name === 'string') await vscode.commands.executeCommand('httpme.gotoVariable', m.name);
@@ -261,10 +336,14 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
       }
     }),
     vscode.workspace.onDidChangeTextDocument((e) => {
-      if (e.document === doc && e.contentChanges.length && doc.getText() !== written) postState();
+      if (e.document !== doc || !e.contentChanges.length) return;
+      if (doc.getText() !== written) postState();
+      clearTimeout(cookieTimer);
+      cookieTimer = setTimeout(() => void postCookies(panel, doc.uri.toString()), 300); // URL berubah: cookie yang cocok ikut
     }),
   ];
   panel.onDidDispose(() => {
+    clearTimeout(cookieTimer);
     subs.forEach((x) => x.dispose());
     s.panels.delete(panel);
   });
@@ -456,14 +535,28 @@ async function afterReplace(pick: string | undefined, target: vscode.Uri, origin
  * + tombol "Replace current request instead" (WorkspaceEdit ke file asli, bisa Undo)
  */
 export async function importCurlText(text: string, into?: vscode.TextDocument): Promise<vscode.Uri> {
-  const { request, summary } = importCurl(text);
+  const { request, summary, cookies } = importCurl(text);
   const plain = serializeRequest(request);
+  let host: string | undefined;
+  try { host = new URL(request.url).hostname; } catch { host = undefined; } // URL berisi {{var}}: cookie tidak bisa dipetakan ke domain
+  const saveCookies = cookies && host && session ? 'Save Cookies to Jar' : undefined;
   const v = await matchValues(request, into);
   const serialized = serializeRequest(v.request);
   const note = replacedNote(v);
-  const buttons = [...(note.text ? ['Undo'] : []), ...(note.other ? [`Switch to ${note.other}`] : [])];
-  const handle = (target: vscode.Uri) => (pick: string | undefined) => afterReplace(pick, target, plain, note.other)
-    .catch((e) => { reportError('importCurlText', e, `http.me: ${errMsg(e)}`); return true; });
+  const buttons = [...(saveCookies ? [saveCookies] : []), ...(note.text ? ['Undo'] : []), ...(note.other ? [`Switch to ${note.other}`] : [])];
+  const handle = (target: vscode.Uri) => async (pick: string | undefined) => {
+    try {
+      if (saveCookies && pick === saveCookies) {
+        const n = await session!.paste(host!, cookies!);
+        void vscode.window.showInformationMessage(`Saved ${n} cookie${n === 1 ? '' : 's'} for ${host} to the cookie jar.`);
+        return true;
+      }
+      return await afterReplace(pick, target, plain, note.other);
+    } catch (e) {
+      reportError('importCurlText', e, `http.me: ${errMsg(e)}`);
+      return true;
+    }
+  };
   if (into?.uri.scheme === 'untitled') {
     await writeDocument(into, serialized);
     void vscode.window.showInformationMessage(summary + note.text, ...buttons).then(handle(into.uri));
@@ -522,6 +615,15 @@ export async function sendActive(): Promise<void> {
   const line = vscode.window.activeTextEditor?.document === doc ? vscode.window.activeTextEditor.selection.active.line : 0;
   const index = Math.max(0, blocks.findIndex((b) => line >= b.start && line <= b.end));
   await sendBlock(doc, index);
+}
+
+/** Send file tertentu (status bar Login): tampil di panel / CodeLens file itu */
+export async function sendUri(uri: vscode.Uri): Promise<void> {
+  const doc = await vscode.workspace.openTextDocument(uri);
+  const blocks = splitBlocks(doc.getText());
+  if (blocks.length <= 1) return sendRequest(doc, doc.uri.toString(), parseRequest(doc.getText()));
+  const i = blocks.findIndex((b) => parseRequest(b.text).login);
+  await sendBlock(doc, Math.max(0, i));
 }
 
 /** command Cancel Request: batalkan request tab aktif (berjalan / antre) */

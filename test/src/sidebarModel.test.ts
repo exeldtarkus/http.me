@@ -6,7 +6,7 @@ test('mode sidebar: nilai tersimpan divalidasi (default Collections), judul view
   assert.equal(modeOf(undefined), 'collections');
   assert.equal(modeOf('open'), 'open');
   assert.equal(modeOf('nonsense'), 'collections');
-  assert.deepEqual(['collections', 'environments', 'open'].map((m) => viewTitle(modeOf(m))), ['Collections', 'Environments', 'Open']);
+  assert.deepEqual(['collections', 'environments', 'open', 'cookies'].map((m) => viewTitle(modeOf(m))), ['Collections', 'Environments', 'Open', 'Cookies']);
 });
 
 test('folderChildren: folder dulu lalu file, urut nama; folder kosong (.httpmekeep) ikut; tampilan rata', () => {

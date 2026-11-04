@@ -134,6 +134,9 @@
   .aclist { position: fixed; z-index: 21; min-width: 180px; max-height: 200px; overflow-y: auto; font: 12px var(--mono);
     background: var(--vscode-editorSuggestWidget-background, var(--bg)); border: 1px solid var(--vscode-editorSuggestWidget-border, var(--line)); }
   .aci { padding: 2px 8px; cursor: pointer; text-decoration: none !important; } .aci.on { background: var(--vscode-editorSuggestWidget-selectedBackground, var(--hover)); }
+  .timeline { margin: 0; padding-left: 20px; font: 12px var(--mono); }
+  .timeline li { padding: 3px 0; overflow-wrap: anywhere; }
+  .timeline .ck { color: var(--muted); }
   .matching { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 2; font-size: 11px; color: var(--muted); background: var(--input); padding: 0 4px; }
   .matching::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
 </style>
@@ -158,6 +161,7 @@
   <button type="button" data-p="params" class="on">Params<span class="n" id="nParams"></span></button>
   <button type="button" data-p="headers">Headers<span class="n" id="nHeaders"></span></button>
   <button type="button" data-p="body">Body</button>
+  <button type="button" data-p="cookies">Cookies<span class="n" id="nCookies"></span></button>
   <button type="button" data-p="settings">Settings</button>
 </div>
 <div class="reqpanes">
@@ -181,6 +185,10 @@
     <p class="note" id="bodyFileNote" hidden></p>
     <p class="note warn" id="bodyWarn" hidden>GET / HEAD cannot send a body. The body is kept; use QUERY to search with a body.</p>
   </div>
+  <div class="pane" id="p-cookies" hidden>
+    <table class="kv"><thead><tr><th>Name</th><th>Value</th><th>Domain</th><th>Path</th></tr></thead><tbody id="reqCookies"></tbody></table>
+    <p class="note" id="reqCookiesNote">Saved cookies that match this URL are sent with the request. Manage them in the Cookies view of the http.me sidebar.</p>
+  </div>
   <div class="pane" id="p-settings" hidden>
     <div class="form">
       <label for="redir">Follow redirects</label>
@@ -189,8 +197,12 @@
       <select id="tls"><option value="verify">Verify</option><option value="ignore">Ignore (dev servers)</option></select>
       <label for="tmo">Timeout (seconds)</label>
       <input id="tmo" type="number" min="1" step="1" placeholder="30">
+      <label for="ckSend">Send saved cookies</label>
+      <select id="ckSend"><option value="yes">Yes</option><option value="no">No</option></select>
+      <label for="ckSave">Save cookies from response</label>
+      <select id="ckSave"><option value="yes">Yes</option><option value="no">No</option></select>
     </div>
-    <p class="note">Saved in the .http file as # @no-redirect, # @insecure and # @timeout.</p>
+    <p class="note">Saved in the .http file as # @no-redirect, # @insecure, # @timeout, # @no-send-cookies and # @no-save-cookies.</p>
   </div>
 </div>
 <div style="background: var(--line)"></div>
@@ -198,6 +210,8 @@
   <div class="subtabs" role="tablist" aria-label="Response" id="resTabs">
     <button type="button" data-r="rbody" class="on" id="resBodyTab">Body</button>
     <button type="button" data-r="rheaders">Headers<span class="n" id="nResHeaders"></span></button>
+    <button type="button" data-r="rcookies">Cookies<span class="n" id="nResCookies"></span></button>
+    <button type="button" data-r="rtimeline">Timeline</button>
     <div class="right" id="meta"><span class="fmt" id="fmt"></span><span class="status" id="st"></span><span id="ms"></span><span id="sz"></span></div>
   </div>
   <div class="loading" id="loading" hidden aria-live="polite">
@@ -215,6 +229,11 @@
     <p class="empty" id="resEmpty">Send the request to see the response.</p>
     <div class="pane" id="r-rbody"><pre class="code" id="resBody"></pre></div>
     <div class="pane" id="r-rheaders" hidden><table class="kv"><tbody id="resHeaders"></tbody></table></div>
+    <div class="pane" id="r-rcookies" hidden>
+      <table class="kv"><thead><tr><th>Name</th><th>Value</th><th>Domain</th><th>Path</th><th>Expires</th><th>Flags</th></tr></thead><tbody id="resCookies"></tbody></table>
+      <p class="note" id="resCookiesNote"></p>
+    </div>
+    <div class="pane" id="r-rtimeline" hidden><ol class="timeline" id="timeline"></ol></div>
   </div>
 </section>
 <script nonce="{{nonce}}" src="panel.js"></script>

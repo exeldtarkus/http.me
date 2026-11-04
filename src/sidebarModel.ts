@@ -1,9 +1,9 @@
 // model sidebar http.me (tanpa vscode): mode view, isi folder Collections, ringkasan request, filter
 import { parseRequest, splitBlocks } from './httpFile';
 
-export type SidebarMode = 'collections' | 'environments' | 'open';
-export const MODES: SidebarMode[] = ['collections', 'environments', 'open'];
-const TITLES: Record<SidebarMode, string> = { collections: 'Collections', environments: 'Environments', open: 'Open' };
+export type SidebarMode = 'collections' | 'environments' | 'open' | 'cookies';
+export const MODES: SidebarMode[] = ['collections', 'environments', 'open', 'cookies'];
+const TITLES: Record<SidebarMode, string> = { collections: 'Collections', environments: 'Environments', open: 'Open', cookies: 'Cookies' };
 
 /** mode tersimpan (workspaceState) divalidasi; default Collections */
 export const modeOf = (v: unknown): SidebarMode => (MODES.includes(v as SidebarMode) ? (v as SidebarMode) : 'collections');

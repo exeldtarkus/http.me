@@ -1,4 +1,5 @@
 // tampilan response untuk panel (tanpa vscode): status, waktu, ukuran, body JSON pretty + warna, header
+import { parseSetCookie } from './cookieJar';
 import { esc } from './webviewPage';
 import { allowedMethods, MAX_BODY_MEMORY, type HttpResponse } from './http';
 
@@ -12,6 +13,8 @@ export type ResponseView = {
   /** OPTIONS: method dari Allow / Access-Control-Allow-Methods */ allow?: string[];
   /** body terpotong / biner */ note?: string;
   /** Open in editor (body > 1 MB) / Save to file (body ada di file cache) */ canOpen: boolean; canSave: boolean;
+  /** tab Cookies: Set-Cookie dari semua hop */ cookies: { name: string; value: string; domain: string; path: string; expires?: string; session: boolean; httpOnly: boolean; secure: boolean }[];
+  /** tab Timeline: hop redirect lalu response akhir, nama cookie yang di-set tiap hop */ timeline: { status: number; url: string; cookies: string[] }[];
 };
 
 export const statusClass = (s: number): string => (s >= 100 && s < 500 ? `st-${Math.floor(s / 100)}` : 'st-5');
@@ -143,7 +146,23 @@ export function responseView(res: HttpResponse, method: string): ResponseView {
     if (rows.length - 1 > MAX_CSV_ROWS) note ??= `Showing the first ${MAX_CSV_ROWS.toLocaleString('en-US')} of ${(rows.length - 1).toLocaleString('en-US')} rows.`;
   } else if (/html/i.test(ct)) { format = 'HTML'; bodyHtml = highlightMarkup(text); }
   else if (/[/+]xml\b/i.test(ct)) { format = 'XML'; bodyHtml = highlightMarkup((!res.truncated && prettyXml(text)) || text); }
+  // cookie tiap hop: URL hop menentukan domain default
+  const hops = [...(res.redirects ?? []).map((r) => ({ status: r.status, url: r.url, set: r.setCookies ?? [] })),
+    { status: res.status, url: res.url, set: res.headers.filter(([k]) => k === 'set-cookie').map(([, v]) => v) }];
+  const cookies: ResponseView['cookies'] = [];
+  const timeline = hops.map((h) => {
+    const names: string[] = [];
+    for (const raw of h.set) {
+      let c;
+      try { c = parseSetCookie(raw, new URL(h.url), Date.now()); } catch { c = undefined; } // URL hop tidak valid: cookie dilewati
+      if (!c) continue;
+      names.push(c.name);
+      cookies.push({ name: c.name, value: c.value, domain: c.domain, path: c.path, ...(c.expires !== undefined ? { expires: new Date(c.expires).toUTCString() } : {}), session: c.expires === undefined, httpOnly: c.httpOnly, secure: c.secure });
+    }
+    return { status: h.status, url: h.url, cookies: names };
+  });
   return {
+    cookies, timeline,
     status: `${res.status}${res.statusText ? ` ${res.statusText}` : ''}`,
     statusClass: statusClass(res.status),
     time: formatTime(res.timeMs),
