@@ -52,7 +52,7 @@ test('serializeRequest: urutan rapi (preamble, metadata, request, header, body) 
     followRedirects: false, insecure: true, timeoutSec: 10,
   };
   const text = serializeRequest(r);
-  assert.equal(text, '### Title\n# @no-redirect\n# @insecure\n# @timeout 10\n# @disabled X-Off: 1\n# @disabled debug=true\nPOST https://a.test/p?x=1\nContent-Type: application/json\n\n{\n  "a": 1\n}\n');
+  assert.equal(text, '### Title\n# @no-redirect\n# @timeout 10\n# @insecure\n# @disabled X-Off: 1\n# @disabled debug=true\nPOST https://a.test/p?x=1\nContent-Type: application/json\n\n{\n  "a": 1\n}\n');
   assert.deepEqual(parseRequest(text), r);
   assert.equal(serializeRequest(parseRequest('GET https://a.test\n')), 'GET https://a.test\n');
   assert.equal(serializeRequest(parseRequest('GET https://a.test\nAccept: a\n')), 'GET https://a.test\nAccept: a\n');
@@ -88,4 +88,27 @@ test('round-trip: parse → serialize → parse sama untuk file tulisan tangan; 
     assert.equal(serializeRequest(parseRequest(text)), text, 'serialize stabil');
   }
   assert.equal(serializeRequest(parseRequest('### T\n# @name t\n# c\nGET https://a\n')), '### T\n# @name t\n# c\nGET https://a\n');
+});
+
+test('metadata: tiap # @… dibaca ke field-nya dan ditulis balik dengan urutan rapi', () => {
+  const text = [
+    '### Login', '# @name login', '# @no-redirect', '# @no-cookie-jar', '# @timeout 5', '# @insecure', '# @login',
+    '# @disabled X-Off: 1', '# @disabled debug=1', '# @operation getUser', '# @auth apikey key=X-Api-Key value={{apiKey}} in=header',
+    '# @no-scripts', '# @no-pre', '# @no-post', 'POST https://a.test/login', '',
+  ].join('\n');
+  const r = parseRequest(text);
+  assert.deepEqual(
+    [r.followRedirects, r.noCookieJar, r.timeoutSec, r.insecure, r.login, r.operation, r.auth, r.noScripts, r.noPre, r.noPost],
+    [false, true, 5, true, true, 'getUser', 'apikey key=X-Api-Key value={{apiKey}} in=header', true, true, true],
+  );
+  assert.deepEqual(r.preamble, []);
+  assert.equal(serializeRequest(r), text);
+  const plain = parseRequest('GET https://a\n');
+  assert.deepEqual([plain.noCookieJar, plain.login, plain.operation, plain.auth, plain.noScripts, plain.noPre, plain.noPost], [false, false, undefined, undefined, false, false, false]);
+});
+
+test('metadata: urutan acak di file dibaca sama; @ tak dikenal tetap jadi komentar', () => {
+  const r = parseRequest('// @no-post\n# @custom thing\n# @login\nGET https://a\n');
+  assert.deepEqual([r.noPost, r.login], [true, true]);
+  assert.deepEqual(r.preamble, ['# @custom thing']);
 });

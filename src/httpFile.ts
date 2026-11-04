@@ -13,6 +13,11 @@ export type ParsedRequest = {
   disabledParams: Param[];
   body: string; bodyType: BodyType;
   followRedirects: boolean; insecure: boolean; timeoutSec: number | undefined;
+  /** # @no-cookie-jar: cookie tersimpan tidak dikirim / disimpan */ noCookieJar: boolean;
+  /** # @login: request login Environment */ login: boolean;
+  /** # @operation: operationId asal OpenAPI */ operation: string | undefined;
+  /** # @auth …: auth yang bukan header standar (teks mentah setelah @auth) */ auth: string | undefined;
+  noScripts: boolean; noPre: boolean; noPost: boolean;
 };
 
 export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'QUERY'];
@@ -31,7 +36,11 @@ export function bodyTypeOf(contentType: string | undefined, body: string): BodyT
 export const emptyRequest = (): ParsedRequest => ({
   title: undefined, name: undefined, preamble: [], method: 'GET', url: '', headers: [], disabledParams: [], body: '', bodyType: 'none',
   followRedirects: true, insecure: false, timeoutSec: undefined,
+  noCookieJar: false, login: false, operation: undefined, auth: undefined, noScripts: false, noPre: false, noPost: false,
 });
+
+/** metadata tanpa nilai: nama -> field boolean */
+const FLAGS = { 'no-cookie-jar': 'noCookieJar', login: 'login', 'no-scripts': 'noScripts', 'no-pre': 'noPre', 'no-post': 'noPost' } as const;
 
 export function parseRequest(text: string): ParsedRequest {
   const lines = text.replace(/\r\n/g, '\n').split('\n');
@@ -47,6 +56,9 @@ export function parseRequest(text: string): ParsedRequest {
     if (meta?.[1] === 'name' && meta[2]) { r.name = meta[2].trim(); continue; }
     if (meta?.[1] === 'no-redirect') { r.followRedirects = false; continue; }
     if (meta?.[1] === 'insecure') { r.insecure = true; continue; }
+    if (meta && meta[1] in FLAGS) { r[FLAGS[meta[1] as keyof typeof FLAGS]] = true; continue; }
+    if (meta?.[1] === 'operation' && meta[2]) { r.operation = meta[2].trim(); continue; }
+    if (meta?.[1] === 'auth' && meta[2]) { r.auth = meta[2].trim(); continue; }
     if (meta?.[1] === 'timeout' && /^\d+/.test(meta[2])) { r.timeoutSec = parseInt(meta[2], 10); continue; }
     if (meta?.[1] === 'disabled' && meta[2]) {
       const h = HEADER_LINE.exec(meta[2]);
@@ -81,10 +93,17 @@ export function serializeRequest(r: ParsedRequest): string {
   if (r.title !== undefined) out.push(`### ${r.title}`.trimEnd());
   if (r.name) out.push(`# @name ${r.name}`);
   if (!r.followRedirects) out.push('# @no-redirect');
-  if (r.insecure) out.push('# @insecure');
+  if (r.noCookieJar) out.push('# @no-cookie-jar');
   if (r.timeoutSec !== undefined) out.push(`# @timeout ${r.timeoutSec}`);
+  if (r.insecure) out.push('# @insecure');
+  if (r.login) out.push('# @login');
   for (const h of r.headers) if (!h.enabled) out.push(`# @disabled ${h.name}: ${h.value}`);
   for (const p of r.disabledParams) out.push(`# @disabled ${p.value === '' ? p.key : `${p.key}=${p.value}`}`);
+  if (r.operation) out.push(`# @operation ${r.operation}`);
+  if (r.auth) out.push(`# @auth ${r.auth}`);
+  if (r.noScripts) out.push('# @no-scripts');
+  if (r.noPre) out.push('# @no-pre');
+  if (r.noPost) out.push('# @no-post');
   out.push(...r.preamble);
   out.push(`${r.method} ${r.url}`);
   for (const h of r.headers) if (h.enabled) out.push(`${h.name}: ${h.value}`);
