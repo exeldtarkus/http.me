@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { send } from '../../src/http';
+import { allowedMethods, send } from '../../src/http';
 import { startServer } from './helpers/server';
 
 const wait = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
@@ -66,4 +66,40 @@ test('send: error jaringan / URL salah = kind network dengan pesan asli', async 
   await assert.rejects(send({ method: 'GET', url, headers: [] }), (e: Error & { kind?: string }) => e.kind === 'network' && /ECONNREFUSED/.test(e.message));
   await assert.rejects(send({ method: 'GET', url: 'not a url', headers: [] }), (e: Error & { kind?: string }) => e.kind === 'network' && /Invalid URL/.test(e.message));
   await assert.rejects(send({ method: 'GET', url: 'ftp://x/y', headers: [] }), /Unsupported protocol ftp:/);
+});
+
+test('method: POST/PUT/PATCH/DELETE/OPTIONS/QUERY sampai ke server dengan body yang benar', async () => {
+  const seen: string[] = [];
+  const srv = await startServer(async (req, body) => { seen.push(`${req.method} ${body}`); return { body: 'ok' }; });
+  try {
+    for (const m of ['POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'QUERY']) {
+      const res = await send({ method: m, url: srv.url, headers: [['Content-Type', 'application/json']], body: `{"m":"${m}"}` });
+      assert.equal(res.status, 200, m);
+    }
+    assert.deepEqual(seen, ['POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'QUERY'].map((m) => `${m} {"m":"${m}"}`));
+  } finally {
+    await srv.close();
+  }
+});
+
+test('method: GET/HEAD tidak mengirim body walau diketik; HEAD = body kosong', async () => {
+  const seen: string[] = [];
+  const srv = await startServer(async (req, body) => { seen.push(`${req.method}:${body}:${req.headers['content-length'] ?? '-'}`); return { headers: { 'content-length': '5' }, body: 'hello' }; });
+  try {
+    const get = await send({ method: 'GET', url: srv.url, headers: [], body: 'typed' });
+    const head = await send({ method: 'HEAD', url: srv.url, headers: [], body: 'typed' });
+    assert.deepEqual(seen, ['GET::-', 'HEAD::-']);
+    assert.equal(get.body.toString(), 'hello');
+    assert.equal(head.body.length, 0);
+    assert.equal(head.size, 0);
+    assert.ok(head.headers.some(([k, v]) => k === 'content-length' && v === '5'));
+  } finally {
+    await srv.close();
+  }
+});
+
+test('OPTIONS: daftar method dari Allow / Access-Control-Allow-Methods', () => {
+  assert.deepEqual(allowedMethods([['allow', 'GET, POST,options']]), ['GET', 'POST', 'OPTIONS']);
+  assert.deepEqual(allowedMethods([['access-control-allow-methods', 'PUT, QUERY'], ['allow', 'GET, PUT']]), ['GET', 'PUT', 'QUERY']);
+  assert.deepEqual(allowedMethods([['x', 'y']]), []);
 });

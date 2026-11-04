@@ -16,6 +16,18 @@ export class RequestError extends Error {
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
+/** GET / HEAD tidak membawa body: body yang diketik tetap disimpan di .http, hanya tidak dikirim */
+export const sendsBody = (method: string): boolean => !['GET', 'HEAD'].includes(method.toUpperCase());
+
+/** OPTIONS: method yang didukung server dari Allow lalu Access-Control-Allow-Methods, tanpa duplikat */
+export function allowedMethods(headers: [string, string][]): string[] {
+  const out = new Set<string>();
+  for (const name of ['allow', 'access-control-allow-methods']) {
+    for (const [k, v] of headers) if (k === name) v.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean).forEach((m) => out.add(m));
+  }
+  return [...out];
+}
+
 /** header berulang (X-Multi: 1, X-Multi: 2) digabung dengan ", " seperti fetch; nama dipertahankan */
 function headerObject(list: [string, string][]): http.OutgoingHttpHeaders {
   const out: Record<string, string> = {};
@@ -57,7 +69,11 @@ export async function send(req: HttpRequest, opts: SendOptions = {}): Promise<Ht
 
   return new Promise<HttpResponse>((resolve, reject) => {
     const lib = url.protocol === 'https:' ? https : http;
-    const r = lib.request(url, { method: req.method, headers: headerObject(req.headers), signal }, (res) => {
+    const body = sendsBody(req.method) ? req.body : undefined;
+    const headers = headerObject(req.headers);
+    // Node tidak memakai chunked untuk DELETE/OPTIONS: tanpa Content-Length body merusak koneksi
+    if (body !== undefined && !Object.keys(headers).some((k) => /^(content-length|transfer-encoding)$/i.test(k))) headers['Content-Length'] = Buffer.byteLength(body);
+    const r = lib.request(url, { method: req.method, headers, signal }, (res) => {
       const chunks: Buffer[] = [];
       let size = 0;
       res.on('data', (c: Buffer) => { chunks.push(c); size += c.length; });
@@ -68,6 +84,6 @@ export async function send(req: HttpRequest, opts: SendOptions = {}): Promise<Ht
       }));
     });
     r.on('error', (e) => reject(fail(e)));
-    r.end(req.body);
+    r.end(body);
   });
 }
