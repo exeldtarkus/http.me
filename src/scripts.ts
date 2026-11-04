@@ -1,6 +1,6 @@
 // script pre-request / post-request (tanpa vscode): cari rantai script untuk satu request .http
 import { promises as fs } from 'node:fs';
-import { dirname, join, relative, resolve, isAbsolute } from 'node:path';
+import { basename, dirname, join, relative, resolve, isAbsolute, sep } from 'node:path';
 import type { ParsedRequest } from './httpFile';
 
 export type ScriptKind = 'pre' | 'post';
@@ -20,7 +20,8 @@ function folders(root: string, httpFile: string): string[] {
 }
 
 /**
- * urutan jalan: `pre-request.js` / `post-request.js` folder teratas → terdekat, lalu baris `<` / `>` atas → bawah.
+ * urutan jalan: `pre-request.js` / `post-request.js` folder teratas → terdekat, lalu baris `<` / `>` atas → bawah,
+ * terakhir script milik request (`<nama>.pre-request.js`).
  * Script yang sama hanya sekali; path tidak ada / berkoma = error (request tidak dikirim).
  */
 export async function scriptChain(root: string, httpFile: string, r: ParsedRequest, kind: ScriptKind): Promise<ScriptRef[]> {
@@ -40,8 +41,18 @@ export async function scriptChain(root: string, httpFile: string, r: ParsedReque
     if (!(await exists(f))) throw new Error(`Script file not found: ${sc} (${relative(root, f)})`);
     add(f);
   }
+  const own = ownScript(httpFile, kind);
+  if (await exists(own)) add(own);
   return out;
 }
+
+/** script milik request: `page.http` → `page.pre-request.js` / `page.post-request.js` di sampingnya */
+export const ownScript = (httpFile: string, kind: ScriptKind): string =>
+  join(dirname(httpFile), `${basename(httpFile).replace(/\.http$/i, '')}.${kind}-request.js`);
+
+/** .http di-rename / dipindah: pasangan [lama, baru] script miliknya (pemanggil memindahkan yang ada) */
+export const sidecarMoves = (from: string, to: string): [string, string][] =>
+  /\.http$/i.test(from) && /\.http$/i.test(to) ? (['pre', 'post'] as const).map((k) => [ownScript(from, k), ownScript(to, k)]) : [];
 
 /** path di baris `< x` / `> x` sebuah .http (posisi karakter di baris): pre = sebelum baris request, body = `< file` setelah header, post = `>` */
 export type PathRef = { path: string; line: number; start: number; end: number; kind: ScriptKind | 'body' };
@@ -69,3 +80,24 @@ export function scriptPaths(text: string): PathRef[] {
   }
   return out;
 }
+
+/** path untuk baris `<` / `>`: relatif ke folder .http, diawali ./ atau ../, pemisah / */
+export function relScriptPath(httpDir: string, file: string): string {
+  const rel = relative(httpDir, file).split(sep).join('/');
+  return rel.startsWith('../') ? rel : `./${rel}`;
+}
+
+/** file / folder `from` dipindah ke `to`: path di baris `<` / `>` yang menunjuk ke sana ditulis ulang */
+export function renameEdits(text: string, httpDir: string, from: string, to: string): { line: number; start: number; end: number; text: string }[] {
+  return scriptPaths(text).flatMap((p) => {
+    const abs = resolve(httpDir, p.path);
+    if (abs !== from && !abs.startsWith(from + sep)) return [];
+    return [{ line: p.line, start: p.start, end: p.end, text: relScriptPath(httpDir, to + abs.slice(from.length)) }];
+  });
+}
+
+/** isi awal file script baru (Quick Fix Create file, + Add script) */
+export const scriptTemplate = (kind: ScriptKind): string => kind === 'pre'
+  ? '// Before request: runs before the request is sent. Throw to stop the request.\n// httpme.request.headers.set(\'X-Request-Id\', crypto.randomUUID());\n'
+  : '// After response: runs after the response is received.\n// httpme.test(\'Status is 200\', () => httpme.expect(httpme.response.status).toBe(200));\n';
+

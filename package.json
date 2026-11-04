@@ -365,6 +365,11 @@
         "category": "http.me"
       },
       {
+        "command": "httpme.createScriptFile",
+        "title": "Create Script File",
+        "category": "http.me"
+      },
+      {
         "command": "httpme.addVariableToAll",
         "title": "Add Variable to Every Environment",
         "category": "http.me"
@@ -658,6 +663,10 @@
         },
         {
           "command": "httpme.setVariableValue",
+          "when": "false"
+        },
+        {
+          "command": "httpme.createScriptFile",
           "when": "false"
         },
         {

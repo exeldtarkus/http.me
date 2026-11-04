@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { scriptChain, scriptPaths } from '../../src/scripts';
+import { ownScript, relScriptPath, renameEdits, scriptChain, scriptPaths, scriptTemplate, sidecarMoves } from '../../src/scripts';
 import { parseRequest } from '../../src/httpFile';
 import { withTempDir } from './helpers/tmp';
 
@@ -65,4 +65,46 @@ test('scriptPaths: posisi path di baris < / >, jenis pre / body / post per blok,
     { path: './save.js', line: 7, start: 2, end: 11, kind: 'post' },
     { path: '../pre.js', line: 12, start: 2, end: 11, kind: 'pre' },
   ]);
+});
+
+test('relScriptPath: relatif ke folder .http, selalu diawali ./ atau ../, pemisah /', () => {
+  assert.equal(relScriptPath('/w/a/b', '/w/a/b/s.js'), './s.js');
+  assert.equal(relScriptPath('/w/a/b', '/w/a/x/s.js'), '../x/s.js');
+  assert.equal(relScriptPath('/w/a', '/w/a/x/y/s.js'), './x/y/s.js');
+});
+
+test('renameEdits: path yang menunjuk file (atau folder) lama ditulis ulang relatif ke .http, path lain tidak', () => {
+  const text = '< ./sign.js\n< ../s/sign.js\nGET http://x\n\n< ./lib/body.json\n\n> ./lib/save.js\n';
+  assert.deepEqual(renameEdits(text, '/w/a', '/w/a/sign.js', '/w/a/scripts/sign2.js'), [{ line: 0, start: 2, end: 11, text: './scripts/sign2.js' }]);
+  assert.deepEqual(renameEdits(text, '/w/a', '/w/a/lib', '/w/lib2'), [
+    { line: 4, start: 2, end: 17, text: '../lib2/body.json' },
+    { line: 6, start: 2, end: 15, text: '../lib2/save.js' },
+  ]);
+  assert.deepEqual(renameEdits(text, '/w/a', '/w/zzz.js', '/w/y.js'), []);
+});
+
+test('scriptTemplate: pre / post berisi komentar + contoh API, JS valid', () => {
+  const vm = require('node:vm') as typeof import('node:vm');
+  for (const k of ['pre', 'post'] as const) assert.doesNotThrow(() => new vm.Script(scriptTemplate(k)));
+  assert.match(scriptTemplate('pre'), /Before request/);
+  assert.match(scriptTemplate('post'), /After response/);
+});
+
+test('script milik request <nama>.pre-request.js / .post-request.js: otomatis, urutan terakhir', () =>
+  withTempDir(async (root) => {
+    put(root, 'pre-request.js'); put(root, 'sign.js'); put(root, 'r.pre-request.js'); put(root, 'r.post-request.js');
+    const http = join(root, 'r.http');
+    assert.equal(ownScript(http, 'pre'), join(root, 'r.pre-request.js'));
+    assert.deepEqual(await scriptChain(root, http, parseRequest('< ./sign.js\nGET http://x\n'), 'pre'),
+      [{ file: join(root, 'pre-request.js') }, { file: join(root, 'sign.js') }, { file: join(root, 'r.pre-request.js') }]);
+    assert.deepEqual(await scriptChain(root, http, parseRequest('GET http://x\n> ./r.post-request.js\n'), 'post'), [{ file: join(root, 'r.post-request.js') }], 'sekali saja');
+    assert.deepEqual(await scriptChain(root, join(root, 'other.http'), parseRequest('GET http://x\n'), 'post'), []);
+  }));
+
+test('sidecarMoves: rename / pindah .http ikut memindahkan script miliknya', () => {
+  assert.deepEqual(sidecarMoves('/w/a/r.http', '/w/b/page.http'), [
+    ['/w/a/r.pre-request.js', '/w/b/page.pre-request.js'],
+    ['/w/a/r.post-request.js', '/w/b/page.post-request.js'],
+  ]);
+  assert.deepEqual(sidecarMoves('/w/a/r.txt', '/w/a/r.http'), []);
 });
