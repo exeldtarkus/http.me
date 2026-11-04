@@ -236,24 +236,74 @@
     const open = stack.pop();
     return open ? { start: open.start, end: open.end, message: `Tag <${open.name}> is not closed` } : undefined;
   }
-  /** segmen mirror dipotong supaya rentang [start, end) bertanda err (garis merah), token variable tidak dipecah */
-  function markSegments(segs, start, end) {
+  /** rentang warna JSON di body: k = key, s = string, n = angka, l = true/false/null; token variable di luar string dilewati */
+  function jsonRanges(text) {
+    const out = [];
+    for (let i = 0; i < text.length;) {
+      const c = text[i];
+      if (c === '{' && text[i + 1] === '{') {
+        const e = text.indexOf('}}', i + 2);
+        if (e > 0) { i = e + 2; continue; }
+      }
+      if (c === '"') {
+        let j = i + 1;
+        while (j < text.length && text[j] !== '"' && text[j] !== '\n') j += text[j] === '\\' ? 2 : 1;
+        const end = Math.min(text.length, text[j] === '"' ? j + 1 : j);
+        out.push({ start: i, end, val: /^\s*:/.test(text.slice(end, end + 40)) ? 'k' : 's' });
+        i = end;
+        continue;
+      }
+      const m = /^(-?\d[\d.eE+-]*)|^(true|false|null)\b/.exec(text.slice(i, i + 40));
+      if (m && !/[\w$]/.test(text[i - 1] || '')) { out.push({ start: i, end: i + m[0].length, val: m[1] ? 'n' : 'l' }); i += m[0].length; continue; }
+      i++;
+    }
+    return out;
+  }
+  /** segmen mirror dipotong per rentang (urut, tidak tumpang tindih): potongan di dalam rentang mendapat prop = val; token variable tidak dipecah */
+  function applyRanges(segs, ranges, prop) {
     const out = [];
     let pos = 0;
+    let r = 0;
     for (const sg of segs) {
       const a = pos;
       const b = pos + sg.text.length;
       pos = b;
-      if (sg.name || b <= start || a >= end) { out.push(sg); continue; }
-      const cut = [a, Math.max(a, start), Math.min(b, end), b];
-      if (cut[1] > a) out.push({ text: sg.text.slice(0, cut[1] - a) });
-      out.push({ text: sg.text.slice(cut[1] - a, cut[2] - a), err: true });
-      if (b > cut[2]) out.push({ text: sg.text.slice(cut[2] - a) });
+      if (sg.name) { out.push(sg); continue; }
+      while (r < ranges.length && ranges[r].end <= a) r++;
+      let i = a;
+      let k = r;
+      while (i < b) {
+        const rg = ranges[k];
+        if (!rg || rg.start >= b) { out.push({ ...sg, text: sg.text.slice(i - a) }); break; }
+        if (rg.start > i) { out.push({ ...sg, text: sg.text.slice(i - a, rg.start - a) }); i = rg.start; }
+        const e = Math.min(b, rg.end);
+        out.push({ ...sg, text: sg.text.slice(i - a, e - a), [prop]: rg.val });
+        i = e;
+        if (rg.end <= b) k++;
+      }
     }
     return out;
   }
+  /** segmen mirror dipotong supaya rentang [start, end) bertanda err (garis merah) */
+  const markSegments = (segs, start, end) => applyRanges(segs, [{ start, end, val: true }], 'err');
+  /** Tab / Shift+Tab pada baris-baris seleksi: tambah / buang 2 spasi di awal tiap baris */
+  function indentEdit(text, start, end, outdent) {
+    const from = text.lastIndexOf('\n', start - 1) + 1;
+    const nl = text.indexOf('\n', end > start && text[end - 1] === '\n' ? end - 1 : end);
+    const to = nl < 0 ? text.length : nl;
+    const lines = text.slice(from, to).split('\n');
+    const cut = lines.map((l) => (outdent ? Math.min(2, /^ */.exec(l)[0].length) : -2));
+    const insert = lines.map((l, i) => (outdent ? l.slice(cut[i]) : `  ${l}`)).join('\n');
+    const delta = cut.reduce((n, c) => n - c, 0);
+    return { from, to, insert, selStart: Math.max(from, start - cut[0]), selEnd: end + delta };
+  }
+  /** Enter: baris baru mengikuti indentasi baris kursor, +2 spasi setelah { atau [ */
+  function enterIndent(text, caret) {
+    const line = text.slice(text.lastIndexOf('\n', caret - 1) + 1, caret);
+    return `\n${/^ */.exec(line)[0]}${/[{[]\s*$/.test(line) ? '  ' : ''}`;
+  }
 
-  const api = { bodyError, markSegments, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
+  const api = { bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -358,6 +408,7 @@
     $('bodyText').hidden = form || req.bodyType === 'none';
     // pembungkus mirror (flex: 1) ikut disembunyikan: tabel form langsung di bawah pilihan tipe body
     $('bodyText').closest('.vwrap').hidden = $('bodyText').hidden;
+    $('bodyEd').hidden = $('bodyText').hidden;
     $('formTable').hidden = !form;
     if (form) {
       formRows = formToRows(req.body);
@@ -369,6 +420,7 @@
       });
     } else $('bodyText').value = req.body;
     $('bodyEmpty').hidden = req.bodyType !== 'none' || !!req.bodyFile;
+    $('bodyGutter').textContent = lineNumbers($('bodyText').value);
     paintBodyError();
   }
   /** garis merah + pesan di bawah editor Body bila JSON / XML tidak valid */
@@ -426,9 +478,11 @@
     for (const p of ['font', 'letterSpacing', 'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'textIndent', 'tabSize']) m.style[p] = cs[p];
     let segs = segments(input.value, vars, fileVars());
     const err = input.id === 'bodyText' && !$('bodyErr').hidden && req ? bodyError(input.value, req.bodyType) : undefined;
+    // shortcut: warna JSON hanya untuk body <= 200 KB, lebih besar teks polos (mirror tiap ketikan)
+    if (input.id === 'bodyText' && req && req.bodyType === 'json' && input.value.length <= 200000) segs = applyRanges(segs, jsonRanges(input.value), 'j');
     if (err) segs = markSegments(segs, err.start, err.end);
     m.replaceChildren(...segs.map((s) => {
-      if (s.err) return el('span', { className: 'synerr', textContent: s.text });
+      if (s.err || s.j) return el('span', { className: `${s.err ? 'synerr ' : ''}${s.j ? `jx-${s.j}` : ''}`, textContent: s.text });
       if (!s.name) return document.createTextNode(s.text);
       const t = el('span', { className: `tok t-${s.cls}`, textContent: s.text });
       t.dataset.name = s.name;
@@ -437,7 +491,7 @@
     // input satu baris: teks lebih panjang dari field ikut bergeser sesuai scroll input
     m.scrollTop = input.scrollTop;
     m.scrollLeft = input.scrollLeft;
-    input.parentNode?.classList.toggle('tokd', segs.some((s) => s.name || s.err));
+    input.parentNode?.classList.toggle('tokd', segs.some((s) => s.name || s.err || s.j));
   }
   function syncMirrors() {
     for (const input of mirrors) {
@@ -566,7 +620,25 @@
     e.preventDefault();
     post({ type: 'pasteCurl', text });
   });
-  $('bodyText').oninput = () => { req.body = $('bodyText').value; renderMethod(); paintBodyError(); changed(); };
+  $('bodyText').oninput = () => { req.body = $('bodyText').value; $('bodyGutter').textContent = lineNumbers(req.body); renderMethod(); paintBodyError(); changed(); };
+  $('bodyText').addEventListener('scroll', () => { $('bodyGutter').scrollTop = $('bodyText').scrollTop; });
+  // Tab = 2 spasi (banyak baris: indent / Shift+Tab outdent), Enter ikut indentasi; lewat insertText supaya Undo tetap jalan
+  $('bodyText').addEventListener('keydown', (e) => {
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return; // autocomplete {{ sudah menangani Tab / Enter
+    const t = $('bodyText');
+    const { selectionStart: a, selectionEnd: b, value: v } = t;
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      if (!e.shiftKey && !v.slice(a, b).includes('\n')) return void document.execCommand('insertText', false, '  ');
+      const ed = indentEdit(v, a, b, e.shiftKey);
+      t.setSelectionRange(ed.from, ed.to);
+      if (ed.insert !== v.slice(ed.from, ed.to)) document.execCommand('insertText', false, ed.insert);
+      t.setSelectionRange(ed.selStart, ed.selEnd);
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      document.execCommand('insertText', false, enterIndent(v, a));
+    }
+  });
   for (const r of document.getElementsByName('bt')) {
     r.onchange = () => {
       // text -> form: body lama yang bukan key=value tetap utuh di .http sampai tabel form diedit
