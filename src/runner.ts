@@ -59,3 +59,16 @@ export function createRunner(opts: { limit?: number; onChange?: () => void; now?
 }
 
 export type Runner = ReturnType<typeof createRunner>;
+
+/**
+ * satu tahap rantai request (pre-script, request, post-script, auto login): ditolak 'Cancelled' begitu signal batal,
+ * tanpa menunggu tahap selesai; tahap berikutnya tidak dimulai bila signal sudah batal
+ */
+export function step<T>(signal: AbortSignal, fn: () => Promise<T>): Promise<T> {
+  if (signal.aborted) return Promise.reject(new RequestError('Cancelled', 'cancelled'));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new RequestError('Cancelled', 'cancelled'));
+    signal.addEventListener('abort', onAbort, { once: true });
+    fn().then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}

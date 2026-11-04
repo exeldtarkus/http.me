@@ -77,6 +77,7 @@ async function sendRequest(doc: vscode.TextDocument, s: DocState, parsed: Parsed
     await fs.mkdir(bodyDir, { recursive: true, mode: 0o700 });
     const res = await send(r, {
       signal: ac.signal, bodyFile: bodyPath(doc), followRedirects: parsed.followRedirects, insecure: parsed.insecure,
+      onError: (where, e) => log().error(errorLine(where, e)),
       timeoutMs: parsed.timeoutSec !== undefined ? parsed.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS,
     });
     if (s.running === ac) Object.assign(s, { bodyFile: res.bodyFile, contentType: res.headers.find(([k]) => k === 'content-type')?.[1], url: res.url });

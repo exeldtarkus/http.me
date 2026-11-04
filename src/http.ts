@@ -2,13 +2,15 @@
 // tanpa undici, dan redirect perlu diikuti sendiri (cookie tiap hop, Fase 3b).
 import * as http from 'node:http';
 import * as https from 'node:https';
-import { createWriteStream, type WriteStream } from 'node:fs';
+import { createWriteStream, rm, type WriteStream } from 'node:fs';
 
 export type HttpRequest = { method: string; url: string; headers: [string, string][]; body?: string | Buffer };
 export type SendOptions = {
   signal?: AbortSignal; timeoutMs?: number;
   /** default true; false = response 3xx dikembalikan apa adanya (# @no-redirect) */ followRedirects?: boolean;
   /** abaikan sertifikat SSL (# @insecure) */ insecure?: boolean;
+  /** error sampingan yang tidak menggagalkan request (mis. hapus file body setengah jadi); host mencatatnya ke output channel */
+  onError?: (where: string, e: unknown) => void;
   /** batas body di memory (default 1 MB); sisanya hanya di bodyFile */ maxMemory?: number;
   /** file tujuan body utuh bila body > maxMemory atau biner (tidak dibuat untuk body kecil) */ bodyFile?: string;
 };
@@ -113,7 +115,14 @@ function readBody(res: http.IncomingMessage, opts: SendOptions): Promise<{ body:
         kept += part.length;
       }
     });
-    res.on('error', (e) => { file?.destroy(); reject(e); });
+    res.on('error', (e) => {
+      if (file) {
+        // body setengah jadi (cancel / putus) tidak boleh tertinggal di cache
+        file.destroy();
+        rm(opts.bodyFile!, { force: true }, (re) => re && opts.onError?.('readBody: remove partial body file', re));
+      }
+      reject(e);
+    });
     res.on('end', () => {
       const done = () => resolve({ body: Buffer.concat(chunks), size, truncated: !binary && size > max, binary, bodyFile: file && opts.bodyFile });
       if (file) file.end(done);

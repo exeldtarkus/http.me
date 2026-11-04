@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { createRunner } from '../../src/runner';
+import { createRunner, step } from '../../src/runner';
 import { send } from '../../src/http';
 import { startServer } from './helpers/server';
 
@@ -71,4 +71,29 @@ test('Send lagi di file yang sama membatalkan request lama (berjalan maupun antr
   } finally {
     await srv.close();
   }
+});
+
+test('step: cancel di tengah tahap async (pre-script / login) langsung berhenti, tahap berikutnya tidak jalan', async () => {
+  const ac = new AbortController();
+  const ran: string[] = [];
+  const chain = (async () => {
+    await step(ac.signal, async () => { ran.push('pre'); await wait(1000); });
+    await step(ac.signal, async () => { ran.push('request'); });
+    await step(ac.signal, async () => { ran.push('post'); });
+  })();
+  setTimeout(() => ac.abort(), 30);
+  const t0 = Date.now();
+  await assert.rejects(chain, (e: Error & { kind?: string }) => e.kind === 'cancelled');
+  assert.ok(Date.now() - t0 < 300);
+  assert.deepEqual(ran, ['pre']);
+});
+
+test('step: cancel setelah request selesai = post-script tidak dijalankan; signal yang sudah batal ditolak', async () => {
+  const ac = new AbortController();
+  const ran: string[] = [];
+  await step(ac.signal, async () => { ran.push('request'); });
+  ac.abort(); // Cancel ditekan tepat setelah response diterima
+  await assert.rejects(step(ac.signal, async () => { ran.push('post'); }), (e: Error & { kind?: string }) => e.kind === 'cancelled');
+  assert.deepEqual(ran, ['request']);
+  assert.equal(await step(new AbortController().signal, async () => 7), 7);
 });

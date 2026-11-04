@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { withTempDir } from './helpers/tmp';
 import { createServer as createHttpsServer } from 'node:https';
 import type { AddressInfo } from 'node:net';
+import { createServer as createHttpServer } from 'node:http';
 import { startServer } from './helpers/server';
 
 const wait = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
@@ -212,6 +213,52 @@ test('SSL: sertifikat self-signed ditolak, kecuali # @insecure', async () => {
   try {
     await assert.rejects(send({ method: 'GET', url, headers: [] }), (e: Error & { kind?: string }) => e.kind === 'network' && /self.signed/i.test(e.message));
     assert.equal((await send({ method: 'GET', url, headers: [] }, { insecure: true })).body.toString(), 'secure');
+  } finally {
+    srv.closeAllConnections();
+    await new Promise((ok) => srv.close(ok));
+  }
+});
+
+const cancelled = (e: Error & { kind?: string }) => e.kind === 'cancelled';
+const cancelAfter = (ms: number) => { const ac = new AbortController(); setTimeout(() => ac.abort(), ms); return ac.signal; };
+
+test('cancel saat hop redirect: berhenti tanpa menunggu tujuan redirect', async () => {
+  const srv = await startServer(async (req) => {
+    if (req.url === '/a') return { status: 302, headers: { location: '/slow' } };
+    await wait(1000);
+    return { body: 'late' };
+  });
+  try {
+    const t0 = Date.now();
+    await assert.rejects(send({ method: 'GET', url: `${srv.url}/a`, headers: [] }, { signal: cancelAfter(60) }), cancelled);
+    assert.ok(Date.now() - t0 < 500);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('cancel saat download stream: berhenti, file body setengah jadi dihapus', () => withTempDir(async (dir) => {
+  const srv = createHttpServer((_req, res) => { res.writeHead(200, { 'content-type': 'image/png' }); res.write(Buffer.alloc(4096)); });
+  await new Promise<void>((ok) => srv.listen(0, '127.0.0.1', ok));
+  try {
+    const bodyFile = join(dir, 'body.bin');
+    await assert.rejects(send({ method: 'GET', url: `http://127.0.0.1:${(srv.address() as AddressInfo).port}/`, headers: [] }, { signal: cancelAfter(80), bodyFile }), cancelled);
+    await wait(20);
+    assert.equal(existsSync(bodyFile), false);
+  } finally {
+    srv.closeAllConnections();
+    await new Promise((ok) => srv.close(ok));
+  }
+}));
+
+test('cancel saat upload body besar ke server yang tidak membaca', async () => {
+  const srv = createHttpServer((req) => req.pause());
+  await new Promise<void>((ok) => srv.listen(0, '127.0.0.1', ok));
+  try {
+    const t0 = Date.now();
+    const body = Buffer.alloc(32 * 1024 * 1024);
+    await assert.rejects(send({ method: 'POST', url: `http://127.0.0.1:${(srv.address() as AddressInfo).port}/`, headers: [], body }, { signal: cancelAfter(80) }), cancelled);
+    assert.ok(Date.now() - t0 < 1000);
   } finally {
     srv.closeAllConnections();
     await new Promise((ok) => srv.close(ok));
