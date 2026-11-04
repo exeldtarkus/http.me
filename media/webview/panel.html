@@ -23,15 +23,19 @@
   button { cursor: pointer; }
   :focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
   input, select, textarea { background: var(--input); color: var(--input-fg); border: 1px solid var(--line); border-radius: 3px; }
-  .urlrow { display: flex; gap: 8px; padding: 12px 14px 6px; }
-  .urlbox { flex: 1; display: flex; min-width: 0; border: 1px solid var(--line); border-radius: 4px; background: var(--input); }
-  .urlbox select { border: 0; border-right: 1px solid var(--line); background: transparent; font: 600 12px var(--mono); padding: 0 6px; border-radius: 4px 0 0 4px; }
-  .urlbox input { flex: 1; min-width: 0; border: 0; background: transparent; padding: 6px 10px; font: 12.5px var(--mono); }
+  .urlrow { display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px; }
+  .urlbox { flex: 1; display: flex; min-width: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--input); }
+  .urlbox:focus-within { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+  .urlbox select { border: 0; border-right: 1px solid var(--line); background: transparent; font: 600 12px var(--mono); padding: 0 9px; border-radius: 5px 0 0 5px; }
+  .urlbox input { flex: 1; min-width: 0; border: 0; background: transparent; padding: 8px 11px; font: 12.5px var(--mono); }
   .m-GET { color: var(--m-get); } .m-POST { color: var(--m-post); } .m-PUT { color: var(--m-put); } .m-PATCH { color: var(--m-patch); }
   .m-DELETE { color: var(--m-delete); } .m-HEAD { color: var(--m-head); } .m-OPTIONS { color: var(--m-options); } .m-QUERY { color: var(--m-query); }
   .btn { border: 1px solid transparent; border-radius: 4px; padding: 5px 14px; background: var(--hover); }
   .btn.pri { background: var(--accent); color: var(--accent-fg); font-weight: 600; min-width: 84px; }
   .btn.pri.busy { background: var(--err); color: var(--vscode-editor-background); }
+  #send { display: inline-flex; align-items: center; justify-content: center; width: 40px; min-width: 40px; height: 36px; padding: 0; border-radius: 6px; }
+  #send svg { width: 17px; height: 17px; fill: currentColor; }
+  #send.busy { width: auto; min-width: 84px; padding: 5px 14px; }
   .btn.ghost { background: transparent; border-color: var(--line); }
   .btn.sm { padding: 2px 10px; font-size: 12px; }
   .btn:disabled { opacity: .5; cursor: not-allowed; }
@@ -52,9 +56,10 @@
   .helppop li { padding: 2px 0; }
   .help:hover > .helppop, .help:focus-within > .helppop { display: block; }
   kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
-  .subtabs { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--line); overflow-x: auto; }
-  .subtabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 8px; color: var(--muted); white-space: nowrap; }
-  .subtabs button.on { color: var(--fg); border-bottom-color: var(--accent); }
+  .subtabs { display: flex; gap: 4px; padding: 0 16px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .subtabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 10px 7px; color: var(--muted); white-space: nowrap; }
+  .subtabs button:hover:not(.on) { color: var(--fg); background: var(--hover); }
+  .subtabs button.on { color: var(--fg); border-bottom-color: var(--focus); }
   .subtabs button:disabled { opacity: .45; cursor: not-allowed; }
   .subtabs .n { font-size: 11px; margin-left: 3px; font-variant-numeric: tabular-nums; }
   /* area request: pane aktif mengisi tinggi (editor Body / Scripts ikut besar), isi panjang scroll di sini, tidak menimpa response */
@@ -74,10 +79,12 @@
   ::-webkit-scrollbar-thumb:active { background: var(--vscode-scrollbarSlider-activeBackground, #bfbfbf66); }
   ::-webkit-scrollbar-button { display: none; }
   .pane { overflow: auto; padding: 8px 14px 12px; min-height: 0; }
+  #p-params { padding: 12px 16px; }
   .pane[hidden] { display: none; }
   table.kv { width: 100%; border-collapse: collapse; }
-  .kv th { text-align: left; font-weight: 500; color: var(--muted); padding: 3px 4px; border-bottom: 1px solid var(--line); }
-  .kv td { padding: 2px 4px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+  .kv th { text-align: left; font-weight: 500; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  .kv td { padding: 5px 8px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+  #p-params .kv tbody tr:hover { background: var(--vscode-list-hoverBackground, var(--hover)); }
   .kv td.c { width: 22px; } .kv td.x { width: 22px; text-align: center; }
   .kv input[type=text] { width: 100%; border-color: transparent; background: transparent; font: 12px var(--mono); padding: 2px 4px; }
   .kv input[type=text]:hover, .kv input[type=text]:focus { border-color: var(--line); background: var(--input); }
@@ -234,7 +241,7 @@
     <input id="url" aria-label="URL" spellcheck="false" placeholder="https://api.example.com/path">
     <span class="matching" id="matching" hidden>Matching values with Environment variables…</span>
   </div>
-  <button class="btn pri" id="send" type="button" title="Send (Ctrl+Enter)">Send</button>
+  <button class="btn pri" id="send" type="button" aria-label="Send request" title="Send (Ctrl+Enter)"><svg id="sendIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.4 20.7 22 12 2.4 3.3l.1 6.8L16 12 2.5 13.9z"/></svg><span id="sendLabel" hidden>Cancel</span></button>
   <button class="btn ghost" id="save" type="button" title="Save (Ctrl+S)" disabled>Save</button>
   <div class="help">
     <button type="button" id="help" aria-label="How to use" aria-describedby="helpPop">?</button>
