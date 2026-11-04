@@ -759,11 +759,14 @@ export async function sendActive(): Promise<void> {
   const doc = await activeRequestDoc();
   if (!doc) return void vscode.window.showInformationMessage('Open a .http request to send it.');
   const blocks = splitBlocks(doc.getText());
-  if (blocks.length <= 1) return sendRequest(doc, doc.uri.toString(), parseRequest(doc.getText()));
+  const fromText = vscode.window.activeTextEditor?.document === doc; // Ctrl+Enter di editor teks (bukan panel)
   // file multi-request: blok di posisi kursor
-  const line = vscode.window.activeTextEditor?.document === doc ? vscode.window.activeTextEditor.selection.active.line : 0;
+  const line = fromText ? vscode.window.activeTextEditor!.selection.active.line : 0;
   const index = Math.max(0, blocks.findIndex((b) => line >= b.start && line <= b.end));
+  const key = blockKey(doc, index, blocks.length);
   await sendBlock(doc, index);
+  // editor teks tidak punya panel response: tampilkan hasil di samping (fokus tetap di .http)
+  if (fromText && viewOf(key)?.kind === 'response') await showResponse(key);
 }
 
 /** Send file tertentu (status bar Login): tampil di panel / CodeLens file itu */
