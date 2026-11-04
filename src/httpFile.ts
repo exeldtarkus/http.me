@@ -3,7 +3,9 @@
 export type BodyType = 'none' | 'json' | 'text' | 'xml' | 'form';
 export type Header = { name: string; value: string; enabled: boolean };
 export type Param = { key: string; value: string };
+export type FileVar = { name: string; value: string };
 export type ParsedRequest = {
+  /** variabel file `@name = value` di atas file (resolusi {{var}} di vars.ts, Fase 3) */ vars: FileVar[];
   /** teks setelah `###` = judul tampil (tab, sidebar, History); undefined = tanpa baris ### */ title: string | undefined;
   /** `# @name` = ID request standar */ name: string | undefined;
   /** komentar & baris lain di atas request yang bukan metadata http.me, dipertahankan apa adanya */
@@ -34,7 +36,7 @@ export function bodyTypeOf(contentType: string | undefined, body: string): BodyT
 }
 
 export const emptyRequest = (): ParsedRequest => ({
-  title: undefined, name: undefined, preamble: [], method: 'GET', url: '', headers: [], disabledParams: [], body: '', bodyType: 'none',
+  vars: [], title: undefined, name: undefined, preamble: [], method: 'GET', url: '', headers: [], disabledParams: [], body: '', bodyType: 'none',
   followRedirects: true, insecure: false, timeoutSec: undefined,
   noCookieJar: false, login: false, operation: undefined, auth: undefined, noScripts: false, noPre: false, noPost: false,
 });
@@ -50,6 +52,8 @@ export function parseRequest(text: string): ParsedRequest {
   for (; i < lines.length; i++) {
     const t = lines[i].trim();
     if (t === '') continue;
+    const v = /^@([\w.-]+)\s*=\s*(.*)$/.exec(t);
+    if (v) { r.vars.push({ name: v[1], value: v[2].trim() }); continue; }
     const title = /^###(.*)$/.exec(t);
     if (title && r.title === undefined) { r.title = title[1].trim(); continue; }
     const meta = /^(?:#|\/\/)\s*@([\w-]+)\s*(.*)$/.exec(t);
@@ -66,7 +70,7 @@ export function parseRequest(text: string): ParsedRequest {
       else { const eq = meta[2].indexOf('='); r.disabledParams.push(eq < 0 ? { key: meta[2], value: '' } : { key: meta[2].slice(0, eq), value: meta[2].slice(eq + 1) }); }
       continue;
     }
-    if (/^(#|\/\/|<|@[\w-]+\s*=)/.test(t)) { r.preamble.push(lines[i]); continue; }
+    if (/^(#|\/\/|<)/.test(t)) { r.preamble.push(lines[i]); continue; }
     break;
   }
   if (i < lines.length) {
@@ -89,7 +93,8 @@ export function parseRequest(text: string): ParsedRequest {
 }
 
 export function serializeRequest(r: ParsedRequest): string {
-  const out: string[] = [];
+  const out: string[] = r.vars.map((v) => `@${v.name} = ${v.value}`);
+  if (out.length) out.push('');
   if (r.title !== undefined) out.push(`### ${r.title}`.trimEnd());
   if (r.name) out.push(`# @name ${r.name}`);
   if (!r.followRedirects) out.push('# @no-redirect');

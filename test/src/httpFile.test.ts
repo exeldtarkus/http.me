@@ -112,3 +112,12 @@ test('metadata: urutan acak di file dibaca sama; @ tak dikenal tetap jadi koment
   assert.deepEqual([r.noPost, r.login], [true, true]);
   assert.deepEqual(r.preamble, ['# @custom thing']);
 });
+
+test('variabel file @var = value: dibaca berurutan, ditulis di atas file + baris kosong', () => {
+  const r = parseRequest('@baseUrl = https://api.test\n@token=abc = def\n\n### T\nGET {{baseUrl}}/x\n');
+  assert.deepEqual(r.vars, [{ name: 'baseUrl', value: 'https://api.test' }, { name: 'token', value: 'abc = def' }]);
+  assert.equal(r.url, '{{baseUrl}}/x');
+  assert.equal(serializeRequest(r), '@baseUrl = https://api.test\n@token = abc = def\n\n### T\nGET {{baseUrl}}/x\n');
+  assert.deepEqual(parseRequest('GET https://a\n').vars, []);
+  assert.deepEqual(parseRequest(serializeRequest(r)), r);
+});

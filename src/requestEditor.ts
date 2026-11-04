@@ -75,6 +75,7 @@ function isRequest(v: unknown): v is ParsedRequest {
     && r.headers.every((h) => typeof h?.name === 'string' && typeof h.value === 'string' && typeof h.enabled === 'boolean')
     && r.disabledParams.every((p) => typeof p?.key === 'string' && typeof p.value === 'string')
     && r.preamble.every((l) => typeof l === 'string') && (r.timeoutSec === undefined || Number.isInteger(r.timeoutSec))
+    && Array.isArray(r.vars) && r.vars.every((v) => typeof v?.name === 'string' && typeof v.value === 'string')
     && [r.title, r.name, r.operation, r.auth].every((v) => v === undefined || typeof v === 'string')
     && [r.noCookieJar, r.login, r.noScripts, r.noPre, r.noPost].every((v) => typeof v === 'boolean');
 }
