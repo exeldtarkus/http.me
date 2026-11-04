@@ -32,7 +32,8 @@
     "dev": "npm run compile && bash scripts/dev.sh",
     "test": "npm run compile && node --test out/test/src/*.test.js",
     "package": "vsce package --skip-license",
-    "install:local": "node scripts/install-local.js"
+    "install:local": "node scripts/install-local.js",
+    "deploy": "bash scripts/deploy-v2.sh"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",

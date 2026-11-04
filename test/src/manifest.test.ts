@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 // out/test/src → root repo
 const root = join(__dirname, '..', '..', '..');
@@ -56,4 +57,20 @@ test('npm run dev membuka Extension Development Host + folder contoh', () => {
   assert.ok(existsSync(join(root, 'test-extension')), 'folder test-extension/ belum ada');
   const ignore = readFileSync(join(root, '.vscodeignore'), 'utf8').split('\n').map((l) => l.trim());
   assert.ok(ignore.includes('test-extension/**'), '.vscodeignore tidak berisi test-extension/**');
+});
+
+test('npm run deploy = deploy-v2.sh, --self-test lulus (versi + kanal pre-release/stable)', () => {
+  assert.equal(pkg.scripts?.deploy, 'bash scripts/deploy-v2.sh');
+  const out = execFileSync('bash', [join(root, 'scripts', 'deploy-v2.sh'), '--self-test'], { encoding: 'utf8' });
+  assert.doesNotMatch(out, /FAIL/);
+  for (const c of ['0.x pre-release', '1.0 stable', 'odd minor pre-release', 'even minor stable', 'suffix refused']) {
+    assert.match(out, new RegExp(`ok +${c}`), `self-test tanpa kasus "${c}"`);
+  }
+});
+
+test('release.yml memakai kanal dari deploy-v2.sh --channel', () => {
+  const yml = readFileSync(join(root, '.github', 'workflows', 'release.yml'), 'utf8');
+  assert.match(yml, /deploy-v2\.sh --channel/);
+  assert.match(yml, /--pre-release/);
+  assert.match(yml, /--prerelease/);
 });

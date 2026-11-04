@@ -1,0 +1,114 @@
+# Publish ke Open VSX + VS Code Marketplace lewat trusted publishing (OIDC, tanpa token tersimpan) saat tag vX.Y.Z di-push,
+# lalu buat GitHub Release dengan lampiran .vsix.
+# Trusted publisher yang didaftarkan (GitHub, exeldtarkus / http.me, workflow filename: release.yml):
+#   - Open VSX: open-vsx.org -> Settings -> Trusted Publishers (environment kosong atau production)
+#   - VS Code Marketplace: marketplace.visualstudio.com/manage -> publisher exeltarkus -> Trusted Publishing (environment production)
+# Kanal dari `scripts/deploy-v2.sh --channel`: < 1.0.0 atau minor ganjil = pre-release, minor genap = stable; versi bersuffix ditolak.
+# Aman dijalankan bersama `npm run deploy`: versi yang sudah ada di Open VSX / release yang sudah ada dilewati.
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write # GitHub Release
+  id-token: write # OIDC token untuk trusted publishing Open VSX + VS Code Marketplace
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # 24.04 tetap: ubuntu-latest pindah ke 26.04 (actions/runner-images#14748)
+    runs-on: ubuntu-24.04
+    # harus sama dengan Environment di trusted publishing VS Code Marketplace (Open VSX tanpa environment tetap cocok)
+    environment: production
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # tag sebelumnya untuk catatan rilis
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Tag must match package.json version
+        id: meta
+        run: |
+          name=$(node -p "require('./package.json').name")
+          publisher=$(node -p "require('./package.json').publisher")
+          version=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match package.json version $version"
+            exit 1
+          fi
+          channel=$(bash scripts/deploy-v2.sh --channel "$version") || { echo "::error::Version $version is not X.Y.Z"; exit 1; }
+          echo "Channel: $channel"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "publisher=$publisher" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "vsix=$name-$version.vsix" >> "$GITHUB_OUTPUT"
+          if [ "$channel" = pre-release ]; then
+            echo "pre=--pre-release" >> "$GITHUB_OUTPUT"
+            echo "ghpre=--prerelease" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package
+        run: npm run package -- ${{ steps.meta.outputs.pre }}
+
+      # bila Marketplace menolak, Open VSX + GitHub Release tetap jalan (upload .vsix manual dari Release)
+      - name: Publish to VS Code Marketplace (trusted publishing)
+        continue-on-error: true
+        env:
+          VSIX: ${{ steps.meta.outputs.vsix }}
+        run: npx --yes @vscode/vsce@4.1.0 publish -i "$VSIX" --oidc ${{ steps.meta.outputs.pre }}
+
+      - name: Publish to Open VSX (trusted publishing)
+        env:
+          NAME: ${{ steps.meta.outputs.name }}
+          PUBLISHER: ${{ steps.meta.outputs.publisher }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          VSIX: ${{ steps.meta.outputs.vsix }}
+        run: |
+          status=$(curl -s -o /dev/null -w '%{http_code}' "https://open-vsx.org/api/$PUBLISHER/$NAME/$VERSION")
+          if [ "$status" = 200 ]; then
+            echo "Open VSX already has $PUBLISHER.$NAME $VERSION, skipping publish"
+          else
+            npx --yes ovsx@1.3.0 publish "$VSIX" --trusted-publishing ${{ steps.meta.outputs.pre }}
+          fi
+
+      # paling akhir: rilis GitHub dibuat setelah publish ke marketplace
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.meta.outputs.name }}
+          PUBLISHER: ${{ steps.meta.outputs.publisher }}
+          VSIX: ${{ steps.meta.outputs.vsix }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, skipping"
+            exit 0
+          fi
+          prev=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+          {
+            echo "## Changes${prev:+ since $prev}"
+            git log --format='- %s' "${prev:+$prev..}$TAG"
+            echo
+            echo "- VS Code Marketplace: https://marketplace.visualstudio.com/items?itemName=$PUBLISHER.$NAME"
+            echo "- Open VSX: https://open-vsx.org/extension/$PUBLISHER/$NAME"
+            echo
+            echo '```'
+            echo "ext install $PUBLISHER.$NAME"
+            echo '```'
+          } > release-notes.md
+          gh release create "$TAG" "$VSIX" --title "$TAG" --notes-file release-notes.md ${{ steps.meta.outputs.ghpre }}
