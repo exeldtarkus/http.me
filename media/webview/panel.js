@@ -114,7 +114,12 @@
     return Math.max(minReq, Math.min(h, total - minRes));
   }
 
-  const api = { clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
+  /** item tab Scripts yang dibuka pertama: script pertama yang jalan (file ada / inline); belum ada script = This request (kosong) */
+  function defaultScript(items) {
+    return items.find((x) => x.exists && x.source !== 'own') || items.find((x) => x.source === 'own');
+  }
+
+  const api = { defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -580,8 +585,8 @@
     $('scPreview').textContent = scripts.preview.join('\n');
     $('scSnippets').replaceChildren(el('option', { value: '', textContent: 'Snippets…' }), ...scripts.snippets[scKind].map((x, i) => el('option', { value: String(i), textContent: x.title })));
     const items = scItems();
-    const current = items.find((x) => x.file === scPath && x.source !== 'inline');
-    if (!current) scSelect(items.find((x) => x.source === 'own'));
+    const current = items.find((x) => (x.source === 'inline' ? scPath === '' : x.file === scPath));
+    if (!current) scSelect(defaultScript(items));
     else renderChain();
   }
   for (const b of $('scKinds').querySelectorAll('button')) {

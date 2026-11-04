@@ -165,3 +165,13 @@ test('review R3/R4: sash bisa di-drag (separator), scrollbar ikut tema, toolbar 
   assert.match(html, /<button[^>]*id="beautify"[^>]*>Beautify<\/button>/);
   assert.match(html, /\.reqpanes > \.pane \{ flex: 1 1 auto;/);
 });
+
+test('review R5: defaultScript = script pertama yang jalan (file ada / inline), This request bila belum ada script', () => {
+  const p = panel as unknown as { defaultScript(items: { file: string; source: string; exists: boolean }[]): { file: string } | undefined };
+  const own = { file: '/w/r.pre-request.js', source: 'own', exists: false };
+  assert.equal(p.defaultScript([{ file: '/w/pre-request.js', source: 'folder', exists: true }, { file: '/w/a.js', source: 'line', exists: true }, own])?.file, '/w/pre-request.js');
+  assert.equal(p.defaultScript([{ file: '/w/nope.js', source: 'line', exists: false }, { file: '/w/a.js', source: 'line', exists: true }, own])?.file, '/w/a.js', 'file yang tidak ada dilewati');
+  assert.equal(p.defaultScript([{ file: '', source: 'inline', exists: true }, own])?.file, '', 'inline ikut');
+  assert.equal(p.defaultScript([own]), own, 'belum ada script: This request (kosong)');
+  assert.equal(p.defaultScript([{ file: '/w/r.pre-request.js', source: 'own', exists: true }])?.file, '/w/r.pre-request.js');
+});
