@@ -169,3 +169,9 @@ test('splitBlocks: request sebelum ### pertama = blok sendiri; file 1 request = 
   assert.deepEqual(splitBlocks(''), []);
   assert.deepEqual(splitBlocks('# only comment\n'), []);
 });
+
+test('bug: komentar / metadata di tengah blok header bukan header', () => {
+  const r = parseRequest('GET https://a\nAccept: */*\n# @disabled X-Off: 1\n// catatan\nX-On: 2\n');
+  assert.deepEqual(r.headers, [{ name: 'Accept', value: '*/*', enabled: true }, { name: 'X-On', value: '2', enabled: true }, { name: 'X-Off', value: '1', enabled: false }]);
+  assert.deepEqual(r.preamble, ['// catatan']);
+});

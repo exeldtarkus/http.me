@@ -62,6 +62,25 @@ const POST_LINE = /^>\s*\S/;
 /** metadata tanpa nilai: nama -> field boolean */
 const FLAGS = { 'no-cookie-jar': 'noCookieJar', login: 'login', 'no-scripts': 'noScripts', 'no-pre': 'noPre', 'no-post': 'noPost' } as const;
 
+/** baris metadata # @… / // @…: diterapkan ke request; false = bukan metadata http.me (komentar biasa) */
+function applyMeta(r: ParsedRequest, disabled: Header[], t: string): boolean {
+  const meta = /^(?:#|\/\/)\s*@([\w-]+)\s*(.*)$/.exec(t);
+  if (meta?.[1] === 'name' && meta[2]) { r.name = meta[2].trim(); return true; }
+  if (meta?.[1] === 'no-redirect') { r.followRedirects = false; return true; }
+  if (meta?.[1] === 'insecure') { r.insecure = true; return true; }
+  if (meta && meta[1] in FLAGS) { r[FLAGS[meta[1] as keyof typeof FLAGS]] = true; return true; }
+  if (meta?.[1] === 'operation' && meta[2]) { r.operation = meta[2].trim(); return true; }
+  if (meta?.[1] === 'auth' && meta[2]) { r.auth = meta[2].trim(); return true; }
+  if (meta?.[1] === 'timeout' && /^\d+/.test(meta[2])) { r.timeoutSec = parseInt(meta[2], 10); return true; }
+  if (meta?.[1] === 'disabled' && meta[2]) {
+    const h = HEADER_LINE.exec(meta[2]);
+    if (h && !h[1].includes('=')) disabled.push({ name: h[1].trim(), value: h[2], enabled: false });
+    else { const eq = meta[2].indexOf('='); r.disabledParams.push(eq < 0 ? { key: meta[2], value: '' } : { key: meta[2].slice(0, eq), value: meta[2].slice(eq + 1) }); }
+    return true;
+  }
+  return false;
+}
+
 export function parseRequest(text: string): ParsedRequest {
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   const r = emptyRequest();
@@ -74,20 +93,7 @@ export function parseRequest(text: string): ParsedRequest {
     if (v) { r.vars.push({ name: v[1], value: v[2].trim() }); continue; }
     const title = /^###(.*)$/.exec(t);
     if (title && r.title === undefined) { r.title = title[1].trim(); continue; }
-    const meta = /^(?:#|\/\/)\s*@([\w-]+)\s*(.*)$/.exec(t);
-    if (meta?.[1] === 'name' && meta[2]) { r.name = meta[2].trim(); continue; }
-    if (meta?.[1] === 'no-redirect') { r.followRedirects = false; continue; }
-    if (meta?.[1] === 'insecure') { r.insecure = true; continue; }
-    if (meta && meta[1] in FLAGS) { r[FLAGS[meta[1] as keyof typeof FLAGS]] = true; continue; }
-    if (meta?.[1] === 'operation' && meta[2]) { r.operation = meta[2].trim(); continue; }
-    if (meta?.[1] === 'auth' && meta[2]) { r.auth = meta[2].trim(); continue; }
-    if (meta?.[1] === 'timeout' && /^\d+/.test(meta[2])) { r.timeoutSec = parseInt(meta[2], 10); continue; }
-    if (meta?.[1] === 'disabled' && meta[2]) {
-      const h = HEADER_LINE.exec(meta[2]);
-      if (h && !h[1].includes('=')) disabled.push({ name: h[1].trim(), value: h[2], enabled: false });
-      else { const eq = meta[2].indexOf('='); r.disabledParams.push(eq < 0 ? { key: meta[2], value: '' } : { key: meta[2].slice(0, eq), value: meta[2].slice(eq + 1) }); }
-      continue;
-    }
+    if (applyMeta(r, disabled, t)) continue;
     if (t.startsWith('<')) { const sc = readScript(lines, i); r.preScripts.push(sc.script); i = sc.end; continue; }
     if (/^(#|\/\/)/.test(t)) { r.preamble.push(lines[i]); continue; }
     break;
@@ -98,6 +104,9 @@ export function parseRequest(text: string): ParsedRequest {
     r.method = m ? m[1].toUpperCase() : 'GET';
     r.url = m ? m[2] : t;
     for (i++; i < lines.length && lines[i].trim() !== ''; i++) {
+      const t2 = lines[i].trim();
+      // komentar / metadata di tengah header: bukan header
+      if (/^(#|\/\/)/.test(t2)) { if (!applyMeta(r, disabled, t2)) r.preamble.push(lines[i]); continue; }
       const h = HEADER_LINE.exec(lines[i]);
       if (h) r.headers.push({ name: h[1].trim(), value: h[2], enabled: true });
     }
