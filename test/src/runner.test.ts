@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { createRunner, step } from '../../src/runner';
+import { createRunner, serialQueue, step } from '../../src/runner';
+import { readChunk, remove, writeChunk } from '../../src/cache';
+import { withTempDir } from './helpers/tmp';
 import { send } from '../../src/http';
 import { startServer } from './helpers/server';
 
@@ -128,4 +130,35 @@ test('Cancel All: semua yang berjalan + antre dibatalkan', async () => {
   } finally {
     await srv.close();
   }
+});
+
+test('serialQueue: 2 request paralel menulis cookie berbeda ke jar Environment yang sama, keduanya tersimpan', () => withTempDir(async (dir) => {
+  type Jar = Record<string, string>;
+  // baca -> (jeda async, seperti menunggu response) -> tulis: tanpa antrean, tulisan pertama tertimpa
+  const setCookie = async (env: string, name: string, value: string) => {
+    const jar = (await readChunk<Jar>(dir, env)) ?? {};
+    await wait(20);
+    await writeChunk(dir, env, { ...jar, [name]: value });
+  };
+  await Promise.all([setCookie('uat', 'A', '1'), setCookie('uat', 'B', '2')]);
+  assert.equal(Object.keys((await readChunk<Jar>(dir, 'uat'))!).length, 1, 'tanpa antrean: satu cookie hilang');
+
+  await remove(dir, 'uat');
+  const queue = serialQueue();
+  await Promise.all([queue('uat', () => setCookie('uat', 'A', '1')), queue('uat', () => setCookie('uat', 'B', '2')), queue('dev', () => setCookie('dev', 'C', '3'))]);
+  assert.deepEqual(await readChunk<Jar>(dir, 'uat'), { A: '1', B: '2' });
+  assert.deepEqual(await readChunk<Jar>(dir, 'dev'), { C: '3' });
+}));
+
+test('serialQueue: tulisan yang gagal tidak menahan antrean; key berbeda jalan bersamaan', async () => {
+  const queue = serialQueue();
+  const order: string[] = [];
+  const failed = queue('uat', async () => { order.push('1'); throw new Error('disk full'); });
+  const next = queue('uat', async () => { order.push('2'); return 'ok'; });
+  await assert.rejects(failed, /disk full/);
+  assert.equal(await next, 'ok');
+  assert.deepEqual(order, ['1', '2']);
+  const t0 = Date.now();
+  await Promise.all([queue('a', () => wait(60)), queue('b', () => wait(60))]);
+  assert.ok(Date.now() - t0 < 110, 'key berbeda tidak saling menunggu');
 });

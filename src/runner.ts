@@ -92,3 +92,18 @@ export function step<T>(signal: AbortSignal, fn: () => Promise<T>): Promise<T> {
     fn().then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
   });
 }
+
+/**
+ * antrean tulis per key (Environment): cookie jar & current value ditulis bergiliran supaya request paralel
+ * tidak saling menimpa; key berbeda tetap jalan bersamaan
+ */
+export function serialQueue() {
+  const tails = new Map<string, Promise<unknown>>();
+  return <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    const run = (tails.get(key) ?? Promise.resolve()).then(fn, fn);
+    const tail = run.catch(() => undefined); // ekor antrean tidak ikut gagal: error tetap sampai ke pemanggil yang mencatat log
+    tails.set(key, tail);
+    void tail.then(() => { if (tails.get(key) === tail) tails.delete(key); });
+    return run;
+  };
+}
