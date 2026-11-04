@@ -19,6 +19,7 @@ function protectUserData(): () => void {
   return () => {
     rmSync(dir, { recursive: true, force: true });
     cpSync(backup, dir, { recursive: true });
+    rmSync(join(backup, '..'), { recursive: true, force: true }); // salinan sementara tidak ditinggal di /tmp
     console.log(`itest: ${dir} dikembalikan`);
   };
 }
