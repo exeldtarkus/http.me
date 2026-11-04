@@ -39,6 +39,10 @@
   body.vscode-dark { color-scheme: dark; } body.vscode-light { color-scheme: light; }
   option { background-color: var(--vscode-dropdown-background, var(--input)); color: var(--vscode-dropdown-foreground, var(--input-fg)); }
   /* bantuan cara pakai: popup saat ikon ? di baris URL di-hover / fokus */
+  .icon-btn, .subtabs .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); }
+  .icon-btn:hover { background: var(--hover); color: var(--fg); }
+  .icon-btn[hidden] { display: none; }
+  .icon-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.2; }
   .help { position: relative; display: flex; align-items: center; }
   .help > button { width: 26px; height: 26px; border: 1px solid var(--line); border-radius: 50%; background: transparent; color: var(--muted); font-size: 12px; padding: 0; }
   .help > button:hover { color: var(--fg); background: var(--hover); }
@@ -314,7 +318,7 @@
     <button type="button" data-r="rtimeline">Timeline</button>
     <button type="button" data-r="rtests">Tests<span class="n" id="nTests"></span></button>
     <button type="button" data-r="rconsole">Console<span class="n" id="nConsole"></span></button>
-    <div class="right" id="meta"><button class="btn ghost sm" id="copyBody" type="button" title="Copy the response body" hidden>Copy</button><button type="button" class="loading inline" id="others" hidden title="Show running requests"><span class="spin"><i></i><i></i><i></i></span><span id="othersText"></span></button><span class="fmt" id="fmt"></span><span class="status" id="st"></span><span id="ms"></span><span id="sz"></span></div>
+    <div class="right" id="meta"><button class="icon-btn" id="copyBody" type="button" title="Copy response body" aria-label="Copy response body" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="9" rx="1"/><path d="M3.5 10.5h-1v-8a1 1 0 0 1 1-1h7v1"/></svg></button><button type="button" class="loading inline" id="others" hidden title="Show running requests"><span class="spin"><i></i><i></i><i></i></span><span id="othersText"></span></button><span class="fmt" id="fmt"></span><span class="status" id="st"></span><span id="ms"></span><span id="sz"></span></div>
   </div>
   <div class="loading" id="loading" hidden aria-live="polite">
     <div class="bar2"></div>

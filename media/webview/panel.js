@@ -499,7 +499,6 @@
     $('bodyNoteText').textContent = res?.note ?? '';
     $('openBody').hidden = !res?.canOpen;
     $('copyBody').hidden = !res || res.head || res.format === 'Binary';
-    $('copyBody').textContent = 'Copy';
     $('saveBody').hidden = !res?.canSave;
     $('resBodyTab').disabled = !!res?.head;
     renderTests(view);
@@ -750,10 +749,6 @@
       $('reqCookiesNote').textContent = m.off ? 'Send saved cookies is off for this request (Settings).' : m.list.length ? 'These saved cookies are sent with the request (values masked). Manage them in the Cookies view of the http.me sidebar.' : 'No saved cookie matches this URL yet. Cookies from responses are saved automatically.';
     }
     if (m.type === 'scripts') { scripts = m; renderScripts(); }
-    if (m.type === 'copied') {
-      $('copyBody').textContent = 'Copied ✓';
-      setTimeout(() => { $('copyBody').textContent = 'Copy'; }, 1500);
-    }
     if (m.type === 'beautifyResult') { $('beautifyNote').hidden = !m.error; $('beautifyNote').textContent = m.error || ''; }
     if (m.type === 'others') { $('others').hidden = !m.n; $('othersText').textContent = othersText(m.n); }
     if (m.type === 'scriptSelect') { scripts && renderScripts(); const it = scItems().find((x) => x.file === m.path); if (it) scSelect(it); }

@@ -444,7 +444,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
           // body terpotong (> 1 MB): isi utuh dari file cache
           const full = s.view?.kind === 'response' && s.view.canOpen && s.bodyFile ? await fs.readFile(s.bodyFile, 'utf8') : m.text;
           await vscode.env.clipboard.writeText(full);
-          void panel.webview.postMessage({ type: 'copied' });
+          void vscode.window.showInformationMessage('Response body copied to the clipboard.');
         } else if (m.type === 'beautify') {
           const r = parseRequest(doc.getText());
           const out = beautifyBody(r.body, r.bodyType);

@@ -206,5 +206,5 @@ test('review R8: highlightJs mewarnai keyword / string / angka / komentar / fung
 
 test('review R9: tombol Copy di bar response', () => {
   const html = require('node:fs').readFileSync(join(__dirname, '..', '..', '..', 'media', 'webview', 'panel.html'), 'utf8') as string;
-  assert.match(html, /<button[^>]*id="copyBody"[^>]*>Copy<\/button>/);
+  assert.match(html, /<button[^>]*id="copyBody"[^>]*aria-label="Copy response body"[^>]*><svg[\s\S]*?<\/svg><\/button>/, 'R10: ikon saja');
 });
