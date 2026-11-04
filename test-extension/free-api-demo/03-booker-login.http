@@ -1,0 +1,11 @@
+### Login (restful-booker): token saved to BOOKER_TOKEN
+# Run this first: 05-booker-update.http and 11-bearer.http use the token.
+POST {{BOOKER_URL}}/auth
+Content-Type: application/json
+
+{
+  "username": "{{BOOKER_USERNAME}}",
+  "password": "{{BOOKER_PASSWORD}}"
+}
+
+> ./scripts/save-booker-token.js

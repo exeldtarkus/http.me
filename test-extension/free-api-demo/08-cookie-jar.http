@@ -1,0 +1,7 @@
+### Cookie jar: Set-Cookie on a redirect hop is saved (Cookies tab, Cookies view in the sidebar)
+GET {{HTTPBIN_URL}}/cookies/set?session=demo-{{$randomInt 1 999}}
+
+> {%
+  const cookies = httpme.response.json();
+  httpme.test('Server saw the session cookie after the redirect', () => httpme.expect(cookies.cookies.session).toMatch(/^demo-\d+$/));
+%}

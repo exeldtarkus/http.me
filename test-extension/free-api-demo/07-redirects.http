@@ -1,0 +1,6 @@
+### Follow 3 redirects (watch the loading label: Following redirect n/10, then the Timeline tab)
+GET {{HTTPBIN_URL}}/redirect/3
+
+> {%
+  httpme.test('Ends with 200 after the redirects', () => httpme.expect(httpme.response.status).toBe(200));
+%}

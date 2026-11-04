@@ -1,0 +1,14 @@
+### Skipped by a script (not sent)
+< {% httpme.skip(); %}
+GET {{HTTPBIN_URL}}/get?case=skipped
+
+### Pre-request script error (not sent, error in the Tests tab and the http.me log)
+< {% throw new Error('Demo: pre-request script failed'); %}
+GET {{HTTPBIN_URL}}/get?case=error
+
+### No scripts at all (# @no-scripts: folder scripts do not run either)
+# @no-scripts
+GET {{HTTPBIN_URL}}/get?case=no-scripts
+
+### Runs normally
+GET {{HTTPBIN_URL}}/delay/1

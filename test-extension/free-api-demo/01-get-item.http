@@ -1,0 +1,12 @@
+### Get one item (JSONPlaceholder)
+# Environment: select demo-dev (POST_ID = 1) or demo-prod (POST_ID = 2) in the status bar.
+# {{$timestamp}} is a dynamic variable; the folder scripts pre-request.js / post-request.js also run.
+GET {{JSONPLACEHOLDER_URL}}/posts/{{POST_ID}}?t={{$timestamp}}
+Accept: application/json
+
+> {%
+  const item = httpme.response.json();
+  httpme.test('Status code is 200', () => httpme.expect(httpme.response.status).toBe(200));
+  httpme.test('Id matches POST_ID of the Environment', () => httpme.expect(String(item.id)).toBe(httpme.environment.get('POST_ID')));
+  httpme.test('Has a title', () => httpme.expect(item).toHaveProperty('title'));
+%}

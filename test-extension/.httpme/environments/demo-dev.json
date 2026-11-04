@@ -1,0 +1,41 @@
+{
+  "httpmeFormat": 1,
+  "variables": [
+    {
+      "key": "JSONPLACEHOLDER_URL",
+      "value": "https://jsonplaceholder.typicode.com"
+    },
+    {
+      "key": "HTTPBIN_URL",
+      "value": "https://httpbingo.org"
+    },
+    {
+      "key": "BOOKER_URL",
+      "value": "https://restful-booker.herokuapp.com"
+    },
+    {
+      "key": "BOOKER_USERNAME",
+      "value": "admin"
+    },
+    {
+      "key": "BOOKER_PASSWORD",
+      "value": "password123"
+    },
+    {
+      "key": "BOOKER_TOKEN",
+      "value": null
+    },
+    {
+      "key": "BOOKING_ID",
+      "value": null
+    },
+    {
+      "key": "POST_ID",
+      "value": "1"
+    },
+    {
+      "key": "SIGNING_SECRET",
+      "value": "demo-secret-dev"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+### Create an item (JSONPlaceholder, fake write)
+POST {{JSONPLACEHOLDER_URL}}/posts
+Content-Type: application/json
+
+{
+  "title": "http.me demo {{$uuid}}",
+  "body": "created at {{$isoTimestamp}}",
+  "userId": {{POST_ID}}
+}
+
+> {%
+  const json = httpme.response.json();
+  httpme.test('Status code is 201', () => httpme.expect(httpme.response.status).toBe(201));
+  httpme.test('Server returns a new id', () => httpme.expect(json.id).toBeGreaterThan(100));
+  httpme.test('Title is echoed', () => httpme.expect(json.title).toMatch(/^http\.me demo /));
+%}

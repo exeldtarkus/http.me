@@ -1,0 +1,8 @@
+### Signed request echoed by httpbingo
+# Before request: folder pre-request.js -> ./scripts/sign-request.js (requires ./lib/sign.js).
+# After response: folder post-request.js -> 06-signed-echo.post-request.js (this request's own script).
+< ./scripts/sign-request.js
+POST {{HTTPBIN_URL}}/anything
+Content-Type: application/json
+
+{"order": 42, "note": "signed by http.me"}

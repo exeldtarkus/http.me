@@ -1,0 +1,8 @@
+### Tests tab with a failing test (one test fails on purpose)
+GET {{HTTPBIN_URL}}/status/404
+
+> {%
+  httpme.test('Status is 404', () => httpme.expect(httpme.response.status).toBe(404));
+  httpme.test('(expected to fail) status is 200', () => httpme.expect(httpme.response.status).toBe(200));
+  console.warn('One failing test above is expected');
+%}

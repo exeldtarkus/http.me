@@ -1,0 +1,21 @@
+### Update the booking (needs BOOKER_TOKEN from 03 and BOOKING_ID from 04)
+# The pre-request script skips the request when there is no token yet.
+< ./scripts/require-booker-token.js
+PUT {{BOOKER_URL}}/booking/{{BOOKING_ID}}
+Content-Type: application/json
+Accept: application/json
+Cookie: token={{BOOKER_TOKEN}}
+
+{
+  "firstname": "Updated",
+  "lastname": "Demo",
+  "totalprice": 200,
+  "depositpaid": false,
+  "bookingdates": { "checkin": "2026-12-01", "checkout": "2026-12-03" },
+  "additionalneeds": "Late checkout"
+}
+
+> {%
+  httpme.test('Status code is 200', () => httpme.expect(httpme.response.status).toBe(200));
+  httpme.test('Name updated', () => httpme.expect(httpme.response.json().firstname).toBe('Updated'));
+%}

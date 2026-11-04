@@ -1,0 +1,9 @@
+### Bearer token from the Environment (send 03-booker-login.http first)
+GET {{HTTPBIN_URL}}/bearer
+Authorization: Bearer {{BOOKER_TOKEN}}
+
+> {%
+  const json = httpme.response.json();
+  httpme.test('Authenticated', () => httpme.expect(json.authenticated).toBe(true));
+  httpme.test('Token is the one saved by the login script', () => httpme.expect(json.token).toBe(httpme.environment.get('BOOKER_TOKEN')));
+%}

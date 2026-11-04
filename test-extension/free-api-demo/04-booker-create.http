@@ -1,0 +1,7 @@
+### Create a booking: body built by a pre-request script, id saved to BOOKING_ID
+< ./scripts/new-booking-body.js
+POST {{BOOKER_URL}}/booking
+Content-Type: application/json
+Accept: application/json
+
+> ./scripts/save-booking-id.js
