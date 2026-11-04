@@ -88,6 +88,7 @@
   .kv td.c { width: 22px; } .kv td.x { width: 22px; text-align: center; }
   .kv input[type=text] { width: 100%; border-color: transparent; background: transparent; font: 12px var(--mono); padding: 2px 4px; }
   .kv input[type=text]:hover, .kv input[type=text]:focus { border-color: var(--line); background: var(--input); }
+  .kv input[type=text]:disabled { opacity: .5; cursor: not-allowed; border-color: transparent; background: transparent; }
   .kv tr.off input[type=text] { color: var(--muted); text-decoration: line-through; }
   .kv .del { border: 0; background: none; color: var(--muted); visibility: hidden; }
   .kv tr:hover .del, .kv tr:focus-within .del { visibility: visible; }

@@ -187,11 +187,13 @@
       del.setAttribute('aria-label', 'Remove');
       tr.append(el('td', { className: 'c' }, [on]), el('td', {}, [mirror(k)]), el('td', {}, [mirror(v)]), el('td', { className: 'x' }, [del]));
       tbody.append(tr);
+      const lockValue = () => { v.disabled = !row[keyName]; v.title = v.disabled ? 'Fill in the Key first' : ''; };
+      lockValue();
       const live = () => {
         if (isNew) { isNew = false; rows.push(row); k.placeholder = ''; v.placeholder = ''; addRow({ [keyName]: '', value: '', enabled: true }, true); }
       };
       on.onchange = () => { live(); row.enabled = on.checked; tr.className = row.enabled ? '' : 'off'; onChange(false); };
-      k.oninput = () => { live(); row[keyName] = k.value; onChange(false); };
+      k.oninput = () => { live(); row[keyName] = k.value; lockValue(); onChange(false); };
       v.oninput = () => { live(); row.value = v.value; onChange(false); };
       del.onclick = () => { if (isNew) return; rows.splice(rows.indexOf(row), 1); onChange(true); };
     };
