@@ -217,6 +217,8 @@
     $('beautify').hidden = !['json', 'xml'].includes(req.bodyType) || !!req.bodyFile;
     $('beautifyNote').hidden = true;
     $('bodyText').hidden = form || req.bodyType === 'none';
+    // pembungkus mirror (flex: 1) ikut disembunyikan: tabel form langsung di bawah pilihan tipe body
+    $('bodyText').closest('.vwrap').hidden = $('bodyText').hidden;
     $('formTable').hidden = !form;
     if (form) {
       formRows = formToRows(req.body);

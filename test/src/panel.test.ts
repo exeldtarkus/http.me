@@ -182,3 +182,10 @@ test('review R6: urutan Tab tabel key/value = Key → Value → ✕ → Key bari
   assert.match(fs.readFileSync(join(dir, 'panel.html'), 'utf8'), /\.kv tr:hover \.del, \.kv tr:focus-within \.del \{ visibility: visible; \}/);
   assert.match(fs.readFileSync(join(dir, 'panel.js'), 'utf8'), /el\('input', \{ type: 'checkbox', checked: row\.enabled, title: '[^']*', tabIndex: -1 \}\)/);
 });
+
+test('review R7: body form / none menyembunyikan pembungkus editor teks (bukan hanya textarea)', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  assert.match(fs.readFileSync(join(dir, 'panel.html'), 'utf8'), /\.vwrap\[hidden\] \{ display: none; \}/);
+  assert.match(fs.readFileSync(join(dir, 'panel.js'), 'utf8'), /\$\('bodyText'\)\.closest\('\.vwrap'\)\.hidden = \$\('bodyText'\)\.hidden;/);
+});
