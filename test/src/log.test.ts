@@ -48,3 +48,9 @@ test('maskValues: nilai Secret Environment / Globals di-mask (terpanjang dulu), 
   assert.equal(maskValues('GET https://a/?k=s3cret-long&p=s3cret token s3cret', ['s3cret', 's3cret-long', '']), 'GET https://a/?k=***&p=*** token ***');
   assert.equal(maskValues('nothing', []), 'nothing');
 });
+
+test('maskSecrets: cookie di tengah baris, Set-Cookie, curl -b / --cookie; nilai cookie jar lewat maskValues', () => {
+  assert.equal(maskSecrets("request failed (headers: Cookie: JSESSIONID=abc; t=1) and Set-Cookie: s=2; Path=/"), 'request failed (headers: Cookie: ***) and Set-Cookie: ***');
+  assert.equal(maskSecrets("curl 'https://a' -b 'sid=abc; x=1' --cookie \"k=v\""), "curl 'https://a' -b '***' --cookie \"***\"");
+  assert.equal(maskValues('GET /home sid=S3cretSession', ['S3cretSession']), 'GET /home sid=***');
+});

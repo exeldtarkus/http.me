@@ -16,6 +16,8 @@ export type ParsedRequest = {
   body: string; bodyType: BodyType;
   followRedirects: boolean; insecure: boolean; timeoutSec: number | undefined;
   /** # @no-cookie-jar: cookie tersimpan tidak dikirim / disimpan */ noCookieJar: boolean;
+  /** # @no-send-cookies: cookie jar tidak dikirim */ noSendCookies: boolean;
+  /** # @no-save-cookies: Set-Cookie dari response tidak disimpan */ noSaveCookies: boolean;
   /** # @login: request login Environment */ login: boolean;
   /** # @operation: operationId asal OpenAPI */ operation: string | undefined;
   /** # @auth …: auth yang bukan header standar (teks mentah setelah @auth) */ auth: string | undefined;
@@ -41,7 +43,7 @@ export function bodyTypeOf(contentType: string | undefined, body: string): BodyT
 export const emptyRequest = (): ParsedRequest => ({
   vars: [], title: undefined, name: undefined, preamble: [], method: 'GET', url: '', headers: [], disabledParams: [], body: '', bodyType: 'none',
   followRedirects: true, insecure: false, timeoutSec: undefined,
-  noCookieJar: false, login: false, operation: undefined, auth: undefined, noScripts: false, noPre: false, noPost: false,
+  noCookieJar: false, noSendCookies: false, noSaveCookies: false, login: false, operation: undefined, auth: undefined, noScripts: false, noPre: false, noPost: false,
   preScripts: [], postScripts: [], bodyFile: undefined,
 });
 
@@ -60,7 +62,7 @@ function readScript(lines: string[], i: number): { script: string; end: number }
 const POST_LINE = /^>\s*\S/;
 
 /** metadata tanpa nilai: nama -> field boolean */
-const FLAGS = { 'no-cookie-jar': 'noCookieJar', login: 'login', 'no-scripts': 'noScripts', 'no-pre': 'noPre', 'no-post': 'noPost' } as const;
+const FLAGS = { 'no-cookie-jar': 'noCookieJar', 'no-send-cookies': 'noSendCookies', 'no-save-cookies': 'noSaveCookies', login: 'login', 'no-scripts': 'noScripts', 'no-pre': 'noPre', 'no-post': 'noPost' } as const;
 
 /** baris metadata # @… / // @…: diterapkan ke request; false = bukan metadata http.me (komentar biasa) */
 function applyMeta(r: ParsedRequest, disabled: Header[], t: string): boolean {
@@ -139,6 +141,8 @@ export function serializeRequest(r: ParsedRequest): string {
   if (r.name) out.push(`# @name ${r.name}`);
   if (!r.followRedirects) out.push('# @no-redirect');
   if (r.noCookieJar) out.push('# @no-cookie-jar');
+  if (r.noSendCookies) out.push('# @no-send-cookies');
+  if (r.noSaveCookies) out.push('# @no-save-cookies');
   if (r.timeoutSec !== undefined) out.push(`# @timeout ${r.timeoutSec}`);
   if (r.insecure) out.push('# @insecure');
   if (r.login) out.push('# @login');
@@ -162,6 +166,10 @@ export function serializeRequest(r: ParsedRequest): string {
 export type SendableRequest = { method: string; url: string; headers: [string, string][]; body: string | Buffer | undefined };
 
 /** request siap kirim: header nonaktif dibuang, body kosong = tanpa body */
+/** opsi cookie jar request: kirim cookie tersimpan / simpan Set-Cookie (default keduanya) */
+export const cookieFlags = (r: ParsedRequest): { send: boolean; save: boolean } =>
+  ({ send: !r.noCookieJar && !r.noSendCookies, save: !r.noCookieJar && !r.noSaveCookies });
+
 export const toHttpRequest = (r: ParsedRequest): SendableRequest => ({
   method: r.method, url: r.url,
   headers: r.headers.filter((h) => h.enabled && h.name !== '').map((h): [string, string] => [h.name, h.value]),

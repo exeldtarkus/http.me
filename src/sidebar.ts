@@ -534,7 +534,7 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
       if (!uri) return;
       const text = (await vscode.workspace.openTextDocument(uri)).getText();
       const blocks = splitBlocks(text);
-      const curl = (blocks.length > 1 ? blocks.map((b) => parseRequest(b.text)) : [parseRequest(text)]).map(toCurl).join('\n\n');
+      const curl = (blocks.length > 1 ? blocks.map((b) => parseRequest(b.text)) : [parseRequest(text)]).map((r) => toCurl(r)).join('\n\n');
       await vscode.env.clipboard.writeText(curl);
       void vscode.window.showInformationMessage(blocks.length > 1 ? `${blocks.length} cURL commands copied.` : 'cURL command copied.');
     }),

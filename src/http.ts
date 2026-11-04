@@ -13,13 +13,15 @@ export type SendOptions = {
   onError?: (where: string, e: unknown) => void;
   /** batas body di memory (default 1 MB); sisanya hanya di bodyFile */ maxMemory?: number;
   /** file tujuan body utuh bila body > maxMemory atau biner (tidak dibuat untuk body kecil) */ bodyFile?: string;
+  /** cookie jar: header Cookie per hop + Set-Cookie tiap hop disimpan (redirect login ikut tercatat) */
+  cookies?: { get(url: URL): string | undefined; set(url: URL, setCookies: string[]): void };
 };
 export type HttpResponse = {
   status: number; statusText: string; headers: [string, string][];
   /** body di memory: utuh, atau potongan awal bila truncated, kosong bila biner */ body: Buffer;
   /** ukuran body dalam byte */ size: number; timeMs: number; url: string;
   truncated?: boolean; binary?: boolean; bodyFile?: string;
-  /** hop redirect yang diikuti: status + URL asal */ redirects?: { status: number; url: string }[];
+  /** hop redirect yang diikuti: status + URL asal + Set-Cookie hop itu (Timeline) */ redirects?: { status: number; url: string; setCookies?: string[] }[];
 };
 export type ErrorKind = 'timeout' | 'cancelled' | 'network';
 export class RequestError extends Error {
@@ -131,6 +133,16 @@ function readBody(res: http.IncomingMessage, opts: SendOptions): Promise<{ body:
   });
 }
 
+/** header Cookie milik request menang; cookie jar dengan nama lain ditambahkan ke header yang sama */
+function withJar(headers: [string, string][], jar: string | undefined): [string, string][] {
+  if (!jar) return headers;
+  const i = headers.findIndex(([k]) => k.toLowerCase() === 'cookie');
+  if (i < 0) return [...headers, ['Cookie', jar]];
+  const own = new Set(headers[i][1].split(';').map((p) => p.split('=')[0].trim()));
+  const extra = jar.split('; ').filter((p) => !own.has(p.split('=')[0]));
+  return extra.length ? headers.map((h, j) => (j === i ? [h[0], `${h[1]}; ${extra.join('; ')}`] : h)) : headers;
+}
+
 /**
  * kirim request; redirect diikuti sendiri (maks 10) seperti fetch: 303 dan 301/302 untuk POST jadi GET tanpa body,
  * 307/308 tetap method + body, Authorization dibuang bila pindah origin.
@@ -153,11 +165,13 @@ export async function send(req: HttpRequest, opts: SendOptions = {}): Promise<Ht
   let method = req.method;
   let headers = req.headers;
   let body = sendsBody(method) ? req.body : undefined;
-  const redirects: { status: number; url: string }[] = [];
+  const redirects: { status: number; url: string; setCookies?: string[] }[] = [];
   try {
     for (;;) {
-      const res = await request(url, method, headers, body, signal, !!opts.insecure);
+      const res = await request(url, method, opts.cookies ? withJar(headers, opts.cookies.get(url)) : headers, body, signal, !!opts.insecure);
       const status = res.statusCode ?? 0;
+      const setCookies = res.headers['set-cookie'] ?? [];
+      if (opts.cookies && setCookies.length) opts.cookies.set(url, setCookies);
       const location = res.headers.location;
       if (opts.followRedirects === false || !REDIRECT.has(status) || !location) {
         const b = await readBody(res, opts);
@@ -168,7 +182,7 @@ export async function send(req: HttpRequest, opts: SendOptions = {}): Promise<Ht
       }
       res.resume(); // body halaman redirect tidak dipakai
       if (redirects.length >= MAX_REDIRECTS) throw new RequestError(`Too many redirects (${MAX_REDIRECTS})`, 'network');
-      redirects.push({ status, url: url.href });
+      redirects.push({ status, url: url.href, ...(setCookies.length ? { setCookies } : {}) });
       const next = parseUrl(location, url);
       if (status === 303 ? method !== 'HEAD' : (status === 301 || status === 302) && method === 'POST') {
         method = 'GET';

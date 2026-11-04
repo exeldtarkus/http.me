@@ -123,7 +123,7 @@ function isRequest(v: unknown): v is ParsedRequest {
     && r.preamble.every((l) => typeof l === 'string') && (r.timeoutSec === undefined || Number.isInteger(r.timeoutSec))
     && Array.isArray(r.vars) && r.vars.every((v) => typeof v?.name === 'string' && typeof v.value === 'string')
     && [r.title, r.name, r.operation, r.auth].every((v) => v === undefined || typeof v === 'string')
-    && [r.noCookieJar, r.login, r.noScripts, r.noPre, r.noPost].every((v) => typeof v === 'boolean')
+    && [r.noCookieJar, r.noSendCookies, r.noSaveCookies, r.login, r.noScripts, r.noPre, r.noPost].every((v) => typeof v === 'boolean')
     && [r.preScripts, r.postScripts].every((a) => Array.isArray(a) && a.every((x) => typeof x === 'string'))
     && (r.bodyFile === undefined || typeof r.bodyFile === 'string');
 }

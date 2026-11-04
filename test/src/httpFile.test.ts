@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { emptyRequest, parseRequest, serializeRequest, toHttpRequest, toHttpRequestWithFile, splitBlocks, type ParsedRequest } from '../../src/httpFile';
+import { emptyRequest, parseRequest, serializeRequest, toHttpRequest, toHttpRequestWithFile, splitBlocks, type ParsedRequest , cookieFlags } from '../../src/httpFile';
 
 test('parseRequest: baris request, header, body; baris lain di atas disimpan apa adanya', () => {
   const r = parseRequest('### Log page view\n# @name logPageView\n\nPOST https://api.test/log?a=1 HTTP/1.1\nContent-Type: application/json\nX-Id: 7\n\n{"a":1}\n');
@@ -174,4 +174,14 @@ test('bug: komentar / metadata di tengah blok header bukan header', () => {
   const r = parseRequest('GET https://a\nAccept: */*\n# @disabled X-Off: 1\n// catatan\nX-On: 2\n');
   assert.deepEqual(r.headers, [{ name: 'Accept', value: '*/*', enabled: true }, { name: 'X-On', value: '2', enabled: true }, { name: 'X-Off', value: '1', enabled: false }]);
   assert.deepEqual(r.preamble, ['// catatan']);
+});
+
+test('metadata cookie: # @no-send-cookies / # @no-save-cookies (default kirim & simpan); @no-cookie-jar = keduanya mati', () => {
+  const r = parseRequest('# @no-send-cookies\n# @no-save-cookies\nGET https://a\n');
+  assert.deepEqual([r.noSendCookies, r.noSaveCookies], [true, true]);
+  assert.equal(serializeRequest(r), '# @no-send-cookies\n# @no-save-cookies\nGET https://a\n');
+  const plain = parseRequest('GET https://a\n');
+  assert.deepEqual([plain.noSendCookies, plain.noSaveCookies], [false, false]);
+  assert.deepEqual(cookieFlags(parseRequest('# @no-cookie-jar\nGET https://a\n')), { send: false, save: false });
+  assert.deepEqual(cookieFlags(parseRequest('# @no-save-cookies\nGET https://a\n')), { send: true, save: false });
 });

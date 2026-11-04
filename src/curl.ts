@@ -136,10 +136,20 @@ export function parseCurl(command: string): CurlResult {
 
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
-/** Copy as cURL: perintah bash multi-baris (header aktif, body bila method membawa body, -L / -k) */
-export function toCurl(r: ParsedRequest): string {
+/**
+ * Copy as cURL: perintah bash multi-baris (header aktif, body bila method membawa body, -L / -k).
+ * Cookie = setara password: header Cookie hanya ikut bila withCookies, digabung dengan cookie jar (nama di request menang).
+ */
+export function toCurl(r: ParsedRequest, opts: { withCookies?: boolean; jar?: string } = {}): string {
   const first = `curl${r.method === 'GET' ? '' : ` -X ${r.method}`} ${quote(r.url)}`;
-  const rest = r.headers.filter((h) => h.enabled && h.name).map((h) => `-H ${quote(`${h.name}: ${h.value}`)}`);
+  const isCookie = (name: string) => name.toLowerCase() === 'cookie';
+  const rest = r.headers.filter((h) => h.enabled && h.name && !isCookie(h.name)).map((h) => `-H ${quote(`${h.name}: ${h.value}`)}`);
+  if (opts.withCookies) {
+    const own = r.headers.filter((h) => h.enabled && isCookie(h.name)).flatMap((h) => h.value.split(';').map((p) => p.trim()).filter(Boolean));
+    const names = new Set(own.map((p) => p.split('=')[0]));
+    const all = [...own, ...(opts.jar ?? '').split(';').map((p) => p.trim()).filter((p) => p && !names.has(p.split('=')[0]))];
+    if (all.length) rest.push(`-b ${quote(all.join('; '))}`);
+  }
   if (sendsBody(r.method)) {
     if (r.bodyFile) rest.push(`--data-binary ${quote(`@${r.bodyFile}`)}`);
     else if (r.body !== '') rest.push(`--data-raw ${quote(r.body)}`);
@@ -154,7 +164,7 @@ export function toCurl(r: ParsedRequest): string {
 const BROWSER_HEADER = /^(sec-ch-ua(-.*)?|sec-fetch-.*|sec-gpc|dnt|priority|upgrade-insecure-requests|user-agent|accept-language|accept-encoding|referer|origin|cache-control|pragma)$/i;
 
 /** paste / Import from Clipboard: parseCurl + header browser dimatikan + ringkasan satu kalimat untuk notifikasi */
-export function importCurl(command: string): CurlResult & { summary: string } {
+export function importCurl(command: string): CurlResult & { summary: string; /** isi header Cookie / -b (ditawarkan disimpan ke cookie jar) */ cookies?: string } {
   const res = parseCurl(command);
   res.request.followRedirects = true; // perintah dari browser tidak pernah memakai -L, padahal browser mengikuti redirect
   let off = 0;
@@ -163,5 +173,6 @@ export function importCurl(command: string): CurlResult & { summary: string } {
   try { where = new URL(res.request.url).pathname; } catch { /* URL berisi {{var}}: ditampilkan apa adanya */ }
   const parts = [off ? `${off} browser header${off === 1 ? '' : 's'} disabled` : ''].filter(Boolean);
   const summary = `Imported ${res.request.method} ${where}${parts.length ? `: ${parts.join(', ')}.` : '.'}${res.warnings.length ? ` ${res.warnings.join('; ')}` : ''}`;
-  return { ...res, summary };
+  const cookies = res.request.headers.find((h) => h.name.toLowerCase() === 'cookie')?.value;
+  return { ...res, summary, ...(cookies ? { cookies } : {}) };
 }

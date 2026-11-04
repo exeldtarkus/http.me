@@ -85,3 +85,13 @@ test('importCurl: contoh Copy as cURL Chrome -> request lengkap, header browser 
   assert.equal(request.followRedirects, true, 'Copy as cURL browser tidak pernah memakai -L, padahal browser mengikuti redirect');
   assert.equal(importCurl(`curl --http2 https://a/x`).summary, 'Imported GET /x. Ignored option --http2');
 });
+
+test('toCurl: header Cookie tidak ikut kecuali dicentang (withCookies); cookie jar digabung; importCookies dari Cookie: / -b', () => {
+  const req = parseRequest('GET https://a.test/x\nCookie: sid=1\nX-A: 1\n');
+  assert.equal(toCurl(req), `curl 'https://a.test/x' \\\n  -H 'X-A: 1' \\\n  -L`);
+  assert.equal(toCurl(req, { withCookies: true, jar: 'theme=dark; sid=9' }), `curl 'https://a.test/x' \\\n  -H 'X-A: 1' \\\n  -b 'sid=1; theme=dark' \\\n  -L`);
+  assert.equal(toCurl(parseRequest('GET https://a\n'), { withCookies: true, jar: 'k=v' }), `curl 'https://a' \\\n  -b 'k=v' \\\n  -L`);
+  assert.equal(importCurl(`curl https://a -b 'sid=1; t=2'`).cookies, 'sid=1; t=2');
+  assert.equal(importCurl(`curl https://a -H 'Cookie: a=b'`).cookies, 'a=b');
+  assert.equal(importCurl(`curl https://a`).cookies, undefined);
+});

@@ -7,6 +7,9 @@ export const errStack = (e: unknown): string => (e instanceof Error ? e.stack ??
 export function maskSecrets(s: string): string {
   return s
     .replace(/^(\s*(?:proxy-)?authorization|\s*cookie|\s*set-cookie)(\s*:\s*)\S.*$/gim, '$1$2***')
+    // cookie di tengah baris: sampai ')' atau akhir baris
+    .replace(/\b((?:set-)?cookie\s*:\s*)[^\n)]+/gim, '$1***')
+    .replace(/(\s(?:-b|--cookie)\s+)(['"])(?:(?!\2).)*\2/g, '$1$2***$2')
     .replace(/\bBearer\s+[^\s"']+/g, 'Bearer ***')
     .replace(/([?&;](?:password|passwd|pwd|token|access_token|refresh_token|client_secret|secret|api[_-]?key)=)[^&#\s]*/gi, '$1***');
 }
