@@ -16,15 +16,14 @@ const panel = require(join(__dirname, '..', '..', '..', 'media', 'webview', 'pan
 };
 type Vars = { ok: string[]; nulls: string[]; names: string[] };
 
-test('request panel: Send berikon + label, Cancel berlabel teks', () => {
+test('request panel: Send berlabel teks, Cancel berlabel teks', () => {
   const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
   const html = readFileSync(join(dir, 'panel.html'), 'utf8');
   const js = readFileSync(join(dir, 'panel.js'), 'utf8');
   const send = html.match(/<button[^>]*id="send"[^>]*>[\s\S]*?<\/button>/)?.[0] ?? '';
   assert.match(send, /aria-label="Send request"/);
   assert.match(send, /title="Send \(Ctrl\+Enter\)"/);
-  assert.match(send, /<svg[^>]*aria-hidden="true"/);
-  assert.match(send, /<span id="sendText">Send<\/span>/, 'konsep A (R29): Send berlabel + petunjuk shortcut');
+  assert.match(send, /<span id="sendText">Send<\/span>/);
   assert.match(js, /Cancel request/);
   assert.match(js, /Cancel \(Escape\)/);
   assert.match(js, /Send request/);
@@ -180,7 +179,7 @@ test('review R3/R4: sash bisa di-drag (separator), scrollbar ikut tema, toolbar 
   const html = require('node:fs').readFileSync(join(__dirname, '..', '..', '..', 'media', 'webview', 'panel.html'), 'utf8') as string;
   assert.match(html, /<div class="sash" id="sash" role="separator" aria-orientation="horizontal"[^>]*tabindex="0"/);
   assert.match(html, /::-webkit-scrollbar-thumb \{ background: var\(--vscode-scrollbarSlider-background/);
-  assert.match(html, /<button[^>]*id="beautify"[^>]*>Beautify<\/button>/);
+  assert.match(html, /<button[^>]*id="beautify"[^>]*>[\s\S]*?Beautify<\/button>/);
   assert.match(html, /\.reqpanes > \.pane \{ flex: 1 1 auto;/);
 });
 
@@ -259,24 +258,31 @@ test('review R28: markSegments memotong segmen mirror untuk garis merah (token v
   assert.deepEqual(panel.markSegments([{ text: 'abc' }], 0, 3), [{ text: 'abc', err: true }]);
 });
 
-test('review R29: konsep A (Card): Send di dalam kartu URL, Save ikon + titik belum disimpan, tab pill, tipe body segmented, body none = empty state, response dalam kartu', () => {
+test('review R29: body none = empty state (+ JSON / + Form / + Text), Send idle / Cancel', () => {
   const fs = require('node:fs') as typeof import('node:fs');
   const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
   const html = fs.readFileSync(join(dir, 'panel.html'), 'utf8');
   const js = fs.readFileSync(join(dir, 'panel.js'), 'utf8');
-  const card = html.slice(html.indexOf('<div class="urlbox">'), html.indexOf('<div class="tools">'));
-  assert.match(card, /id="send"/, 'Send di dalam kartu URL');
-  assert.match(card, /<kbd id="sendKbd">Ctrl ↵<\/kbd>/);
-  assert.match(html, /<button class="ibtn" id="save" type="button" title="Save \(Ctrl\+S\)" aria-label="Save" disabled><svg[\s\S]*?<span class="dirty"><\/span><\/button>/);
-  assert.match(html, /<button class="ibtn" type="button" id="help" aria-label="How to use" aria-describedby="helpPop"><svg/);
   assert.match(html, /<div class="bodyempty" id="bodyEmpty" hidden>/);
   for (const t of ['json', 'form', 'text']) assert.match(html, new RegExp(`<button class="btn ghost sm" type="button" data-bt="${t}">`), t);
-  assert.match(html, /\.subtabs button\.on \{[^}]*border-radius/);
-  assert.match(html, /\.radios label:has\(input:checked\) \{/);
-  assert.match(html, /\.resp \{[^}]*border-radius: 10px;/);
   assert.match(js, /\$\('bodyEmpty'\)\.hidden = req\.bodyType !== 'none' \|\| !!req\.bodyFile;/);
   assert.match(js, /for \(const b of \$\('bodyEmpty'\)\.querySelectorAll\('button'\)\)/);
   assert.match(js, /\$\('sendIdle'\)\.hidden = running;/);
+});
+
+test('review R30: UI panel datar: Send menempel di kanan bar URL, Save tombol teks + titik, tab garis bawah + angka kecil, Beautify berikon, empty state response', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const html = fs.readFileSync(join(dir, 'panel.html'), 'utf8');
+  const bar = html.slice(html.indexOf('<div class="urlbox">'), html.indexOf('id="save"'));
+  assert.match(bar, /<button class="btn pri" id="send"[^>]*><span id="sendIdle"><span id="sendText">Send<\/span><\/span>/, 'Send teks, di dalam bar');
+  assert.match(html, /#send \{[^}]*align-self: stretch;[^}]*border-radius: 0 5px 5px 0;/);
+  assert.match(html, /<button class="btn ghost" id="save" type="button" title="Save \(Ctrl\+S\)" aria-label="Save" disabled>Save<span class="dirty"><\/span><\/button>/);
+  assert.match(html, /\.subtabs button\.on \{[^}]*border-bottom-color: var\(--focus\);/);
+  assert.match(html, /\.subtabs \.n \{[^}]*vertical-align: super;/);
+  assert.match(html, /<button class="btn link" id="beautify" type="button" title="Format the JSON \/ XML body \(Shift\+Alt\+F\)" hidden><svg[^>]*aria-hidden="true"[\s\S]*?<\/svg>Beautify<\/button>/);
+  assert.match(html, /<div class="empty" id="resEmpty"><svg[^>]*aria-hidden="true"[\s\S]*?<\/svg><p>Enter the URL and click Send to get a response<\/p><\/div>/);
+  assert.doesNotMatch(html, /\.resp \{[^}]*border-radius/, 'response tidak lagi dalam kartu');
 });
 
 test('review R7: body form / none menyembunyikan pembungkus editor teks (bukan hanya textarea)', () => {
