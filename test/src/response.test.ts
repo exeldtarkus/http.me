@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { formatSize, formatTime, highlightJson, prettyJson, responseView, statusClass } from '../../src/response';
+import { formatSize, formatTime, highlightJson, highlightMarkup, parseCsv, prettyJson, prettyXml, responseView, statusClass } from '../../src/response';
 import type { HttpResponse } from '../../src/http';
 
 const res = (p: Partial<HttpResponse>): HttpResponse => ({
@@ -40,7 +40,7 @@ test('responseView: JSON pretty + warna, teks biasa di-escape, header & meta', (
   assert.equal(v.size, '7 B');
   assert.equal(v.bodyHtml, '{\n  <span class="k">&quot;a&quot;</span>: <span class="n">1</span>\n}');
   assert.deepEqual(v.headers, [['content-type', 'application/json']]);
-  const t = responseView(res({ headers: [['content-type', 'text/html']], body: Buffer.from('<p>hi</p>') }), 'GET');
+  const t = responseView(res({ headers: [['content-type', 'text/plain']], body: Buffer.from('<p>hi</p>') }), 'GET');
   assert.equal(t.bodyHtml, '&lt;p&gt;hi&lt;/p&gt;');
   const bad = responseView(res({ headers: [['content-type', 'application/json']], body: Buffer.from('{bad') }), 'GET');
   assert.equal(bad.bodyHtml, '{bad', 'JSON rusak tampil apa adanya');
@@ -64,4 +64,47 @@ test('responseView: body terpotong & biner diberi catatan + aksi', () => {
   assert.deepEqual([b.canOpen, b.canSave], [false, true]);
   const n = responseView(res({ body: Buffer.from('x'), size: 1 }), 'GET');
   assert.deepEqual([n.note, n.canOpen, n.canSave], [undefined, false, false]);
+});
+
+test('prettyXml: indent 2 spasi, elemen teks pendek satu baris; bukan XML = undefined', () => {
+  assert.equal(prettyXml('<?xml version="1.0"?><a><b x="1">t</b><c/><!-- n --></a>'),
+    '<?xml version="1.0"?>\n<a>\n  <b x="1">t</b>\n  <c/>\n  <!-- n -->\n</a>');
+  assert.equal(prettyXml('<a>\n   <b>1</b>\n</a>'), '<a>\n  <b>1</b>\n</a>');
+  assert.equal(prettyXml('plain'), undefined);
+});
+
+test('highlightMarkup: nama tag, nilai atribut, komentar diberi warna; teks di-escape', () => {
+  const html = highlightMarkup('<p class="x">a & b</p><!-- c --><br/>');
+  assert.equal(html, '&lt;<span class="k">p</span> class=<span class="s">&quot;x&quot;</span>&gt;a &amp; b&lt;/<span class="k">p</span>&gt;<span class="c">&lt;!-- c --&gt;</span>&lt;<span class="k">br</span>/&gt;');
+});
+
+test('parseCsv: kutip, koma & baris baru di dalam kutip, "" = kutip, pemisah ; terdeteksi', () => {
+  assert.deepEqual(parseCsv('a,b\n1,"x, y"\n2,"say ""hi"""\n3,"multi\nline"\n'), [['a', 'b'], ['1', 'x, y'], ['2', 'say "hi"'], ['3', 'multi\nline']]);
+  assert.deepEqual(parseCsv('a;b\r\n1;2\r\n'), [['a', 'b'], ['1', '2']]);
+  assert.deepEqual(parseCsv(''), []);
+});
+
+test('responseView: format sesuai Content-Type (JSON, XML, HTML, CSV, text, binary)', () => {
+  const v = (ct: string, body: string) => responseView(res({ headers: [['content-type', ct]], body: Buffer.from(body), size: body.length }), 'GET');
+  assert.equal(v('application/json', '{}').format, 'JSON');
+  const xml = v('application/xml; charset=utf-8', '<a><b>1</b></a>');
+  assert.equal(xml.format, 'XML');
+  assert.equal(xml.bodyHtml, '&lt;<span class="k">a</span>&gt;\n  &lt;<span class="k">b</span>&gt;1&lt;/<span class="k">b</span>&gt;\n&lt;/<span class="k">a</span>&gt;');
+  assert.equal(v('image/svg+xml', '<svg/>').format, 'XML');
+  const html = v('text/html', '<p>hi</p>');
+  assert.equal(html.format, 'HTML');
+  assert.match(html.bodyHtml, /&lt;<span class="k">p<\/span>&gt;hi/);
+  const csv = v('text/csv', 'name,qty\n<b>,2\n');
+  assert.equal(csv.format, 'CSV');
+  assert.equal(csv.bodyHtml, '<table class="csv"><thead><tr><th>name</th><th>qty</th></tr></thead><tbody><tr><td>&lt;b&gt;</td><td>2</td></tr></tbody></table>');
+  assert.equal(v('text/plain', 'a <b>').format, 'Text');
+  assert.equal(v('text/plain', 'a <b>').bodyHtml, 'a &lt;b&gt;');
+  assert.equal(responseView(res({ headers: [['content-type', 'application/pdf']], binary: true, size: 9, bodyFile: '/x' }), 'GET').format, 'Binary');
+});
+
+test('responseView: CSV besar dibatasi 1.000 baris tabel + catatan', () => {
+  const body = `n\n${Array.from({ length: 1500 }, (_, i) => i).join('\n')}\n`;
+  const v = responseView(res({ headers: [['content-type', 'text/csv']], body: Buffer.from(body), size: body.length }), 'GET');
+  assert.equal((v.bodyHtml.match(/<tr>/g) ?? []).length, 1 + 1000);
+  assert.equal(v.note, 'Showing the first 1,000 of 1,500 rows.');
 });

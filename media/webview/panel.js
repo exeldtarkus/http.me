@@ -216,6 +216,7 @@
     $('st').textContent = res ? res.status : view?.kind === 'cancelled' ? 'Cancelled' : view?.kind === 'error' ? 'Error' : '';
     $('st').className = `status ${res ? res.statusClass : view?.kind === 'error' ? 'st-5' : 'st-1'}`;
     $('ms').textContent = res ? res.time : '';
+    $('fmt').textContent = res ? res.format : '';
     $('sz').textContent = res ? res.size : '';
     $('resEmpty').hidden = !!view && !running;
     $('resBody').className = `code${view?.kind === 'error' ? ' error' : ''}`;

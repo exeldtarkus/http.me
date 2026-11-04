@@ -70,6 +70,11 @@
   pre.code { margin: 0; font: 12px/1.55 var(--vscode-editor-font-family, monospace); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
   .code .k { color: var(--code-key); } .code .s { color: var(--code-str); } .code .n { color: var(--code-num); }
   .code.error { color: var(--err); }
+  .code .c { color: var(--muted); font-style: italic; }
+  .fmt { font: 600 10.5px var(--mono); letter-spacing: .04em; }
+  table.csv { border-collapse: collapse; font: 12px var(--mono); white-space: pre-wrap; }
+  table.csv th, table.csv td { border: 1px solid var(--line); padding: 2px 8px; text-align: left; vertical-align: top; }
+  table.csv th { position: sticky; top: 0; background: var(--bg); font-weight: 600; }
   .empty { margin: 0; padding: 18px 14px; color: var(--muted); }
   .empty[hidden], .allow[hidden], .bodynote[hidden] { display: none; }
   .bodynote { margin: 8px 14px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--warn); }
@@ -148,7 +153,7 @@
   <div class="subtabs" role="tablist" aria-label="Response" id="resTabs">
     <button type="button" data-r="rbody" class="on" id="resBodyTab">Body</button>
     <button type="button" data-r="rheaders">Headers<span class="n" id="nResHeaders"></span></button>
-    <div class="right" id="meta"><span class="status" id="st"></span><span id="ms"></span><span id="sz"></span></div>
+    <div class="right" id="meta"><span class="fmt" id="fmt"></span><span class="status" id="st"></span><span id="ms"></span><span id="sz"></span></div>
   </div>
   <div class="loading" id="loading" hidden aria-live="polite">
     <div class="bar2"></div>

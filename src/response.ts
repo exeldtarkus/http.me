@@ -5,6 +5,7 @@ import { allowedMethods, MAX_BODY_MEMORY, type HttpResponse } from './http';
 export type ResponseView = {
   status: string; statusClass: string; time: string; size: string;
   headers: [string, string][];
+  /** cara body ditampilkan, dari Content-Type */ format: 'JSON' | 'XML' | 'HTML' | 'CSV' | 'Text' | 'Binary';
   /** body siap innerHTML (sudah di-escape) */
   bodyHtml: string;
   /** HEAD: hanya tab Headers */ head: boolean;
@@ -46,19 +47,110 @@ export function highlightJson(json: string): string {
   return out + esc(json.slice(last));
 }
 
+/** rapikan XML: indent 2 spasi, <b>teks</b> pendek tetap satu baris. shortcut: CDATA / teks campuran berisi '<' tidak dirapikan sempurna */
+export function prettyXml(xml: string): string | undefined {
+  const tokens = xml.trim().replace(/>\s+</g, '><').split(/(<[^>]+>)/).filter((t) => t.trim() !== '');
+  if (!tokens.length || !tokens[0].startsWith('<')) return undefined;
+  const isOpen = (t?: string) => !!t && /^<[A-Za-z_][^>]*>$/.test(t) && !t.endsWith('/>');
+  const out: string[] = [];
+  let depth = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.startsWith('</')) {
+      depth = Math.max(0, depth - 1);
+      out.push(`${'  '.repeat(depth)}${t}`);
+    } else if (isOpen(t) && tokens[i + 2]?.startsWith('</') && !tokens[i + 1].startsWith('<')) {
+      out.push(`${'  '.repeat(depth)}${t}${tokens[i + 1].trim()}${tokens[i + 2]}`);
+      i += 2;
+    } else {
+      out.push(`${'  '.repeat(depth)}${t.startsWith('<') ? t : t.trim()}`);
+      if (isOpen(t)) depth++;
+    }
+  }
+  return out.join('\n');
+}
+
+const MARKUP = /<!--[\s\S]*?-->|<(\/?)([A-Za-z_][\w:.-]*)([^>]*?)(\/?)>/g;
+
+/** warna XML / HTML: nama tag (.k), nilai atribut (.s), komentar (.c); semua teks di-escape */
+export function highlightMarkup(text: string): string {
+  let out = '';
+  let last = 0;
+  for (const m of text.matchAll(MARKUP)) {
+    out += esc(text.slice(last, m.index));
+    if (m[2] === undefined) out += `<span class="c">${esc(m[0])}</span>`;
+    else {
+      const attrs = m[3].split(/("[^"]*"|'[^']*')/).map((p, i) => (i % 2 ? `<span class="s">${esc(p)}</span>` : esc(p))).join('');
+      out += `&lt;${m[1]}<span class="k">${esc(m[2])}</span>${attrs}${m[4]}&gt;`;
+    }
+    last = m.index + m[0].length;
+  }
+  return out + esc(text.slice(last));
+}
+
+/** CSV RFC 4180: kutip, "" di dalam kutip, koma / baris baru di dalam kutip; pemisah ; bila baris pertama lebih banyak ; */
+export function parseCsv(text: string): string[][] {
+  if (text === '') return [];
+  const firstLine = text.slice(0, text.search(/\r?\n|$/));
+  const sep = (firstLine.match(/;/g) ?? []).length > (firstLine.match(/,/g) ?? []).length ? ';' : ',';
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') quoted = false;
+      else field += c;
+    } else if (c === '"' && field === '') quoted = true;
+    else if (c === sep) { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else field += c;
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+export const MAX_CSV_ROWS = 1000;
+
+function csvTable(rows: string[][]): string {
+  const [head = [], ...body] = rows;
+  const cells = (r: string[], tag: string) => r.map((c) => `<${tag}>${esc(c)}</${tag}>`).join('');
+  return `<table class="csv"><thead><tr>${cells(head, 'th')}</tr></thead><tbody>${body.slice(0, MAX_CSV_ROWS).map((r) => `<tr>${cells(r, 'td')}</tr>`).join('')}</tbody></table>`;
+}
+
 export function responseView(res: HttpResponse, method: string): ResponseView {
   const text = res.body.toString('utf8');
   const ct = res.headers.find(([k]) => k === 'content-type')?.[1] ?? '';
-  const pretty = !res.truncated && (/[/+]json\b/i.test(ct) || /^\s*[[{]/.test(text)) ? prettyJson(text) : undefined;
-  const note = res.binary ? `Binary body (${ct || 'unknown type'}, ${formatSize(res.size)}).`
+  let format: ResponseView['format'] = 'Text';
+  let bodyHtml = esc(text);
+  let note = res.binary ? `Binary body (${ct || 'unknown type'}, ${formatSize(res.size)}).`
     : res.truncated ? `Showing the first ${formatSize(MAX_BODY_MEMORY)} of ${formatSize(res.size)}.` : undefined;
+  const pretty = !res.truncated && (/[/+]json\b/i.test(ct) || /^\s*[[{]/.test(text)) ? prettyJson(text) : undefined;
+  if (res.binary) { format = 'Binary'; bodyHtml = ''; }
+  else if (pretty !== undefined) { format = 'JSON'; bodyHtml = highlightJson(pretty); }
+  else if (/[/+]json\b/i.test(ct)) format = 'JSON';
+  else if (/^(text|application)\/csv\b/i.test(ct)) {
+    format = 'CSV';
+    const rows = parseCsv(text);
+    bodyHtml = csvTable(rows);
+    if (rows.length - 1 > MAX_CSV_ROWS) note ??= `Showing the first ${MAX_CSV_ROWS.toLocaleString('en-US')} of ${(rows.length - 1).toLocaleString('en-US')} rows.`;
+  } else if (/html/i.test(ct)) { format = 'HTML'; bodyHtml = highlightMarkup(text); }
+  else if (/[/+]xml\b/i.test(ct)) { format = 'XML'; bodyHtml = highlightMarkup((!res.truncated && prettyXml(text)) || text); }
   return {
     status: `${res.status}${res.statusText ? ` ${res.statusText}` : ''}`,
     statusClass: statusClass(res.status),
     time: formatTime(res.timeMs),
     size: formatSize(res.size),
     headers: res.headers,
-    bodyHtml: pretty !== undefined ? highlightJson(pretty) : esc(text),
+    format,
+    bodyHtml,
     head: method === 'HEAD',
     allow: method === 'OPTIONS' ? allowedMethods(res.headers) : undefined,
     note,
