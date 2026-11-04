@@ -24,7 +24,15 @@
   },
   "activationEvents": [],
   "main": "./out/src/extension.js",
-  "contributes": {},
+  "contributes": {
+    "commands": [
+      {
+        "command": "httpme.whatsNew",
+        "title": "What's New",
+        "category": "http.me"
+      }
+    ]
+  },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",

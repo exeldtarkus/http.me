@@ -1,6 +1,25 @@
-import type * as vscode from 'vscode';
+import * as vscode from 'vscode';
+import { isNewerMinor, whatsNewHtml } from './whatsNew';
 
-// Lem tipis ke VS Code; command & view didaftarkan di item TODO berikutnya.
-export function activate(_context: vscode.ExtensionContext): void {}
+// versi terakhir yang pernah aktif, untuk What's New sekali per minor
+const VERSION_KEY = 'httpme.version';
+let whatsNewPanel: vscode.WebviewPanel | undefined;
+
+function openWhatsNew(ctx: vscode.ExtensionContext): void {
+  if (whatsNewPanel) return whatsNewPanel.reveal();
+  whatsNewPanel = vscode.window.createWebviewPanel('httpme.whatsNew', "What's New: http.me", vscode.ViewColumn.Active, {});
+  whatsNewPanel.webview.html = whatsNewHtml(whatsNewPanel.webview.cspSource, ctx.extension.packageJSON.version);
+  whatsNewPanel.onDidDispose(() => (whatsNewPanel = undefined));
+}
+
+export function activate(ctx: vscode.ExtensionContext): void {
+  ctx.subscriptions.push(vscode.commands.registerCommand('httpme.whatsNew', () => openWhatsNew(ctx)));
+
+  // aktivasi malas: dicek saat extension pertama dipakai, bukan saat VS Code start
+  const version: string = ctx.extension.packageJSON.version;
+  const previous = ctx.globalState.get<string>(VERSION_KEY);
+  void ctx.globalState.update(VERSION_KEY, version);
+  if (isNewerMinor(version, previous)) openWhatsNew(ctx);
+}
 
 export function deactivate(): void {}
