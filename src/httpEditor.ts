@@ -440,7 +440,12 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
         else if (m.type === 'pasteCurl' && typeof m.text === 'string') await importCurlText(m.text, doc);
         else if (m.type === 'cancel') runner.cancel(doc.uri.toString());
         else if (m.type === 'showRunning') await vscode.commands.executeCommand('httpme.showRunning');
-        else if (m.type === 'beautify') {
+        else if (m.type === 'copyBody' && typeof m.text === 'string') {
+          // body terpotong (> 1 MB): isi utuh dari file cache
+          const full = s.view?.kind === 'response' && s.view.canOpen && s.bodyFile ? await fs.readFile(s.bodyFile, 'utf8') : m.text;
+          await vscode.env.clipboard.writeText(full);
+          void panel.webview.postMessage({ type: 'copied' });
+        } else if (m.type === 'beautify') {
           const r = parseRequest(doc.getText());
           const out = beautifyBody(r.body, r.bodyType);
           if (out.text !== undefined && out.text !== r.body) await writeDocument(doc, serializeRequest({ ...r, body: out.text }));

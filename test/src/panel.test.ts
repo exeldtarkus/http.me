@@ -190,3 +190,21 @@ test('review R7: body form / none menyembunyikan pembungkus editor teks (bukan h
   assert.match(fs.readFileSync(join(dir, 'panel.html'), 'utf8'), /\.vwrap\[hidden\], \.vwrap\.area\[hidden\] \{ display: none; \}/);
   assert.match(fs.readFileSync(join(dir, 'panel.js'), 'utf8'), /\$\('bodyText'\)\.closest\('\.vwrap'\)\.hidden = \$\('bodyText'\)\.hidden;/);
 });
+
+test('review R8: highlightJs mewarnai keyword / string / angka / komentar / fungsi / httpme, teks di-escape, isi tidak berubah', () => {
+  const p = panel as unknown as { highlightJs(code: string): string };
+  const code = "// note <b>\nconst x = await httpme.response.json(); /* a */\nif (x.n > 2) console.log(`t ${x}`, 'q\\'s', 1.5e3);\n";
+  const html = p.highlightJs(code);
+  assert.match(html, /<span class="j-c">\/\/ note &lt;b&gt;<\/span>/);
+  assert.match(html, /<span class="j-k">const<\/span> x = <span class="j-k">await<\/span> <span class="j-h">httpme<\/span>\.response\.<span class="j-f">json<\/span>\(\);/);
+  assert.match(html, /<span class="j-c">\/\* a \*\/<\/span>/);
+  assert.match(html, /<span class="j-k">if<\/span> \(x\.n &gt; <span class="j-n">2<\/span>\)/);
+  assert.match(html, /<span class="j-s">`t \$\{x\}`<\/span>, <span class="j-s">'q\\'s'<\/span>, <span class="j-n">1\.5e3<\/span>/);
+  const text = html.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  assert.equal(text, code, 'tanpa tag = teks asli (posisi karakter sama dengan textarea)');
+});
+
+test('review R9: tombol Copy di bar response', () => {
+  const html = require('node:fs').readFileSync(join(__dirname, '..', '..', '..', 'media', 'webview', 'panel.html'), 'utf8') as string;
+  assert.match(html, /<button[^>]*id="copyBody"[^>]*>Copy<\/button>/);
+});

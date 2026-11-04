@@ -119,7 +119,25 @@
     return items.find((x) => x.exists && x.source !== 'own') || items.find((x) => x.source === 'own');
   }
 
-  const api = { defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
+  const JS_KEYWORDS = new Set(('const let var function return if else for while do break continue new await async try catch finally throw typeof instanceof '
+    + 'in of class extends import export from default switch case delete void yield null undefined true false this').split(' '));
+  const JS_TOKEN = /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$))|('(?:\\.|[^'\\\n])*'?|"(?:\\.|[^"\\\n])*"?|`(?:\\[\s\S]|[^`\\])*`?)|(\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b)|([A-Za-z_$][\w$]*)(?=(\s*\()?)/g;
+  const escHtml = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  /** pewarnaan sintaks editor Scripts (lapisan di bawah textarea): komentar, string, angka, keyword, fungsi, httpme; teks di-escape */
+  function highlightJs(code) {
+    let out = '';
+    let last = 0;
+    for (const m of code.matchAll(JS_TOKEN)) {
+      out += escHtml(code.slice(last, m.index));
+      last = m.index + m[0].length;
+      const cls = m[1] ? 'j-c' : m[2] ? 'j-s' : m[3] ? 'j-n'
+        : JS_KEYWORDS.has(m[4]) ? 'j-k' : m[4] === 'httpme' ? 'j-h' : m[5] !== undefined ? 'j-f' : '';
+      out += cls ? `<span class="${cls}">${escHtml(m[0])}</span>` : escHtml(m[0]);
+    }
+    return out + escHtml(code.slice(last));
+  }
+
+  const api = { highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -480,6 +498,8 @@
     $('bodyNote').hidden = !res?.note;
     $('bodyNoteText').textContent = res?.note ?? '';
     $('openBody').hidden = !res?.canOpen;
+    $('copyBody').hidden = !res || res.head || res.format === 'Binary';
+    $('copyBody').textContent = 'Copy';
     $('saveBody').hidden = !res?.canSave;
     $('resBodyTab').disabled = !!res?.head;
     renderTests(view);
@@ -521,6 +541,8 @@
     changed();
   };
   $('others').onclick = () => post({ type: 'showRunning' });
+  // Copy: teks body yang tampil; body > 1 MB diambil utuh dari file cache oleh host
+  $('copyBody').onclick = () => post({ type: 'copyBody', text: $('resBody').textContent });
   $('openBody').onclick = () => post({ type: 'openBody' });
   $('openAsText').onclick = () => post({ type: 'openAsText' });
   $('saveBody').onclick = () => post({ type: 'saveBody' });
@@ -538,8 +560,16 @@
     scTimer = undefined;
     if (scPath) post({ type: 'scriptEdit', path: scPath, text: $('scText').value });
   }
+  /** nomor baris + lapisan warna sintaks mengikuti isi textarea */
+  function scPaint() {
+    const t = $('scText');
+    $('scGutter').textContent = lineNumbers(t.value);
+    $('scHl').innerHTML = `${highlightJs(t.value)}\n`; // sudah di-escape; baris akhir ekstra = tinggi sama dengan textarea
+    $('scHl').scrollTop = t.scrollTop;
+    $('scHl').scrollLeft = t.scrollLeft;
+  }
   function scEdited() {
-    $('scGutter').textContent = lineNumbers($('scText').value);
+    scPaint();
     clearTimeout(scTimer);
     scTimer = setTimeout(scFlush, 250);
   }
@@ -549,7 +579,7 @@
     $('scFile').textContent = item ? (item.source === 'own' ? `This request · ${item.file.split(/[\\/]/).pop()}` : item.label) : '';
     $('scText').readOnly = !item || item.source === 'inline';
     $('scOpen').disabled = !item || item.source === 'inline';
-    if (item && item.source === 'inline') { $('scText').value = item.code; $('scGutter').textContent = lineNumbers(item.code); }
+    if (item && item.source === 'inline') { $('scText').value = item.code; scPaint(); }
     else if (item) post({ type: 'scriptLoad', path: item.file });
     renderChain();
   }
@@ -602,7 +632,12 @@
     };
   }
   $('scText').oninput = scEdited;
-  $('scText').onscroll = () => { $('scGutter').scrollTop = $('scText').scrollTop; };
+  $('scText').onscroll = () => {
+    const t = $('scText');
+    $('scGutter').scrollTop = t.scrollTop;
+    $('scHl').scrollTop = t.scrollTop;
+    $('scHl').scrollLeft = t.scrollLeft;
+  };
   $('scText').onkeydown = (e) => {
     if (e.key === 'Tab' && !e.shiftKey && !$('scText').readOnly) {
       e.preventDefault();
@@ -715,6 +750,10 @@
       $('reqCookiesNote').textContent = m.off ? 'Send saved cookies is off for this request (Settings).' : m.list.length ? 'These saved cookies are sent with the request (values masked). Manage them in the Cookies view of the http.me sidebar.' : 'No saved cookie matches this URL yet. Cookies from responses are saved automatically.';
     }
     if (m.type === 'scripts') { scripts = m; renderScripts(); }
+    if (m.type === 'copied') {
+      $('copyBody').textContent = 'Copied ✓';
+      setTimeout(() => { $('copyBody').textContent = 'Copy'; }, 1500);
+    }
     if (m.type === 'beautifyResult') { $('beautifyNote').hidden = !m.error; $('beautifyNote').textContent = m.error || ''; }
     if (m.type === 'others') { $('others').hidden = !m.n; $('othersText').textContent = othersText(m.n); }
     if (m.type === 'scriptSelect') { scripts && renderScripts(); const it = scItems().find((x) => x.file === m.path); if (it) scSelect(it); }
@@ -724,7 +763,7 @@
       const at = t.selectionStart;
       t.value = m.text;
       t.selectionStart = t.selectionEnd = Math.min(at, m.text.length);
-      $('scGutter').textContent = lineNumbers(m.text);
+      scPaint();
     }
     if ('view' in m) renderView(m.view);
   });
