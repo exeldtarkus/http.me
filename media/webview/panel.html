@@ -42,6 +42,7 @@
   .subtabs button.on { color: var(--fg); border-bottom-color: var(--accent); }
   .subtabs button:disabled { opacity: .45; cursor: not-allowed; }
   .subtabs .n { font-size: 11px; margin-left: 3px; font-variant-numeric: tabular-nums; }
+  .reqpanes { min-height: 0; overflow: auto; } /* isi panjang (Scripts, Headers) scroll di area request, tidak menimpa response */
   .pane { overflow: auto; padding: 8px 14px 12px; min-height: 0; }
   .pane[hidden] { display: none; }
   table.kv { width: 100%; border-collapse: collapse; }
@@ -138,6 +139,33 @@
   .timeline li { padding: 3px 0; overflow-wrap: anywhere; }
   .timeline .ck { color: var(--muted); }
   .matching { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 2; font-size: 11px; color: var(--muted); background: var(--input); padding: 0 4px; }
+  .dot { display: inline-block; width: 6px; height: 6px; margin-left: 5px; border-radius: 50%; background: var(--ok); vertical-align: 1px; }
+  .dot[hidden] { display: none; }
+  .scripts-pane { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 12px; }
+  .scripts-pane[hidden] { display: none; }
+  .sc-side { display: flex; flex-direction: column; gap: 2px; }
+  .sc-side button { text-align: left; background: none; border: 0; border-left: 2px solid transparent; padding: 4px 10px; color: var(--muted); white-space: nowrap; }
+  .sc-side button.on { color: var(--fg); border-left-color: var(--accent); background: var(--hover); }
+  .sc-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+  .sc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+  .sc-row .lbl { color: var(--muted); }
+  .chain { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+  .chain li { display: flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 3px; padding: 1px 4px; font: 12px var(--mono); }
+  .chain li.on { border-color: var(--accent); background: var(--hover); }
+  .chain li.missing .nm { color: var(--err); text-decoration: line-through; }
+  .chain li .nm { background: none; border: 0; padding: 0 2px; }
+  .chain li .mini { background: none; border: 0; padding: 0 2px; color: var(--muted); font-size: 11px; }
+  .chain li .grip { cursor: grab; color: var(--muted); }
+  .chain li .ord { color: var(--muted); font-size: 10px; }
+  .sc-preview { margin: 0; font: 11.5px var(--mono); color: var(--muted); white-space: pre-wrap; }
+  .sc-editor { flex: 1; display: flex; min-height: 96px; border: 1px solid var(--line); border-radius: 3px; background: var(--input); }
+  .sc-editor pre { margin: 0; padding: 6px 6px 6px 8px; min-width: 32px; text-align: right; color: var(--muted); font: 12px/1.55 var(--mono); border-right: 1px solid var(--line); overflow: hidden; user-select: none; }
+  .sc-editor textarea { flex: 1; border: 0; border-radius: 0; resize: none; padding: 6px 8px; font: 12px/1.55 var(--mono); white-space: pre; overflow: auto; tab-size: 2; }
+  .sc-editor textarea[readonly] { color: var(--muted); }
+  ul.tests { margin: 0; padding: 0; list-style: none; font-size: 12px; }
+  ul.tests li { padding: 2px 0; } ul.tests .pass { color: var(--ok); } ul.tests .fail { color: var(--err); }
+  ul.tests .why { color: var(--muted); font: 11.5px var(--mono); margin-left: 18px; }
+  .console .warn { color: var(--warn); } .console .error { color: var(--err); }
   .matching::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
 </style>
 </head>
@@ -162,6 +190,7 @@
   <button type="button" data-p="headers">Headers<span class="n" id="nHeaders"></span></button>
   <button type="button" data-p="body">Body</button>
   <button type="button" data-p="cookies">Cookies<span class="n" id="nCookies"></span></button>
+  <button type="button" data-p="scripts" id="scriptsTab">Scripts<span class="dot" id="scriptsDot" hidden title="This request has its own scripts"></span></button>
   <button type="button" data-p="settings">Settings</button>
 </div>
 <div class="reqpanes">
@@ -189,6 +218,23 @@
     <table class="kv"><thead><tr><th>Name</th><th>Value</th><th>Domain</th><th>Path</th></tr></thead><tbody id="reqCookies"></tbody></table>
     <p class="note" id="reqCookiesNote">Saved cookies that match this URL are sent with the request. Manage them in the Cookies view of the http.me sidebar.</p>
   </div>
+  <div class="pane scripts-pane" id="p-scripts" hidden>
+    <div class="sc-side" role="tablist" aria-label="Script stage" id="scKinds">
+      <button type="button" data-k="pre" class="on">Before request</button>
+      <button type="button" data-k="post">After response</button>
+    </div>
+    <div class="sc-main">
+      <p class="note" id="scNone" hidden>Save the request as a .http file (one request per file) to add scripts.</p>
+      <div class="sc-row" id="scChainRow"><span class="lbl">Runs in order</span><ol class="chain" id="scChain"></ol>
+        <button class="btn ghost sm" id="scAdd" type="button">+ Add script</button></div>
+      <p class="sc-preview" id="scPreview"></p>
+      <div class="sc-row" id="scTools"><span class="lbl" id="scFile"></span>
+        <select id="scSnippets" aria-label="Snippets"></select>
+        <button class="btn ghost sm" id="scOpen" type="button">Open in editor ↗</button>
+        <button class="btn ghost sm" id="scSave" type="button" title="Save scripts and the .http file (Ctrl+S)">Save</button></div>
+      <div class="sc-editor"><pre id="scGutter" aria-hidden="true">1</pre><textarea id="scText" spellcheck="false" aria-label="Script"></textarea></div>
+    </div>
+  </div>
   <div class="pane" id="p-settings" hidden>
     <div class="form">
       <label for="redir">Follow redirects</label>
@@ -212,6 +258,8 @@
     <button type="button" data-r="rheaders">Headers<span class="n" id="nResHeaders"></span></button>
     <button type="button" data-r="rcookies">Cookies<span class="n" id="nResCookies"></span></button>
     <button type="button" data-r="rtimeline">Timeline</button>
+    <button type="button" data-r="rtests">Tests<span class="n" id="nTests"></span></button>
+    <button type="button" data-r="rconsole">Console<span class="n" id="nConsole"></span></button>
     <div class="right" id="meta"><span class="fmt" id="fmt"></span><span class="status" id="st"></span><span id="ms"></span><span id="sz"></span></div>
   </div>
   <div class="loading" id="loading" hidden aria-live="polite">
@@ -234,6 +282,8 @@
       <p class="note" id="resCookiesNote"></p>
     </div>
     <div class="pane" id="r-rtimeline" hidden><ol class="timeline" id="timeline"></ol></div>
+    <div class="pane" id="r-rtests" hidden><pre class="code error" id="testsErr" hidden></pre><ul class="tests" id="tests"></ul><p class="note" id="testsNone">No tests. Add httpme.test(…) in an After response script.</p></div>
+    <div class="pane" id="r-rconsole" hidden><pre class="code console" id="console"></pre><p class="note" id="consoleNone">No console output.</p></div>
   </div>
 </section>
 <script nonce="{{nonce}}" src="panel.js"></script>

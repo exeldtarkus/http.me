@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appliesTo, ownScript, relScriptPath, renameEdits, scriptChain, scriptPaths, scriptTemplate, sidecarMoves } from '../../src/scripts';
+import { appliesTo, chainItems, moveItem, ownScript, relScriptPath, withScriptLines, renameEdits, scriptChain, scriptPaths, scriptTemplate, sidecarMoves } from '../../src/scripts';
 import { parseRequest } from '../../src/httpFile';
 import { withTempDir } from './helpers/tmp';
 
@@ -122,3 +122,32 @@ test('appliesTo: jumlah request (blok) .http di folder script & subfolder, kecua
   assert.equal(appliesTo('/w/pre-request.js', files), 4);
 });
 
+test('moveItem: pindah urutan (◀ ▶ / drag), indeks di luar batas = tidak berubah', () => {
+  assert.deepEqual(moveItem(['a', 'b', 'c'], 0, 2), ['b', 'c', 'a']);
+  assert.deepEqual(moveItem(['a', 'b', 'c'], 2, 1), ['a', 'c', 'b']);
+  assert.deepEqual(moveItem(['a', 'b'], 0, 5), ['a', 'b']);
+});
+
+test('withScriptLines: path relatif satu per baris, < sebelum baris request, > setelah body, dibuat / dihapus; inline tetap', async () => {
+  const { serializeRequest } = await import('../../src/httpFile');
+  const r = parseRequest('### t\n< ./old.js\n< {% x %}\nPOST http://x\nA: 1\n\n{}\n');
+  const a = withScriptLines(r, 'pre', '/w/a', ['/w/a/s/sign.js', '/w/lib/x.js']);
+  const b = withScriptLines(a, 'post', '/w/a', ['/w/a/save.js']);
+  assert.equal(serializeRequest(b), '### t\n< ./s/sign.js\n< ../lib/x.js\n< {% x %}\nPOST http://x\nA: 1\n\n{}\n\n> ./save.js\n');
+  const c = withScriptLines(withScriptLines(b, 'pre', '/w/a', []), 'post', '/w/a', []);
+  assert.equal(serializeRequest(c), '### t\n< {% x %}\nPOST http://x\nA: 1\n\n{}\n');
+});
+
+test('chainItems: daftar Runs in order (folder → baris < / > → This request), file tidak ada tetap tampil', () =>
+  withTempDir(async (root) => {
+    put(root, 'pre-request.js'); put(root, 'a/sign.js');
+    const http = join(root, 'a/r.http');
+    const r = parseRequest('< ./sign.js\n< ./nope.js\n< {% x %}\nGET http://x\n');
+    assert.deepEqual(await chainItems(root, http, r, 'pre'), [
+      { file: join(root, 'pre-request.js'), source: 'folder', exists: true },
+      { file: join(root, 'a/sign.js'), source: 'line', exists: true },
+      { file: join(root, 'a/nope.js'), source: 'line', exists: false },
+      { file: '', source: 'inline', exists: true, code: ' x ' },
+      { file: join(root, 'a/r.pre-request.js'), source: 'own', exists: false },
+    ]);
+  }));

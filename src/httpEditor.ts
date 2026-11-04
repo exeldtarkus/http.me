@@ -24,6 +24,7 @@ import { cookieFlags } from './httpFile';
 import { sendWithRelogin, sessionExpired } from './login';
 import { singleFlight } from './runner';
 import type { HttpResponse, SendOptions } from './http';
+import { handleScriptsMessage, isChainFile, saveScripts, scriptsState, type ScriptsMessage } from './scriptsTab';
 import { applyScriptRequest, overlayKV, runChain, scriptChain, toScriptRequest, type ChainResult, type ScriptContext } from './scripts';
 
 export const REQUEST_VIEW = 'httpme.request';
@@ -387,9 +388,17 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
     type: 'state', req: parseRequest(doc.getText()), view: s.view, multi: splitBlocks(doc.getText()).length,
   });
 
+  const postMsg = (x: unknown) => void panel.webview.postMessage(x);
+  let scriptsTimer: ReturnType<typeof setTimeout> | undefined;
+  /** tab Scripts: state ulang (urutan, ● belum disimpan) digabung tiap 200 ms */
+  const refreshScripts = () => {
+    clearTimeout(scriptsTimer);
+    scriptsTimer = setTimeout(() => void scriptsState(doc).then(postMsg, (e) => log().error(errorLine('requestEditor.scriptsState', e))), 200);
+  };
   const subs = [
-    panel.webview.onDidReceiveMessage(async (m: { type: string; req?: unknown; text?: unknown; name?: unknown; env?: unknown; key?: unknown }) => {
+    panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown }) => {
       try {
+        if (await handleScriptsMessage(doc, m, postMsg)) return;
         if (m.type === 'ready') { postState(); await postVars(panel); await postCookies(panel, doc.uri.toString()); } else if (m.type === 'varHover' && typeof m.name === 'string' && hooks) {
           const info = await hooks.hover(m.name, new Map(parseRequest(doc.getText()).vars.map((v) => [v.name, v.value])));
           void panel.webview.postMessage({ type: 'varHover', name: m.name, info });
@@ -408,6 +417,25 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
         reportError(`requestEditor.${m.type}`, e, `http.me: ${errMsg(e)}`);
       }
     }),
+    // dokumen script rantai ini diedit di editor VS Code / Undo: isi tab Scripts & tanda ● ikut
+    vscode.workspace.onDidChangeTextDocument((e) => {
+      if (e.document === doc || e.document.uri.scheme !== 'file' || !/\.js$/i.test(e.document.uri.path)) return;
+      void isChainFile(doc, e.document.uri.fsPath).then((hit) => {
+        if (!hit) return;
+        postMsg({ type: 'scriptText', path: e.document.uri.fsPath, text: e.document.getText() });
+        refreshScripts();
+      }, (err) => log().error(errorLine('requestEditor.scriptSync', err)));
+    }),
+    vscode.workspace.onDidSaveTextDocument(() => refreshScripts()),
+    vscode.workspace.onDidCreateFiles(() => refreshScripts()),
+    vscode.workspace.onDidDeleteFiles(() => refreshScripts()),
+    // Ctrl+S di panel menyimpan .http: script rantai yang belum disimpan ikut
+    vscode.workspace.onWillSaveTextDocument((e) => {
+      if (e.document === doc) e.waitUntil(saveScripts(doc, false).catch((err) => reportError('requestEditor.saveScripts', err, `Could not save scripts: ${errMsg(err)}`)));
+    }),
+    vscode.workspace.onDidChangeTextDocument((e) => {
+      if (e.document === doc && e.contentChanges.length) refreshScripts();
+    }),
     vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document !== doc || !e.contentChanges.length) return;
       if (doc.getText() !== written) postState();
@@ -417,6 +445,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   ];
   panel.onDidDispose(() => {
     clearTimeout(cookieTimer);
+    clearTimeout(scriptsTimer);
     subs.forEach((x) => x.dispose());
     s.panels.delete(panel);
   });

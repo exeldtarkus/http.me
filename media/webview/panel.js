@@ -85,7 +85,16 @@
     return m ? m[1] : undefined;
   }
 
-  const api = { METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix };
+  /** sisipkan teks di kursor (menggantikan seleksi): snippet & Tab = 2 spasi di editor script */
+  function insertAt(text, start, end, ins) {
+    return { text: text.slice(0, start) + ins + text.slice(end), caret: start + ins.length };
+  }
+  /** isi gutter nomor baris editor script */
+  function lineNumbers(text) {
+    return Array.from({ length: text.split('\n').length }, (_x, i) => String(i + 1)).join('\n');
+  }
+
+  const api = { METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -440,7 +449,9 @@
     $('openBody').hidden = !res?.canOpen;
     $('saveBody').hidden = !res?.canSave;
     $('resBodyTab').disabled = !!res?.head;
-    showResTab(res?.head ? 'rheaders' : resTab);
+    renderTests(view);
+    // pre-request gagal / skip: tab Tests langsung terlihat
+    showResTab(res?.head ? 'rheaders' : view?.kind === 'error' && view.scripts ? 'rtests' : resTab);
   }
 
   function sendNow() {
@@ -479,6 +490,130 @@
   $('openAsText').onclick = () => post({ type: 'openAsText' });
   $('saveBody').onclick = () => post({ type: 'saveBody' });
 
+  // ---- tab Scripts: Runs in order + editor script (isi = dokumen VS Code di host) ----
+  let scripts; // state dari host (scriptsState)
+  let scKind = 'pre';
+  let scPath; // item yang sedang diedit ('' = inline, read-only)
+  let scTimer;
+  let dragFrom;
+  const scItems = () => (scripts && scripts[scKind]) || [];
+  function scFlush() {
+    if (scTimer === undefined) return;
+    clearTimeout(scTimer);
+    scTimer = undefined;
+    if (scPath) post({ type: 'scriptEdit', path: scPath, text: $('scText').value });
+  }
+  function scEdited() {
+    $('scGutter').textContent = lineNumbers($('scText').value);
+    clearTimeout(scTimer);
+    scTimer = setTimeout(scFlush, 250);
+  }
+  function scSelect(item) {
+    scFlush();
+    scPath = item ? item.file : undefined;
+    $('scFile').textContent = item ? (item.source === 'own' ? `This request · ${item.file.split(/[\\/]/).pop()}` : item.label) : '';
+    $('scText').readOnly = !item || item.source === 'inline';
+    $('scOpen').disabled = !item || item.source === 'inline';
+    if (item && item.source === 'inline') { $('scText').value = item.code; $('scGutter').textContent = lineNumbers(item.code); }
+    else if (item) post({ type: 'scriptLoad', path: item.file });
+    renderChain();
+  }
+  function renderChain() {
+    const list = scItems();
+    const lines = list.filter((x) => x.source === 'line');
+    $('scChain').replaceChildren(...list.map((x, i) => {
+      const li = el('li', { className: `${x.file === scPath && x.source !== 'inline' ? 'on' : ''}${x.exists ? '' : ' missing'}`, title: x.exists ? x.label : `${x.label} (file not found)` });
+      li.append(el('span', { className: 'ord', textContent: `${i + 1}.` }));
+      const li2 = lines.indexOf(x);
+      if (li2 >= 0) {
+        li.draggable = true;
+        li.ondragstart = () => { dragFrom = li2; };
+        li.ondragover = (e) => e.preventDefault();
+        li.ondrop = (e) => { e.preventDefault(); if (dragFrom !== undefined && dragFrom !== li2) post({ type: 'scriptMove', kind: scKind, from: dragFrom, to: li2 }); dragFrom = undefined; };
+        li.append(el('span', { className: 'grip', textContent: '⠿' }));
+      }
+      li.append(el('button', { type: 'button', className: 'nm', textContent: `${x.label}${x.dirty ? ' ●' : ''}`, onclick: () => scSelect(x) }));
+      if (li2 >= 0) {
+        li.append(
+          el('button', { type: 'button', className: 'mini', textContent: '◀', title: 'Run earlier', disabled: li2 === 0, onclick: () => post({ type: 'scriptMove', kind: scKind, from: li2, to: li2 - 1 }) }),
+          el('button', { type: 'button', className: 'mini', textContent: '▶', title: 'Run later', disabled: li2 === lines.length - 1, onclick: () => post({ type: 'scriptMove', kind: scKind, from: li2, to: li2 + 1 }) }),
+          el('button', { type: 'button', className: 'mini', textContent: '✕', title: 'Remove from this request (the file is kept)', onclick: () => post({ type: 'scriptRemove', kind: scKind, path: x.file }) }),
+        );
+      }
+      return li;
+    }));
+  }
+  function renderScripts() {
+    const ok = !!(scripts && scripts.available);
+    $('scNone').hidden = ok;
+    for (const id of ['scChainRow', 'scPreview', 'scTools']) $(id).hidden = !ok;
+    $('scText').disabled = !ok;
+    $('scriptsDot').hidden = !(ok && scripts.own);
+    if (!ok) return;
+    $('scPreview').textContent = scripts.preview.join('\n');
+    $('scSnippets').replaceChildren(el('option', { value: '', textContent: 'Snippets…' }), ...scripts.snippets[scKind].map((x, i) => el('option', { value: String(i), textContent: x.title })));
+    const items = scItems();
+    const current = items.find((x) => x.file === scPath && x.source !== 'inline');
+    if (!current) scSelect(items.find((x) => x.source === 'own'));
+    else renderChain();
+  }
+  for (const b of $('scKinds').querySelectorAll('button')) {
+    b.onclick = () => {
+      scFlush();
+      scKind = b.dataset.k;
+      for (const x of $('scKinds').querySelectorAll('button')) x.classList.toggle('on', x === b);
+      scPath = undefined;
+      renderScripts();
+    };
+  }
+  $('scText').oninput = scEdited;
+  $('scText').onscroll = () => { $('scGutter').scrollTop = $('scText').scrollTop; };
+  $('scText').onkeydown = (e) => {
+    if (e.key === 'Tab' && !e.shiftKey && !$('scText').readOnly) {
+      e.preventDefault();
+      const t = $('scText');
+      const r = insertAt(t.value, t.selectionStart, t.selectionEnd, '  ');
+      t.value = r.text;
+      t.selectionStart = t.selectionEnd = r.caret;
+      scEdited();
+    } else if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); scFlush(); flush(); post({ type: 'scriptSave' }); }
+  };
+  $('scSnippets').onchange = () => {
+    const sn = scripts && scripts.snippets[scKind][Number($('scSnippets').value)];
+    $('scSnippets').value = '';
+    const t = $('scText');
+    if (!sn || t.readOnly) return;
+    const r = insertAt(t.value, t.selectionStart, t.selectionEnd, sn.code);
+    t.value = r.text;
+    t.focus();
+    t.selectionStart = t.selectionEnd = r.caret;
+    scEdited();
+  };
+  $('scAdd').onclick = () => { scFlush(); post({ type: 'scriptAdd', kind: scKind }); };
+  $('scOpen').onclick = () => { scFlush(); if (scPath) post({ type: 'scriptOpenEditor', path: scPath }); };
+  $('scSave').onclick = () => { scFlush(); flush(); post({ type: 'scriptSave' }); };
+  window.addEventListener('blur', scFlush);
+
+  /** tab Tests & Console response: hasil script pre / post */
+  function renderTests(view) {
+    const sc = view && view.scripts;
+    const tests = (sc && sc.tests) || [];
+    const lines = (sc && sc.console) || [];
+    const failed = tests.filter((t) => !t.passed).length;
+    $('nTests').textContent = tests.length ? (failed ? `${tests.length - failed}/${tests.length}` : String(tests.length)) : (sc && sc.error ? '!' : '');
+    $('nTests').className = `n${failed || (sc && sc.error) ? ' st-5' : tests.length ? ' st-2' : ''}`;
+    $('testsErr').hidden = !(sc && sc.error);
+    $('testsErr').textContent = (sc && sc.error) || '';
+    $('tests').replaceChildren(...tests.map((t) => el('li', {}, [
+      el('span', { className: t.passed ? 'pass' : 'fail', textContent: t.passed ? '✓ ' : '✗ ' }), t.name,
+      ...(t.error ? [el('div', { className: 'why', textContent: t.error })] : []),
+    ])));
+    $('testsNone').hidden = tests.length > 0 || !!(sc && sc.error);
+    $('nConsole').textContent = lines.length ? String(lines.length) : '';
+    $('console').replaceChildren(...lines.map((l) => el('div', { className: l.level, textContent: l.text })));
+    $('consoleNone').hidden = lines.length > 0;
+  }
+
   window.addEventListener('message', (e) => {
     const m = e.data;
     if (m.type === 'state') {
@@ -495,8 +630,19 @@
       $('reqCookies').replaceChildren(...m.list.map((c) => el('tr', {}, [el('td', { textContent: c.name }), el('td', { textContent: c.value, title: 'Masked' }), el('td', { textContent: c.domain }), el('td', { textContent: c.path })])));
       $('reqCookiesNote').textContent = m.off ? 'Send saved cookies is off for this request (Settings).' : m.list.length ? 'These saved cookies are sent with the request (values masked). Manage them in the Cookies view of the http.me sidebar.' : 'No saved cookie matches this URL yet. Cookies from responses are saved automatically.';
     }
+    if (m.type === 'scripts') { scripts = m; renderScripts(); }
+    if (m.type === 'scriptSelect') { scripts && renderScripts(); const it = scItems().find((x) => x.file === m.path); if (it) scSelect(it); }
+    if (m.type === 'scriptText' && m.path === scPath && m.text !== $('scText').value) {
+      // dokumen script berubah (editor VS Code / Undo): isi editor panel ikut, posisi kursor dipertahankan sebisanya
+      const t = $('scText');
+      const at = t.selectionStart;
+      t.value = m.text;
+      t.selectionStart = t.selectionEnd = Math.min(at, m.text.length);
+      $('scGutter').textContent = lineNumbers(m.text);
+    }
     if ('view' in m) renderView(m.view);
   });
   window.addEventListener('blur', flush);
   post({ type: 'ready' });
+  post({ type: 'scriptsGet' });
 })();

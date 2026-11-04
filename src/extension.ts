@@ -12,6 +12,7 @@ import { compareView, focusOf, envOp, registerEnvironmentEditor } from './enviro
 import { registerEnvironmentCommands } from './environmentCommands';
 import { registerVariables } from './variables';
 import { registerScriptLinks } from './scriptLinks';
+import { handleScriptsMessage, type ScriptsMessage } from './scriptsTab';
 import { replaceValuesWithVariables, setNullPrompt, setVarHooks } from './httpEditor';
 import { hoverInfo } from './diagnostics';
 import { resolveRequest } from './vars';
@@ -54,7 +55,14 @@ async function clearCacheCommand(ctx: vscode.ExtensionContext): Promise<void> {
 export type HttpmeApi = {
   viewOf: typeof viewOf; runningCount: () => number; applyPanelEdit: typeof applyPanelEdit; sidebar: Sidebar;
   envs: Environments; cookies: Cookies; envOp: typeof envOp; focusOf: typeof focusOf; compareView: typeof compareView; setNullPrompt: typeof setNullPrompt;
+  /** pesan tab Scripts seperti dari webview; kembalikan pesan balasan host */
+  scriptsCall(uri: vscode.Uri, m: ScriptsMessage): Promise<unknown[]>;
 };
+async function scriptsCall(uri: vscode.Uri, m: ScriptsMessage): Promise<unknown[]> {
+  const out: unknown[] = [];
+  await handleScriptsMessage(await vscode.workspace.openTextDocument(uri), m, (x) => out.push(x));
+  return out;
+}
 
 /** Environment → hook variable panel request / Send / paste */
 function variableHooks(envs: Environments): vscode.Disposable {
@@ -163,7 +171,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   const previous = ctx.globalState.get<string>(VERSION_KEY);
   void ctx.globalState.update(VERSION_KEY, version);
   if (isNewerMinor(version, previous)) openWhatsNew(ctx);
-  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt };
+  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt, scriptsCall };
 }
 
 export function deactivate(): void {}

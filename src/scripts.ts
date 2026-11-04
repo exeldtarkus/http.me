@@ -326,3 +326,36 @@ export function appliesTo(scriptFile: string, files: readonly { path: string; te
   return n;
 }
 
+/** pindah satu item (◀ ▶ / drag); indeks salah = salinan tanpa perubahan */
+export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
+  const out = [...list];
+  if (from < 0 || from >= out.length || to < 0 || to >= out.length) return out;
+  out.splice(to, 0, ...out.splice(from, 1));
+  return out;
+}
+
+/** ganti script `<` (pre) / `>` (post) berpath dengan daftar file (path absolut → relatif ke .http); inline {% %} tetap */
+export function withScriptLines(r: ParsedRequest, kind: ScriptKind, httpDir: string, files: readonly string[]): ParsedRequest {
+  const key = kind === 'pre' ? 'preScripts' : 'postScripts';
+  return { ...r, [key]: [...files.map((f) => relScriptPath(httpDir, f)), ...r[key].filter((x) => x.startsWith('{%'))] };
+}
+
+/** item tab Scripts › Runs in order: folder script, baris `<` / `>`, inline, lalu This request (file milik request, boleh belum ada) */
+export type ChainItem = { file: string; source: 'folder' | 'line' | 'inline' | 'own'; exists: boolean; code?: string };
+
+export async function chainItems(root: string, httpFile: string, r: ParsedRequest, kind: ScriptKind): Promise<ChainItem[]> {
+  const out: ChainItem[] = [];
+  for (const dir of folders(root, httpFile)) {
+    const f = join(dir, `${kind}-request.js`);
+    if (await exists(f)) out.push({ file: f, source: 'folder', exists: true });
+  }
+  for (const sc of kind === 'pre' ? r.preScripts : r.postScripts) {
+    const inline = /^\{%([\s\S]*)%\}$/.exec(sc);
+    if (inline) { out.push({ file: '', source: 'inline', exists: true, code: inline[1] }); continue; }
+    const f = resolve(dirname(httpFile), sc);
+    out.push({ file: f, source: 'line', exists: await exists(f) });
+  }
+  const own = ownScript(httpFile, kind);
+  out.push({ file: own, source: 'own', exists: await exists(own) });
+  return out;
+}

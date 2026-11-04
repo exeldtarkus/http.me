@@ -115,3 +115,11 @@ test('autocomplete {{ di panel: awalan nama sebelum kursor', () => {
   assert.equal(panel.completionPrefix('GET {{base}}/x'), undefined);
   assert.equal(panel.completionPrefix('x {'), undefined);
 });
+
+test('tab Scripts: insertAt (snippet / Tab di kursor, menggantikan seleksi) + nomor baris', () => {
+  const p = panel as unknown as { insertAt(t: string, s: number, e: number, ins: string): { text: string; caret: number }; lineNumbers(t: string): string };
+  assert.deepEqual(p.insertAt('ab\ncd', 3, 3, 'x();\n'), { text: 'ab\nx();\ncd', caret: 8 });
+  assert.deepEqual(p.insertAt('abcd', 1, 3, '  '), { text: 'a  d', caret: 3 });
+  assert.equal(p.lineNumbers('a\nb\n'), '1\n2\n3');
+  assert.equal(p.lineNumbers(''), '1');
+});
