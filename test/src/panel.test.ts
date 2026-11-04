@@ -138,3 +138,14 @@ test('othersText: loading sebaris untuk request di tab lain', () => {
   const p = panel as unknown as { othersText(n: number): string };
   assert.deepEqual([p.othersText(0), p.othersText(1), p.othersText(3)], ['', '1 other request running', '3 other requests running']);
 });
+
+test('review R1/R2: petunjuk di bawah URL diganti popup bantuan; daftar pilihan select mengikuti tema', () => {
+  const html = require('node:fs').readFileSync(join(__dirname, '..', '..', '..', 'media', 'webview', 'panel.html'), 'utf8') as string;
+  assert.ok(!html.includes('<p class="hint">'), 'teks petunjuk di bawah URL dihapus');
+  assert.match(html, /id="help"[^>]*aria-describedby="helpPop"/);
+  assert.match(html, /id="helpPop" role="tooltip"[\s\S]*curl …[\s\S]*Ctrl\+Enter[\s\S]*\{\{/);
+  assert.match(html, /\.help:hover > \.helppop, \.help:focus-within > \.helppop \{ display: block/);
+  assert.match(html, /option \{ background-color: var\(--vscode-dropdown-background/);
+  assert.match(html, /body\.vscode-dark \{ color-scheme: dark; \}/);
+  assert.doesNotMatch(html, /grid-template-rows: auto auto auto minmax/, 'baris grid petunjuk ikut dihapus');
+});
