@@ -1,0 +1,80 @@
+import * as assert from 'node:assert/strict';
+import * as vscode from 'vscode';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { startServer } from './helpers/server';
+import type { ITests } from './it/index';
+
+type Entry = { id: string; method: string; url: string; status?: number; cancelled?: boolean; error?: string; file?: string; text: string };
+type Api = {
+  viewOf(uri: string): { kind: string } | undefined;
+  statusBar(): { running?: { text: string; tooltip: string }; history: string } | undefined;
+  history: { list(): Promise<Entry[]>; action(id: string, a: 'open' | 'send' | 'curl' | 'remove'): Promise<void> };
+};
+const api = () => vscode.extensions.getExtension<Api>('exeltarkus.httpme')!.exports;
+const wait = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+async function until<T>(what: string, fn: () => T | undefined | Promise<T | undefined>, ms = 5000): Promise<T> {
+  for (const end = Date.now() + ms; Date.now() < end; await wait(50)) { const v = await fn(); if (v) return v; }
+  throw new Error(`timeout: ${what}`);
+}
+
+export const tests: ITests = {
+  async 'status bar ⟳ running: tampil hanya saat ada request, tooltip per request; hilang setelah Cancel All'() {
+    await vscode.commands.executeCommand('httpme.whatsNew');
+    const srv = await startServer(async () => { await wait(3000); return { body: 'late' }; });
+    const dir = join(vscode.workspace.workspaceFolders![0].uri.fsPath, 'tmp-hist-it');
+    try {
+      assert.equal(api().statusBar()?.running, undefined, 'idle: tidak tampil');
+      assert.equal(api().statusBar()?.history, '$(history) History');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'slow.http'), `POST ${srv.url}/pos/log\n`);
+      const doc = await vscode.workspace.openTextDocument(join(dir, 'slow.http'));
+      void vscode.commands.executeCommand('httpme.sendBlock', doc.uri, 0);
+      const run = await until('status running', () => api().statusBar()?.running);
+      assert.match(run.text, /^\$\(sync~spin\) 1 request running · \ds$/);
+      assert.match(run.tooltip, /^POST \/pos\/log · \ds\nClick to cancel$/);
+      await vscode.commands.executeCommand('httpme.cancelAllRequests');
+      await until('status hilang', () => !api().statusBar()?.running);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      await srv.close();
+    }
+  },
+  async 'History: Send dicatat (tanpa Authorization), buka file asal / untitled, Send again, Copy as cURL, Remove'() {
+    const srv = await startServer(async (req) => ({ status: req.url === '/missing' ? 404 : 200, body: 'ok' }));
+    const dir = join(vscode.workspace.workspaceFolders![0].uri.fsPath, 'tmp-hist-it');
+    try {
+      mkdirSync(dir, { recursive: true });
+      const file = join(dir, 'h.http');
+      writeFileSync(file, `GET ${srv.url}/missing\nAuthorization: Bearer secret-token\nX-A: 1\n`);
+      const doc = await vscode.workspace.openTextDocument(file);
+      await vscode.commands.executeCommand('httpme.sendBlock', doc.uri, 0);
+      const e = await until('entri History', async () => (await api().history.list()).find((x) => x.file === doc.uri.toString()));
+      assert.equal(e.status, 404);
+      assert.equal(e.text, `GET ${srv.url}/missing\nX-A: 1\n`, 'header Authorization tidak disimpan');
+
+      await api().history.action(e.id, 'curl');
+      assert.match(await vscode.env.clipboard.readText(), /^curl /);
+      await api().history.action(e.id, 'open');
+      await until('panel file asal', () => (vscode.window.tabGroups.activeTabGroup.activeTab?.input as { uri?: vscode.Uri })?.uri?.fsPath === file);
+
+      await api().history.action(e.id, 'send');
+      await until('Send again tercatat', async () => (await api().history.list()).filter((x) => x.file === doc.uri.toString()).length === 2);
+
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      rmSync(file);
+      await api().history.action(e.id, 'open');
+      const tab = await until('untitled', () => (vscode.window.tabGroups.activeTabGroup.activeTab?.input as { uri?: vscode.Uri })?.uri);
+      assert.equal(tab.scheme, 'untitled', 'file asal sudah dihapus: tab untitled');
+      assert.equal((await vscode.workspace.openTextDocument(tab)).getText(), e.text);
+
+      await api().history.action(e.id, 'remove');
+      assert.ok(!(await api().history.list()).some((x) => x.id === e.id));
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      rmSync(dir, { recursive: true, force: true });
+      await srv.close();
+    }
+  },
+};

@@ -6,7 +6,8 @@ import { log, reportError } from './output';
 import { applyPanelEdit, importCurlText, saveUntitled, type SaveInput, cancelActive, cancelBlock, cancelFile, newRequest, openAsText, openInPanel, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
 import { registerSidebar, type Sidebar } from './sidebar';
-import { registerActivity } from './activity';
+import { historyAction, registerActivity, statusBar, type HistoryAction } from './activity';
+import { listHistory } from './history';
 import { Environments } from './envState';
 import { compareView, focusOf, envOp, registerEnvironmentEditor } from './environmentEditor';
 import { registerEnvironmentCommands } from './environmentCommands';
@@ -57,6 +58,8 @@ export type HttpmeApi = {
   envs: Environments; cookies: Cookies; envOp: typeof envOp; focusOf: typeof focusOf; compareView: typeof compareView; setNullPrompt: typeof setNullPrompt;
   /** pesan tab Scripts seperti dari webview; kembalikan pesan balasan host */
   scriptsCall(uri: vscode.Uri, m: ScriptsMessage): Promise<unknown[]>;
+  statusBar: typeof statusBar;
+  history: { list(): ReturnType<typeof listHistory>; action(id: string, a: HistoryAction): Promise<void> };
 };
 async function scriptsCall(uri: vscode.Uri, m: ScriptsMessage): Promise<unknown[]> {
   const out: unknown[] = [];
@@ -113,7 +116,8 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
     sendActive().catch((e) => reportError('sendRequest', e, `Send failed: ${errMsg(e)}`))));
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.cancelRequest', () =>
     cancelActive().catch((e) => reportError('cancelRequest', e, `Cancel failed: ${errMsg(e)}`))));
-  ctx.subscriptions.push(registerActivity());
+  const historyDir = vscode.Uri.joinPath(ctx.globalStorageUri, 'httpme-cache', 'history').fsPath;
+  ctx.subscriptions.push(registerActivity(historyDir));
   const envs = new Environments(ctx);
   ctx.subscriptions.push(envs.watch(), registerEnvironmentEditor(envs));
   const cookies = new Cookies(ctx, envs);
@@ -171,7 +175,8 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   const previous = ctx.globalState.get<string>(VERSION_KEY);
   void ctx.globalState.update(VERSION_KEY, version);
   if (isNewerMinor(version, previous)) openWhatsNew(ctx);
-  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt, scriptsCall };
+  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt, scriptsCall,
+    statusBar, history: { list: () => listHistory(historyDir), action: (id, a) => historyAction(historyDir, id, a) } };
 }
 
 export function deactivate(): void {}

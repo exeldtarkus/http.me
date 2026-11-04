@@ -54,6 +54,11 @@
         "category": "http.me"
       },
       {
+        "command": "httpme.showHistory",
+        "title": "Show Request History",
+        "category": "http.me"
+      },
+      {
         "command": "httpme.showRunning",
         "title": "Show Running Requests",
         "category": "http.me"
