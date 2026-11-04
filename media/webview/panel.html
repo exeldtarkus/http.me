@@ -90,6 +90,31 @@
   .sash::before { content: ""; position: absolute; left: 0; right: 0; top: 2px; height: 1px; background: var(--line); }
   .sash:hover::before, .sash.drag::before, .sash:focus-visible::before { top: 0.5px; height: 4px; background: var(--vscode-sash-hoverBorder, var(--focus)); transition: background .1s .15s; }
   .sash:focus-visible { outline: none; }
+  /* R32: tombol layout response (melayang kanan bawah) */
+  .layout { position: fixed; right: 14px; bottom: 14px; z-index: 6; display: flex; align-items: flex-end; gap: 8px; }
+  #layoutBtn { width: 32px; height: 32px; border: 1px solid var(--line); background: var(--bg); }
+  .layoutmenu { display: flex; flex-direction: column; gap: 2px; padding: 6px; border: 1px solid var(--vscode-menu-border, var(--line)); border-radius: 6px; background: var(--vscode-menu-background, var(--bg)); box-shadow: 0 4px 14px var(--vscode-widget-shadow, #0006); }
+  .layoutmenu[hidden] { display: none; }
+  .layoutmenu button { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border: 0; border-radius: 4px; background: none; color: var(--vscode-menu-foreground, var(--fg)); text-align: left; white-space: nowrap; }
+  .layoutmenu button:hover { background: var(--vscode-menu-selectionBackground, var(--hover)); }
+  .layoutmenu button[aria-checked="true"] { color: var(--vscode-textLink-foreground, var(--focus)); background: var(--soft); }
+  .layoutmenu svg, #layoutBtn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.2; }
+  /* Two pane: request kiri, response kanan, sash vertikal */
+  body.l-two { grid-template-columns: minmax(0, 1fr) 5px minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
+  body.l-two .urlrow { grid-column: 1 / -1; }
+  body.l-two #reqTabs { grid-column: 1; grid-row: 2; }
+  body.l-two .reqpanes { grid-column: 1; grid-row: 3; }
+  body.l-two .sash { grid-column: 2; grid-row: 2 / 4; cursor: col-resize; }
+  body.l-two .sash::before { left: 2px; right: auto; top: 0; bottom: 0; width: 1px; height: auto; }
+  body.l-two .sash:hover::before, body.l-two .sash.drag::before, body.l-two .sash:focus-visible::before { left: .5px; width: 4px; top: 0; height: auto; }
+  body.l-two .resp { grid-column: 3; grid-row: 2 / 4; }
+  body.l-two.resizing { cursor: col-resize; }
+  /* Bottom panel: response tampil di view http.me di panel bawah */
+  body.l-panel { grid-template-rows: auto auto minmax(0, 1fr); }
+  body.l-panel .resp, body.l-panel .sash { display: none; }
+  /* view panel bawah: hanya response */
+  body.only-resp { grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); }
+  body.only-resp .urlrow, body.only-resp #reqTabs, body.only-resp .reqpanes, body.only-resp .sash, body.only-resp .multi { display: none; }
   body.resizing { cursor: row-resize; user-select: none; }
   /* scrollbar ikut tema VS Code (bukan scrollbar bawaan berpanah) */
   ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -407,6 +432,14 @@
     <div class="pane" id="r-rconsole" hidden><pre class="code console" id="console"></pre><p class="note" id="consoleNone">No console output.</p></div>
   </div>
 </section>
+<div class="layout">
+  <div class="layoutmenu" id="layoutMenu" role="menu" aria-label="Response layout" hidden>
+    <button type="button" role="menuitemradio" data-l="single" aria-checked="true"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M2 8h12"/></svg>Single pane view</button>
+    <button type="button" role="menuitemradio" data-l="two" aria-checked="false"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M8 2.5v11"/></svg>Two pane view</button>
+    <button type="button" role="menuitemradio" data-l="panel" aria-checked="false"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M2 10h12"/><path d="M4.5 12h3"/></svg>Bottom panel (next to Terminal)</button>
+  </div>
+  <button class="ibtn" id="layoutBtn" type="button" title="Response layout" aria-label="Response layout" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M2 8h12M8 8v5.5"/></svg></button>
+</div>
 <script nonce="{{nonce}}" src="panel.js"></script>
 </body>
 </html>

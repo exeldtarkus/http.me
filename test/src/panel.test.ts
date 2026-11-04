@@ -16,6 +16,7 @@ const panel = require(join(__dirname, '..', '..', '..', 'media', 'webview', 'pan
   applyRanges(segs: { text: string; name?: string }[], ranges: { start: number; end: number; val: unknown }[], prop: string): Record<string, unknown>[];
   indentEdit(text: string, start: number, end: number, outdent: boolean): { from: number; to: number; insert: string; selStart: number; selEnd: number };
   enterIndent(text: string, caret: number): string;
+  layoutGrid(layout: string, size: number | undefined, total: number): { rows: string; cols: string };
   markSegments(segs: { text: string; name?: string; cls?: string }[], start: number, end: number): { text: string; name?: string; cls?: string; err?: boolean }[];
 };
 type Vars = { ok: string[]; nulls: string[]; names: string[] };
@@ -322,6 +323,31 @@ test('review R31: editor body: gutter nomor baris, tanpa wrap, Tab / Enter lewat
   assert.match(html, /<div class="bodyed" id="bodyEd"><pre id="bodyGutter" aria-hidden="true">1<\/pre><textarea id="bodyText" spellcheck="false" wrap="off"/);
   assert.match(js, /document\.execCommand\('insertText', false,/);
   assert.match(js, /\$\('bodyGutter'\)\.textContent = lineNumbers\(/);
+});
+
+test('review R32: layoutGrid: single = baris (tinggi request), two = kolom (lebar request), panel / tanpa ukuran = bawaan CSS', () => {
+  assert.deepEqual(panel.layoutGrid('single', 300, 800), { rows: 'auto auto 300px 5px minmax(120px, 1fr)', cols: '' });
+  assert.deepEqual(panel.layoutGrid('single', undefined, 800), { rows: '', cols: '' });
+  assert.deepEqual(panel.layoutGrid('two', 500, 1200), { rows: '', cols: '500px 5px minmax(240px, 1fr)' });
+  assert.deepEqual(panel.layoutGrid('two', 50, 1200), { rows: '', cols: '240px 5px minmax(240px, 1fr)' }, 'lebar request minimal 240');
+  assert.deepEqual(panel.layoutGrid('panel', 300, 800), { rows: '', cols: '' });
+});
+
+test('review R32/R33: tombol layout (Single pane / Two pane / Bottom panel), CSS per layout, mode response saja', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const html = fs.readFileSync(join(dir, 'panel.html'), 'utf8');
+  const js = fs.readFileSync(join(dir, 'panel.js'), 'utf8');
+  assert.match(html, /<button class="ibtn" id="layoutBtn" type="button" title="Response layout" aria-label="Response layout" aria-haspopup="menu"/);
+  for (const [l, label] of [['single', 'Single pane view'], ['two', 'Two pane view'], ['panel', 'Bottom panel \\(next to Terminal\\)']]) {
+    assert.match(html, new RegExp(`<button type="button" role="menuitemradio" data-l="${l}"[^>]*>[\\s\\S]*?${label}</button>`), l);
+  }
+  assert.match(html, /body\.l-two \{[^}]*grid-template-columns:/);
+  assert.match(html, /body\.l-panel \.resp, body\.l-panel \.sash \{ display: none; \}/);
+  assert.match(html, /body\.only-resp \.urlrow, body\.only-resp #reqTabs, body\.only-resp \.reqpanes, body\.only-resp \.sash/);
+  assert.match(js, /post\(\{ type: 'layout', layout: b\.dataset\.l \}\)/);
+  assert.match(js, /if \(m\.type === 'layout'\) applyLayout\(m\.layout\);/);
+  assert.match(js, /if \(m\.type === 'mode'\) document\.body\.classList\.toggle\('only-resp', !!m\.responseOnly\);/);
 });
 
 test('review R7: body form / none menyembunyikan pembungkus editor teks (bukan hanya textarea)', () => {
