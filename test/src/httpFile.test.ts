@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { emptyRequest, parseRequest, serializeRequest, toHttpRequest, type ParsedRequest } from '../../src/httpFile';
+import { emptyRequest, parseRequest, serializeRequest, toHttpRequest, toHttpRequestWithFile, type ParsedRequest } from '../../src/httpFile';
 
 test('parseRequest: baris request, header, body; baris lain di atas disimpan apa adanya', () => {
   const r = parseRequest('### Log page view\n# @name logPageView\n\nPOST https://api.test/log?a=1 HTTP/1.1\nContent-Type: application/json\nX-Id: 7\n\n{"a":1}\n');
@@ -120,4 +120,35 @@ test('variabel file @var = value: dibaca berurutan, ditulis di atas file + baris
   assert.equal(serializeRequest(r), '@baseUrl = https://api.test\n@token = abc = def\n\n### T\nGET {{baseUrl}}/x\n');
   assert.deepEqual(parseRequest('GET https://a\n').vars, []);
   assert.deepEqual(parseRequest(serializeRequest(r)), r);
+});
+
+test('< / >: pre-script sebelum request, post-script setelah body, body dari file, script inline multi-baris', () => {
+  const text = [
+    '### Log', '< ./scripts/sign.js', '< {%', '  request.variables.set("t", 1);', '%}', 'POST {{baseUrl}}/log',
+    'Content-Type: application/json', '', '{"a":1}', '', '> ./scripts/save-token.js', '> {% client.log("ok") %}', '',
+  ].join('\n');
+  const r = parseRequest(text);
+  assert.deepEqual(r.preScripts, ['./scripts/sign.js', '{%\n  request.variables.set("t", 1);\n%}']);
+  assert.deepEqual(r.postScripts, ['./scripts/save-token.js', '{% client.log("ok") %}']);
+  assert.equal(r.body, '{"a":1}');
+  assert.equal(r.bodyFile, undefined);
+  assert.equal(serializeRequest(r), text);
+  assert.deepEqual(parseRequest(serializeRequest(r)), r);
+});
+
+test('< ./body.json setelah header + baris kosong = body dari file (bukan script)', () => {
+  const r = parseRequest('POST https://a\nContent-Type: application/json\n\n< ./body.json\n');
+  assert.equal(r.bodyFile, './body.json');
+  assert.equal(r.body, '');
+  assert.deepEqual(r.preScripts, []);
+  assert.equal(serializeRequest(r), 'POST https://a\nContent-Type: application/json\n\n< ./body.json\n');
+  const multi = parseRequest('POST https://a\nContent-Type: multipart/form-data; boundary=B\n\n--B\nContent-Disposition: form-data; name="f"; filename="a.png"\n\n< ./a.png\n--B--\n');
+  assert.equal(multi.bodyFile, undefined, 'multipart: < di dalam body tetap bagian body');
+  assert.match(multi.body, /< \.\/a\.png/);
+});
+
+test('toHttpRequest: body dari file dibaca lewat fungsi baca yang diberikan', async () => {
+  const r = parseRequest('POST https://a\nContent-Type: application/json\n\n< ./body.json\n');
+  const req = await toHttpRequestWithFile(r, async (p) => { assert.equal(p, './body.json'); return Buffer.from('{"f":1}'); });
+  assert.deepEqual(req.body, Buffer.from('{"f":1}'));
 });

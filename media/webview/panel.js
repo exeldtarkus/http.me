@@ -139,6 +139,8 @@
 
   let formRows = [];
   function renderBody() {
+    $('bodyFileNote').hidden = !req.bodyFile;
+    $('bodyFileNote').textContent = req.bodyFile ? `The body is read from ${req.bodyFile} when the request is sent.` : '';
     for (const r of document.getElementsByName('bt')) r.checked = r.value === req.bodyType;
     const form = req.bodyType === 'form';
     $('bodyText').hidden = form || req.bodyType === 'none';

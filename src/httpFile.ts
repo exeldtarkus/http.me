@@ -20,6 +20,9 @@ export type ParsedRequest = {
   /** # @operation: operationId asal OpenAPI */ operation: string | undefined;
   /** # @auth …: auth yang bukan header standar (teks mentah setelah @auth) */ auth: string | undefined;
   noScripts: boolean; noPre: boolean; noPost: boolean;
+  /** `< ./x.js` / `< {% … %}` sebelum baris request (dijalankan di Fase 3c) */ preScripts: string[];
+  /** `> ./x.js` / `> {% … %}` setelah body */ postScripts: string[];
+  /** `< ./body.json` sebagai body: isi dibaca dari file saat Send */ bodyFile: string | undefined;
 };
 
 export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'QUERY'];
@@ -39,7 +42,22 @@ export const emptyRequest = (): ParsedRequest => ({
   vars: [], title: undefined, name: undefined, preamble: [], method: 'GET', url: '', headers: [], disabledParams: [], body: '', bodyType: 'none',
   followRedirects: true, insecure: false, timeoutSec: undefined,
   noCookieJar: false, login: false, operation: undefined, auth: undefined, noScripts: false, noPre: false, noPost: false,
+  preScripts: [], postScripts: [], bodyFile: undefined,
 });
+
+/** script `<` / `>` mulai di lines[i]: path, atau inline {% … %} (bisa multi-baris); kembalikan isi + indeks baris terakhir */
+function readScript(lines: string[], i: number): { script: string; end: number } {
+  const first = lines[i].trim().slice(1).trim();
+  if (!first.startsWith('{%') || first.includes('%}')) return { script: first, end: i };
+  const parts = [first];
+  let j = i + 1;
+  for (; j < lines.length; j++) {
+    parts.push(lines[j]);
+    if (lines[j].includes('%}')) break;
+  }
+  return { script: parts.join('\n'), end: Math.min(j, lines.length - 1) };
+}
+const POST_LINE = /^>\s*\S/;
 
 /** metadata tanpa nilai: nama -> field boolean */
 const FLAGS = { 'no-cookie-jar': 'noCookieJar', login: 'login', 'no-scripts': 'noScripts', 'no-pre': 'noPre', 'no-post': 'noPost' } as const;
@@ -70,7 +88,8 @@ export function parseRequest(text: string): ParsedRequest {
       else { const eq = meta[2].indexOf('='); r.disabledParams.push(eq < 0 ? { key: meta[2], value: '' } : { key: meta[2].slice(0, eq), value: meta[2].slice(eq + 1) }); }
       continue;
     }
-    if (/^(#|\/\/|<)/.test(t)) { r.preamble.push(lines[i]); continue; }
+    if (t.startsWith('<')) { const sc = readScript(lines, i); r.preScripts.push(sc.script); i = sc.end; continue; }
+    if (/^(#|\/\/)/.test(t)) { r.preamble.push(lines[i]); continue; }
     break;
   }
   if (i < lines.length) {
@@ -82,9 +101,21 @@ export function parseRequest(text: string): ParsedRequest {
       const h = HEADER_LINE.exec(lines[i]);
       if (h) r.headers.push({ name: h[1].trim(), value: h[2], enabled: true });
     }
-    const body = lines.slice(i + 1);
+    // body sampai baris `> script` pertama; sisanya post-script
+    const rest = lines.slice(i + 1);
+    let end = rest.findIndex((l) => POST_LINE.test(l.trim()));
+    if (end < 0) end = rest.length;
+    for (let j = end; j < rest.length; j++) {
+      if (!POST_LINE.test(rest[j].trim())) continue;
+      const sc = readScript(rest, j);
+      r.postScripts.push(sc.script);
+      j = sc.end;
+    }
+    const body = rest.slice(0, end);
     while (body.length && body[body.length - 1].trim() === '') body.pop();
-    r.body = body.join('\n');
+    const fromFile = body.length === 1 ? /^<\s*(\S.*)$/.exec(body[0].trim()) : null;
+    if (fromFile && !fromFile[1].startsWith('{%')) r.bodyFile = fromFile[1].trim();
+    else r.body = body.join('\n');
   }
   r.headers.push(...disabled);
   const ct = r.headers.find((h) => h.enabled && h.name.toLowerCase() === 'content-type')?.value;
@@ -110,15 +141,26 @@ export function serializeRequest(r: ParsedRequest): string {
   if (r.noPre) out.push('# @no-pre');
   if (r.noPost) out.push('# @no-post');
   out.push(...r.preamble);
+  for (const sc of r.preScripts) out.push(`< ${sc}`);
   out.push(`${r.method} ${r.url}`);
   for (const h of r.headers) if (h.enabled) out.push(`${h.name}: ${h.value}`);
-  if (r.body !== '') out.push('', r.body);
+  if (r.bodyFile) out.push('', `< ${r.bodyFile}`);
+  else if (r.body !== '') out.push('', r.body);
+  if (r.postScripts.length) out.push('', ...r.postScripts.map((sc) => `> ${sc}`));
   return `${out.join('\n')}\n`;
 }
 
+export type SendableRequest = { method: string; url: string; headers: [string, string][]; body: string | Buffer | undefined };
+
 /** request siap kirim: header nonaktif dibuang, body kosong = tanpa body */
-export const toHttpRequest = (r: ParsedRequest): { method: string; url: string; headers: [string, string][]; body: string | undefined } => ({
+export const toHttpRequest = (r: ParsedRequest): SendableRequest => ({
   method: r.method, url: r.url,
   headers: r.headers.filter((h) => h.enabled && h.name !== '').map((h): [string, string] => [h.name, h.value]),
   body: r.body === '' ? undefined : r.body,
 });
+
+/** seperti toHttpRequest, body `< ./file` dibaca lewat readFile (path relatif ke file .http, diselesaikan pemanggil) */
+export async function toHttpRequestWithFile(r: ParsedRequest, readFile: (path: string) => Promise<Buffer>): Promise<SendableRequest> {
+  const req = toHttpRequest(r);
+  return r.bodyFile ? { ...req, body: await readFile(r.bodyFile) } : req;
+}

@@ -4,11 +4,11 @@
 import * as vscode from 'vscode';
 import { createHash, randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve as resolvePath } from 'node:path';
 import { homedir } from 'node:os';
 import { webviewPage } from './webviewPage';
 import { NEW_REQUEST_TEXT, newRequestName } from './newRequest';
-import { parseRequest, serializeRequest, toHttpRequest, type ParsedRequest } from './httpFile';
+import { parseRequest, serializeRequest, toHttpRequestWithFile, type ParsedRequest } from './httpFile';
 import { DEFAULT_TIMEOUT_MS, RequestError, send } from './http';
 import { responseView, type ResponseView } from './response';
 import { createRunner } from './runner';
@@ -77,7 +77,9 @@ function isRequest(v: unknown): v is ParsedRequest {
     && r.preamble.every((l) => typeof l === 'string') && (r.timeoutSec === undefined || Number.isInteger(r.timeoutSec))
     && Array.isArray(r.vars) && r.vars.every((v) => typeof v?.name === 'string' && typeof v.value === 'string')
     && [r.title, r.name, r.operation, r.auth].every((v) => v === undefined || typeof v === 'string')
-    && [r.noCookieJar, r.login, r.noScripts, r.noPre, r.noPost].every((v) => typeof v === 'boolean');
+    && [r.noCookieJar, r.login, r.noScripts, r.noPre, r.noPost].every((v) => typeof v === 'boolean')
+    && [r.preScripts, r.postScripts].every((a) => Array.isArray(a) && a.every((x) => typeof x === 'string'))
+    && (r.bodyFile === undefined || typeof r.bodyFile === 'string');
 }
 
 /** tulis request dari panel ke dokumen (seluruh isi diganti; undo VS Code tetap jalan) */
@@ -89,9 +91,14 @@ async function writeDocument(doc: vscode.TextDocument, text: string): Promise<vo
 }
 
 /** Send lewat runner: request lama di dokumen yang sama dibatalkan; hasil disimpan di state dokumen */
+/** body `< ./file`: relatif ke folder file .http; untitled belum punya folder */
+async function readBodyFile(doc: vscode.TextDocument, path: string): Promise<Buffer> {
+  if (doc.uri.scheme !== 'file') throw new Error(`Save the request first: the body is read from ${path}, relative to the .http file.`);
+  return fs.readFile(resolvePath(dirname(doc.uri.fsPath), path));
+}
+
 async function sendRequest(doc: vscode.TextDocument, s: DocState, parsed: ParsedRequest): Promise<void> {
-  const r = toHttpRequest(parsed);
-  const label = `${r.method} ${r.url}`;
+  const label = `${parsed.method} ${parsed.url}`;
   const token = Symbol(label);
   s.token = token;
   s.view = { kind: 'queued', label, position: 'Queued' };
@@ -101,6 +108,7 @@ async function sendRequest(doc: vscode.TextDocument, s: DocState, parsed: Parsed
       if (s.token === token) { s.view = { kind: 'running', label }; postView(s); }
       await dropBodyFile(s);
       await fs.mkdir(bodyDir, { recursive: true, mode: 0o700 });
+      const r = await toHttpRequestWithFile(parsed, (p) => readBodyFile(doc, p));
       return send(r, {
         signal, bodyFile: bodyPath(doc), followRedirects: parsed.followRedirects, insecure: parsed.insecure,
         onError: (where, e) => log().error(errorLine(where, e)),
@@ -109,7 +117,7 @@ async function sendRequest(doc: vscode.TextDocument, s: DocState, parsed: Parsed
     });
     if (s.token !== token) { if (res.bodyFile) await fs.rm(res.bodyFile, { force: true }); return; } // hasil Send lama: dibuang
     Object.assign(s, { bodyFile: res.bodyFile, contentType: res.headers.find(([k]) => k === 'content-type')?.[1], url: res.url });
-    view = { kind: 'response', ...responseView(res, r.method) };
+    view = { kind: 'response', ...responseView(res, parsed.method) };
   } catch (e) {
     if (e instanceof RequestError && e.kind === 'cancelled') view = { kind: 'cancelled' };
     else {
