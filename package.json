@@ -1,0 +1,41 @@
+{
+  "name": "httpme",
+  "displayName": "http.me",
+  "description": "Lightweight HTTP client for VS Code: send requests from .http files, collections, environments and history, with a focus on low memory use.",
+  "version": "0.0.1",
+  "publisher": "exeltarkus",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "http",
+    "rest",
+    "api",
+    "client",
+    "postman",
+    "curl"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/exeldtarkus/http.me.git"
+  },
+  "activationEvents": [],
+  "main": "./out/src/extension.js",
+  "contributes": {},
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test out/test/src/*.test.js",
+    "package": "vsce package --skip-license"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^4.0.0",
+    "typescript": "^5.4.0"
+  }
+}
