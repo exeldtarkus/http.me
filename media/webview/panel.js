@@ -137,7 +137,123 @@
     return out + escHtml(code.slice(last));
   }
 
-  const api = { highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
+  /** cek sintaks body JSON / XML untuk garis merah di editor: { start, end, message } atau undefined bila valid / jenis lain */
+  function bodyError(text, type) {
+    if (!text.trim()) return undefined;
+    const err = type === 'json' ? jsonError(text) : type === 'xml' ? xmlError(text) : undefined;
+    if (!err) return undefined;
+    let { start, end } = err;
+    // akhir teks / spasi: tanda pindah ke karakter terakhir yang terlihat sebelumnya
+    if (start >= text.length || /\s/.test(text[start])) {
+      start = Math.min(start, text.length) - 1;
+      while (start > 0 && /\s/.test(text[start])) start--;
+      end = start + 1;
+    }
+    const before = text.slice(0, start).split('\n');
+    return { start, end, message: `Line ${before.length}, column ${before[before.length - 1].length + 1}: ${err.message}` };
+  }
+  function jsonError(s) {
+    let i = 0;
+    const fail = (message, len) => { const w = /^[\w$]+/.exec(s.slice(i)); throw { start: i, end: i + (len || (w ? w[0].length : 1)), message }; };
+    const ws = () => { while (i < s.length && /\s/.test(s[i])) i++; };
+    const variable = () => { if (!s.startsWith('{{', i)) return false; const e = s.indexOf('}}', i + 2); if (e < 0) return false; i = e + 2; return true; };
+    const str = () => {
+      const from = i++;
+      for (; i < s.length; i++) {
+        if (s[i] === '\\') i++;
+        else if (s[i] === '"') { i++; return; }
+        else if (s[i] === '\n') break;
+      }
+      i = from;
+      fail('Unterminated string', 1);
+    };
+    const list = (close, item, what) => {
+      i++;
+      ws();
+      if (s[i] === close) { i++; return; }
+      for (;;) {
+        item();
+        ws();
+        if (s[i] === ',') {
+          const comma = i++;
+          ws();
+          if (s[i] === close) { i = comma; fail('Trailing comma', 1); }
+          continue;
+        }
+        if (s[i] === close) { i++; return; }
+        fail(i >= s.length ? 'Unexpected end of JSON' : `Expected ',' or '${close}' after ${what}`);
+      }
+    };
+    const value = () => {
+      ws();
+      const c = s[i];
+      if (variable()) return;
+      if (c === '{') return list('}', () => {
+        ws();
+        if (!variable()) {
+          if (s[i] === '"') str();
+          else fail(i >= s.length ? 'Unexpected end of JSON' : 'Expected a double-quoted property name');
+        }
+        ws();
+        if (s[i] !== ':') fail(i >= s.length ? 'Unexpected end of JSON' : "Expected ':' after property name");
+        i++;
+        value();
+      }, 'property value');
+      if (c === '[') return list(']', value, 'array element');
+      if (c === '"') return str();
+      const num = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?/.exec(s.slice(i));
+      if (num) { i += num[0].length; return; }
+      for (const w of ['true', 'false', 'null']) if (s.startsWith(w, i) && !/[\w$]/.test(s[i + w.length] || '')) { i += w.length; return; }
+      fail(i >= s.length ? 'Unexpected end of JSON' : `Unexpected character '${c}'`);
+    };
+    try {
+      value();
+      ws();
+      if (i < s.length) fail('Unexpected content after JSON');
+      return undefined;
+    } catch (e) {
+      if (e && typeof e.start === 'number') return e; // posisi error sintaks body (bukan error program)
+      throw e;
+    }
+  }
+  function xmlError(s) {
+    const stack = [];
+    for (let i = s.indexOf('<'); i >= 0; i = s.indexOf('<', i)) {
+      const skip = [['<!--', '-->'], ['<![CDATA[', ']]>'], ['<?', '?>']].find(([a]) => s.startsWith(a, i));
+      const close = skip ? s.indexOf(skip[1], i) : s.indexOf('>', i);
+      if (close < 0) return { start: i, end: i + 1, message: "Unclosed '<'" };
+      const end = close + (skip ? skip[1].length : 1);
+      const tag = /^<(\/?)([\w:.-]+)/.exec(s.slice(i, end));
+      if (!skip && tag && !s.startsWith('<!', i)) {
+        if (tag[1]) {
+          const open = stack.pop();
+          if (!open) return { start: i, end, message: `Unexpected closing tag </${tag[2]}>` };
+          if (open.name !== tag[2]) return { start: i, end, message: `Closing tag </${tag[2]}> does not match <${open.name}>` };
+        } else if (!/\/\s*>$/.test(s.slice(i, end))) stack.push({ name: tag[2], start: i, end });
+      }
+      i = end;
+    }
+    const open = stack.pop();
+    return open ? { start: open.start, end: open.end, message: `Tag <${open.name}> is not closed` } : undefined;
+  }
+  /** segmen mirror dipotong supaya rentang [start, end) bertanda err (garis merah), token variable tidak dipecah */
+  function markSegments(segs, start, end) {
+    const out = [];
+    let pos = 0;
+    for (const sg of segs) {
+      const a = pos;
+      const b = pos + sg.text.length;
+      pos = b;
+      if (sg.name || b <= start || a >= end) { out.push(sg); continue; }
+      const cut = [a, Math.max(a, start), Math.min(b, end), b];
+      if (cut[1] > a) out.push({ text: sg.text.slice(0, cut[1] - a) });
+      out.push({ text: sg.text.slice(cut[1] - a, cut[2] - a), err: true });
+      if (b > cut[2]) out.push({ text: sg.text.slice(cut[2] - a) });
+    }
+    return out;
+  }
+
+  const api = { bodyError, markSegments, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -252,6 +368,16 @@
         changed();
       });
     } else $('bodyText').value = req.body;
+    paintBodyError();
+  }
+  /** garis merah + pesan di bawah editor Body bila JSON / XML tidak valid */
+  function paintBodyError() {
+    const t = $('bodyText');
+    const err = !t.hidden && !req.bodyFile ? bodyError(t.value, req.bodyType) : undefined;
+    $('bodyErr').hidden = !err;
+    $('bodyErr').textContent = err ? err.message : '';
+    t.closest('.vwrap').classList.toggle('bad', !!err);
+    if (t._mirror) paint(t, t._mirror);
   }
 
   function renderRequest() {
@@ -297,8 +423,11 @@
   function paint(input, m) {
     const cs = getComputedStyle(input);
     for (const p of ['font', 'letterSpacing', 'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'textIndent', 'tabSize']) m.style[p] = cs[p];
-    const segs = segments(input.value, vars, fileVars());
+    let segs = segments(input.value, vars, fileVars());
+    const err = input.id === 'bodyText' && !$('bodyErr').hidden && req ? bodyError(input.value, req.bodyType) : undefined;
+    if (err) segs = markSegments(segs, err.start, err.end);
     m.replaceChildren(...segs.map((s) => {
+      if (s.err) return el('span', { className: 'synerr', textContent: s.text });
       if (!s.name) return document.createTextNode(s.text);
       const t = el('span', { className: `tok t-${s.cls}`, textContent: s.text });
       t.dataset.name = s.name;
@@ -307,7 +436,7 @@
     // input satu baris: teks lebih panjang dari field ikut bergeser sesuai scroll input
     m.scrollTop = input.scrollTop;
     m.scrollLeft = input.scrollLeft;
-    input.parentNode?.classList.toggle('tokd', segs.some((s) => s.name));
+    input.parentNode?.classList.toggle('tokd', segs.some((s) => s.name || s.err));
   }
   function syncMirrors() {
     for (const input of mirrors) {
@@ -436,7 +565,7 @@
     e.preventDefault();
     post({ type: 'pasteCurl', text });
   });
-  $('bodyText').oninput = () => { req.body = $('bodyText').value; renderMethod(); changed(); };
+  $('bodyText').oninput = () => { req.body = $('bodyText').value; renderMethod(); paintBodyError(); changed(); };
   for (const r of document.getElementsByName('bt')) {
     r.onchange = () => {
       // text -> form: body lama yang bukan key=value tetap utuh di .http sampai tabel form diedit
