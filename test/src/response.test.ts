@@ -52,3 +52,16 @@ test('responseView: HEAD = tanpa body, OPTIONS = daftar method menonjol', () => 
   assert.deepEqual(responseView(res({ headers: [['allow', 'GET, POST']] }), 'OPTIONS').allow, ['GET', 'POST']);
   assert.equal(responseView(res({ headers: [['allow', 'GET']] }), 'GET').allow, undefined);
 });
+
+test('responseView: body terpotong & biner diberi catatan + aksi', () => {
+  const t = responseView(res({ headers: [['content-type', 'text/plain']], body: Buffer.from('abc'), size: 3 * 1048576, truncated: true, bodyFile: '/c/b.txt' }), 'GET');
+  assert.equal(t.note, 'Showing the first 1.0 MB of 3.0 MB.');
+  assert.equal(t.canOpen, true);
+  assert.equal(t.canSave, true);
+  const b = responseView(res({ headers: [['content-type', 'image/png']], size: 2048, binary: true, bodyFile: '/c/b.bin' }), 'GET');
+  assert.equal(b.bodyHtml, '');
+  assert.equal(b.note, 'Binary body (image/png, 2.0 KB).');
+  assert.deepEqual([b.canOpen, b.canSave], [false, true]);
+  const n = responseView(res({ body: Buffer.from('x'), size: 1 }), 'GET');
+  assert.deepEqual([n.note, n.canOpen, n.canSave], [undefined, false, false]);
+});

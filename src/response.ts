@@ -1,6 +1,6 @@
 // tampilan response untuk panel (tanpa vscode): status, waktu, ukuran, body JSON pretty + warna, header
 import { esc } from './webviewPage';
-import { allowedMethods, type HttpResponse } from './http';
+import { allowedMethods, MAX_BODY_MEMORY, type HttpResponse } from './http';
 
 export type ResponseView = {
   status: string; statusClass: string; time: string; size: string;
@@ -9,6 +9,8 @@ export type ResponseView = {
   bodyHtml: string;
   /** HEAD: hanya tab Headers */ head: boolean;
   /** OPTIONS: method dari Allow / Access-Control-Allow-Methods */ allow?: string[];
+  /** body terpotong / biner */ note?: string;
+  /** Open in editor (body > 1 MB) / Save to file (body ada di file cache) */ canOpen: boolean; canSave: boolean;
 };
 
 export const statusClass = (s: number): string => (s >= 100 && s < 500 ? `st-${Math.floor(s / 100)}` : 'st-5');
@@ -47,7 +49,9 @@ export function highlightJson(json: string): string {
 export function responseView(res: HttpResponse, method: string): ResponseView {
   const text = res.body.toString('utf8');
   const ct = res.headers.find(([k]) => k === 'content-type')?.[1] ?? '';
-  const pretty = /[/+]json\b/i.test(ct) || /^\s*[[{]/.test(text) ? prettyJson(text) : undefined;
+  const pretty = !res.truncated && (/[/+]json\b/i.test(ct) || /^\s*[[{]/.test(text)) ? prettyJson(text) : undefined;
+  const note = res.binary ? `Binary body (${ct || 'unknown type'}, ${formatSize(res.size)}).`
+    : res.truncated ? `Showing the first ${formatSize(MAX_BODY_MEMORY)} of ${formatSize(res.size)}.` : undefined;
   return {
     status: `${res.status}${res.statusText ? ` ${res.statusText}` : ''}`,
     statusClass: statusClass(res.status),
@@ -57,5 +61,8 @@ export function responseView(res: HttpResponse, method: string): ResponseView {
     bodyHtml: pretty !== undefined ? highlightJson(pretty) : esc(text),
     head: method === 'HEAD',
     allow: method === 'OPTIONS' ? allowedMethods(res.headers) : undefined,
+    note,
+    canOpen: !!res.truncated && !!res.bodyFile,
+    canSave: !!res.bodyFile,
   };
 }

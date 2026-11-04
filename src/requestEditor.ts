@@ -2,7 +2,10 @@
 // Panel mengirim request terurai ('edit'), host menulisnya ke dokumen; perubahan dokumen dari luar dikirim balik ('state').
 // Request berjalan di extension host: state (running / response) per dokumen bertahan saat webview tersembunyi dilepas.
 import * as vscode from 'vscode';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { webviewPage } from './webviewPage';
 import { NEW_REQUEST_TEXT, newRequestName } from './newRequest';
 import { parseRequest, serializeRequest, toHttpRequest, type ParsedRequest } from './httpFile';
@@ -18,8 +21,14 @@ type View =
   | ({ kind: 'response' } & ResponseView)
   | { kind: 'error'; message: string }
   | { kind: 'cancelled' };
-type DocState = { panels: Set<vscode.WebviewPanel>; view?: View; running?: AbortController };
+type DocState = {
+  panels: Set<vscode.WebviewPanel>; view?: View; running?: AbortController;
+  /** file body utuh (> 1 MB / biner) di cache; dihapus saat Send berikutnya / tab ditutup */ bodyFile?: string;
+  contentType?: string; url?: string;
+};
 const docs = new Map<string, DocState>();
+/** globalStorage/httpme-cache/body (diisi registerRequestEditor) */
+let bodyDir = '';
 
 const stateOf = (doc: vscode.TextDocument): DocState => {
   const key = doc.uri.toString();
@@ -27,6 +36,13 @@ const stateOf = (doc: vscode.TextDocument): DocState => {
   if (!s) docs.set(key, (s = { panels: new Set() }));
   return s;
 };
+const bodyPath = (doc: vscode.TextDocument) => join(bodyDir, createHash('sha1').update(doc.uri.toString()).digest('hex'));
+
+async function dropBodyFile(s: DocState): Promise<void> {
+  const f = s.bodyFile;
+  s.bodyFile = undefined;
+  if (f) await fs.rm(f, { force: true });
+}
 const postView = (s: DocState) => s.panels.forEach((p) => void p.webview.postMessage({ type: 'view', view: s.view }));
 
 /** pesan dari webview = input tak tepercaya: cek bentuknya sebelum ditulis ke dokumen / dikirim */
@@ -48,7 +64,7 @@ async function writeDocument(doc: vscode.TextDocument, text: string): Promise<vo
 }
 
 /** Send: request lama di dokumen yang sama dibatalkan; hasil disimpan di state dokumen */
-async function sendRequest(s: DocState, parsed: ParsedRequest): Promise<void> {
+async function sendRequest(doc: vscode.TextDocument, s: DocState, parsed: ParsedRequest): Promise<void> {
   s.running?.abort();
   const ac = new AbortController();
   s.running = ac;
@@ -57,7 +73,13 @@ async function sendRequest(s: DocState, parsed: ParsedRequest): Promise<void> {
   postView(s);
   let view: View;
   try {
-    const res = await send(r, { signal: ac.signal, timeoutMs: parsed.timeoutSec !== undefined ? parsed.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS });
+    await dropBodyFile(s);
+    await fs.mkdir(bodyDir, { recursive: true, mode: 0o700 });
+    const res = await send(r, {
+      signal: ac.signal, bodyFile: bodyPath(doc),
+      timeoutMs: parsed.timeoutSec !== undefined ? parsed.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS,
+    });
+    if (s.running === ac) Object.assign(s, { bodyFile: res.bodyFile, contentType: res.headers.find(([k]) => k === 'content-type')?.[1], url: res.url });
     view = { kind: 'response', ...responseView(res, r.method) };
   } catch (e) {
     if (e instanceof RequestError && e.kind === 'cancelled') view = { kind: 'cancelled' };
@@ -87,7 +109,9 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
         else if (m.type === 'edit' && isRequest(m.req)) {
           written = serializeRequest(m.req);
           await writeDocument(doc, written);
-        } else if (m.type === 'send') await sendRequest(s, isRequest(m.req) ? m.req : parseRequest(doc.getText()));
+        } else if (m.type === 'send') await sendRequest(doc, s, isRequest(m.req) ? m.req : parseRequest(doc.getText()));
+        else if (m.type === 'openBody') await openBody(s);
+        else if (m.type === 'saveBody') await saveBody(s);
       } catch (e) {
         reportError(`requestEditor.${m.type}`, e, `http.me: ${errMsg(e)}`);
       }
@@ -102,19 +126,48 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   });
 }
 
-/** dokumen ditutup: request yang masih jalan dibatalkan, state dilepas */
+const LANG: [RegExp, string][] = [[/[/+]json\b/i, 'json'], [/[/+]xml\b/i, 'xml'], [/html/i, 'html'], [/javascript/i, 'javascript'], [/css/i, 'css']];
+
+/** Open in editor: body utuh (> 1 MB) dari file cache, bahasa dari Content-Type */
+async function openBody(s: DocState): Promise<void> {
+  if (!s.bodyFile) return;
+  const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(s.bodyFile));
+  const lang = LANG.find(([re]) => re.test(s.contentType ?? ''))?.[1];
+  await vscode.window.showTextDocument(lang ? await vscode.languages.setTextDocumentLanguage(doc, lang) : doc, { preview: true });
+}
+
+/** Save to file: salin body utuh dari file cache; nama awal dari segmen terakhir URL */
+async function saveBody(s: DocState): Promise<void> {
+  if (!s.bodyFile) return;
+  let name = 'response';
+  try {
+    name = decodeURIComponent(new URL(s.url ?? '').pathname.split('/').filter(Boolean).pop() ?? '') || name;
+  } catch {
+    // URL / nama tidak bisa dibaca: sengaja dilewati, pakai nama default "response"
+  }
+  const base = vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file(homedir());
+  const target = await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.joinPath(base, name.replace(/[\\/:*?"<>|]/g, '_')), saveLabel: 'Save Response Body' });
+  if (!target) return;
+  await vscode.workspace.fs.copy(vscode.Uri.file(s.bodyFile), target, { overwrite: true });
+  void vscode.window.showInformationMessage(`Response body saved to ${target.fsPath}.`);
+}
+
+/** dokumen ditutup: request yang masih jalan dibatalkan, state & file body dilepas */
 export function releaseDocument(doc: vscode.TextDocument): void {
   const s = docs.get(doc.uri.toString());
-  s?.running?.abort();
+  if (!s) return;
+  s.running?.abort();
   docs.delete(doc.uri.toString());
+  dropBodyFile(s).catch((e) => log().error(errorLine('releaseDocument', e)));
 }
 
 const provider: vscode.CustomTextEditorProvider = { resolveCustomTextEditor: resolve };
 
-export const registerRequestEditor = (): vscode.Disposable => vscode.Disposable.from(
+// shortcut: file body dari sesi yang ditutup paksa (VS Code crash) tidak dibersihkan otomatis; Clear Cache menghapusnya
+export const registerRequestEditor = (cacheDir: string): vscode.Disposable => (bodyDir = join(cacheDir, 'body'), vscode.Disposable.from(
   vscode.window.registerCustomEditorProvider(REQUEST_VIEW, provider, { webviewOptions: { retainContextWhenHidden: false } }),
   vscode.workspace.onDidCloseTextDocument(releaseDocument),
-);
+));
 
 /** New Request: tab .http untitled berisi GET kosong, langsung di panel request */
 export async function newRequest(): Promise<void> {

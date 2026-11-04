@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { allowedMethods, send } from '../../src/http';
+import { allowedMethods, isBinaryType, MAX_BODY_MEMORY, send } from '../../src/http';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { withTempDir } from './helpers/tmp';
 import { startServer } from './helpers/server';
 
 const wait = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
@@ -102,4 +105,47 @@ test('OPTIONS: daftar method dari Allow / Access-Control-Allow-Methods', () => {
   assert.deepEqual(allowedMethods([['allow', 'GET, POST,options']]), ['GET', 'POST', 'OPTIONS']);
   assert.deepEqual(allowedMethods([['access-control-allow-methods', 'PUT, QUERY'], ['allow', 'GET, PUT']]), ['GET', 'PUT', 'QUERY']);
   assert.deepEqual(allowedMethods([['x', 'y']]), []);
+});
+
+test('body besar: hanya potongan awal di memory, body utuh ditulis ke file (0600)', () => withTempDir(async (dir) => {
+  const big = 'x'.repeat(5000) + 'END';
+  const srv = await startServer(async () => ({ headers: { 'content-type': 'text/plain' }, body: big }));
+  try {
+    const bodyFile = join(dir, 'body.txt');
+    const res = await send({ method: 'GET', url: srv.url, headers: [] }, { maxMemory: 1024, bodyFile });
+    assert.equal(res.truncated, true);
+    assert.equal(res.binary, false);
+    assert.equal(res.body.length, 1024);
+    assert.equal(res.size, big.length);
+    assert.equal(res.bodyFile, bodyFile);
+    assert.equal(readFileSync(bodyFile, 'utf8'), big);
+    if (process.platform !== 'win32') assert.equal(statSync(bodyFile).mode & 0o777, 0o600);
+    const noFile = await send({ method: 'GET', url: srv.url, headers: [] }, { maxMemory: 1024 });
+    assert.deepEqual([noFile.truncated, noFile.body.length, noFile.size, noFile.bodyFile], [true, 1024, big.length, undefined]);
+    assert.equal(MAX_BODY_MEMORY, 1024 * 1024);
+  } finally {
+    await srv.close();
+  }
+}));
+
+test('body biner: tidak ditahan di memory, ditulis utuh ke file; body kecil tidak membuat file', () => withTempDir(async (dir) => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]);
+  const srv = await startServer(async (req) => (req.url === '/img' ? { headers: { 'content-type': 'image/png' }, body: png } : { headers: { 'content-type': 'application/json' }, body: '{}' }));
+  try {
+    const bodyFile = join(dir, 'body.bin');
+    const res = await send({ method: 'GET', url: `${srv.url}/img`, headers: [] }, { bodyFile });
+    assert.deepEqual([res.binary, res.truncated, res.body.length, res.size], [true, false, 0, png.length]);
+    assert.deepEqual(readFileSync(bodyFile), png);
+    const small = join(dir, 'small.bin');
+    const json = await send({ method: 'GET', url: `${srv.url}/json`, headers: [] }, { bodyFile: small });
+    assert.deepEqual([json.binary, json.truncated, json.body.toString(), json.bodyFile], [false, false, '{}', undefined]);
+    assert.equal(existsSync(small), false);
+  } finally {
+    await srv.close();
+  }
+}));
+
+test('isBinaryType: gambar / pdf / zip / octet-stream biner; teks, JSON, XML, JS bukan', () => {
+  for (const t of ['image/png', 'application/pdf', 'application/zip', 'application/octet-stream', 'audio/mpeg', 'video/mp4', 'font/woff2', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']) assert.equal(isBinaryType(t), true, t);
+  for (const t of ['text/html; charset=utf-8', 'application/json', 'application/problem+json', 'application/xml', 'image/svg+xml', 'application/javascript', 'application/x-www-form-urlencoded', '']) assert.equal(isBinaryType(t), false, t);
 });

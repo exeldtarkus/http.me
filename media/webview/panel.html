@@ -71,7 +71,10 @@
   .code .k { color: var(--code-key); } .code .s { color: var(--code-str); } .code .n { color: var(--code-num); }
   .code.error { color: var(--err); }
   .empty { margin: 0; padding: 18px 14px; color: var(--muted); }
-  .empty[hidden], .allow[hidden] { display: none; }
+  .empty[hidden], .allow[hidden], .bodynote[hidden] { display: none; }
+  .bodynote { margin: 8px 14px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--warn); }
+  .bodynote span { margin-right: auto; }
+  .bodynote .btn[hidden] { display: none; }
   .allow { margin: 8px 14px 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; font-size: 12px; }
   .allow b { font: 600 12px var(--mono); margin-right: 8px; }
   .loading { position: absolute; inset: 31px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: var(--bg); z-index: 1; }
@@ -141,6 +144,9 @@
   </div>
   <div class="resbody">
     <p class="allow" id="allow" hidden></p>
+    <p class="bodynote" id="bodyNote" hidden><span id="bodyNoteText"></span>
+      <button class="btn ghost sm" id="openBody" type="button">Open in editor ↗</button>
+      <button class="btn ghost sm" id="saveBody" type="button">Save to file</button></p>
     <p class="empty" id="resEmpty">Send the request to see the response.</p>
     <div class="pane" id="r-rbody"><pre class="code" id="resBody"></pre></div>
     <div class="pane" id="r-rheaders" hidden><table class="kv"><tbody id="resHeaders"></tbody></table></div>

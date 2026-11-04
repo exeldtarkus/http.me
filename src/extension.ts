@@ -39,7 +39,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   ctx.subscriptions.push(log());
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.whatsNew', () => openWhatsNew(ctx)));
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.clearCache', () => clearCacheCommand(ctx)));
-  ctx.subscriptions.push(registerRequestEditor());
+  ctx.subscriptions.push(registerRequestEditor(vscode.Uri.joinPath(ctx.globalStorageUri, 'httpme-cache').fsPath));
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.newRequest', () =>
     newRequest().catch((e) => reportError('newRequest', e, `New Request failed: ${errMsg(e)}`))));
 

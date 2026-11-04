@@ -211,6 +211,10 @@
     $('nResHeaders').textContent = res ? String(res.headers.length) : '';
     $('allow').hidden = !res?.allow;
     if (res?.allow) $('allow').replaceChildren(el('b', { textContent: 'Allowed methods' }), res.allow.length ? res.allow.join(', ') : 'none listed by the server');
+    $('bodyNote').hidden = !res?.note;
+    $('bodyNoteText').textContent = res?.note ?? '';
+    $('openBody').hidden = !res?.canOpen;
+    $('saveBody').hidden = !res?.canSave;
     $('resBodyTab').disabled = !!res?.head;
     showResTab(res?.head ? 'rheaders' : resTab);
   }
@@ -220,6 +224,8 @@
     post({ type: 'send', req });
   }
   $('send').onclick = sendNow;
+  $('openBody').onclick = () => post({ type: 'openBody' });
+  $('saveBody').onclick = () => post({ type: 'saveBody' });
 
   window.addEventListener('message', (e) => {
     const m = e.data;
