@@ -12,6 +12,10 @@ const panel = require(join(__dirname, '..', '..', '..', 'media', 'webview', 'pan
   segments(text: string, vars: Vars, file: string[]): { text: string; name?: string; cls?: string }[];
   completionPrefix(before: string): string | undefined;
   bodyError(text: string, type: string): { start: number; end: number; message: string } | undefined;
+  jsonRanges(text: string): { start: number; end: number; val: string }[];
+  applyRanges(segs: { text: string; name?: string }[], ranges: { start: number; end: number; val: unknown }[], prop: string): Record<string, unknown>[];
+  indentEdit(text: string, start: number, end: number, outdent: boolean): { from: number; to: number; insert: string; selStart: number; selEnd: number };
+  enterIndent(text: string, caret: number): string;
   markSegments(segs: { text: string; name?: string; cls?: string }[], start: number, end: number): { text: string; name?: string; cls?: string; err?: boolean }[];
 };
 type Vars = { ok: string[]; nulls: string[]; names: string[] };
@@ -248,7 +252,7 @@ test('review R28: editor Body: pesan error di bawah editor + garis bergelombang 
   const html = fs.readFileSync(join(dir, 'panel.html'), 'utf8');
   assert.match(html, /<span class="note err" id="bodyErr" role="status" hidden><\/span>/);
   assert.match(html, /\.synerr \{ text-decoration: underline wavy var\(--err\);/);
-  assert.match(html, /\.vwrap\.area\.bad > textarea \{ border-color: var\(--err\); \}/);
+  assert.match(html, /\.bodyed:has\(\.bad\) \{ border-color: var\(--err\); \}/);
   assert.match(fs.readFileSync(join(dir, 'panel.js'), 'utf8'), /\$\('bodyText'\)\.oninput = \(\) => \{[^}]*paintBodyError\(\);/);
 });
 
@@ -283,6 +287,41 @@ test('review R30: UI panel datar: Send menempel di kanan bar URL, Save tombol te
   assert.match(html, /<button class="btn link" id="beautify" type="button" title="Format the JSON \/ XML body \(Shift\+Alt\+F\)" hidden><svg[^>]*aria-hidden="true"[\s\S]*?<\/svg>Beautify<\/button>/);
   assert.match(html, /<div class="empty" id="resEmpty"><svg[^>]*aria-hidden="true"[\s\S]*?<\/svg><p>Enter the URL and click Send to get a response<\/p><\/div>/);
   assert.doesNotMatch(html, /\.resp \{[^}]*border-radius/, 'response tidak lagi dalam kartu');
+});
+
+test('review R31: editor body JSON: warna sintaks per rentang (key / string / angka / literal), {{variable}} di luar string dilewati', () => {
+  const r = (t: string) => panel.jsonRanges(t).map((x) => `${x.start}-${x.end}:${x.val}`);
+  assert.deepEqual(r('{"a": 1, "b": "x", "c": true}'), ['1-4:k', '6-7:n', '9-12:k', '14-17:s', '19-22:k', '24-28:l']);
+  assert.deepEqual(r('{"a": {{v}}, "t": "x {{w}}"}'), ['1-4:k', '13-16:k', '18-27:s']);
+  assert.deepEqual(r('{"a": "x\\"y", "b": -1.5e3}'), ['1-4:k', '6-12:s', '14-17:k', '19-25:n']);
+  assert.deepEqual(r('"open'), ['0-5:s'], 'string belum ditutup diwarnai sampai akhir');
+});
+
+test('review R31: applyRanges memotong segmen mirror per rentang; token variable tetap utuh', () => {
+  const segs = [{ text: '{"a": ' }, { text: '{{v}}', name: 'v' }, { text: ', "b": 2}' }];
+  assert.deepEqual(panel.applyRanges(segs, [{ start: 1, end: 4, val: 'k' }, { start: 13, end: 16, val: 'k' }, { start: 18, end: 19, val: 'n' }], 'j'), [
+    { text: '{' }, { text: '"a"', j: 'k' }, { text: ': ' }, { text: '{{v}}', name: 'v' }, { text: ', ' }, { text: '"b"', j: 'k' }, { text: ': ' }, { text: '2', j: 'n' }, { text: '}' },
+  ]);
+});
+
+test('review R31: Tab / Shift+Tab di banyak baris = indent / outdent 2 spasi; Enter mengikuti indentasi (+2 setelah { atau [)', () => {
+  assert.deepEqual(panel.indentEdit('a\nb\nc', 0, 3, false), { from: 0, to: 3, insert: '  a\n  b', selStart: 2, selEnd: 7 });
+  assert.deepEqual(panel.indentEdit('  a\n b\nc', 0, 6, true), { from: 0, to: 6, insert: 'a\nb', selStart: 0, selEnd: 3 });
+  assert.deepEqual(panel.indentEdit('x\n    y', 6, 6, true), { from: 2, to: 7, insert: '  y', selStart: 4, selEnd: 4 }, 'Shift+Tab tanpa seleksi: baris kursor');
+  assert.equal(panel.enterIndent('{', 1), '\n  ');
+  assert.equal(panel.enterIndent('{\n  "a": 1,', 11), '\n  ');
+  assert.equal(panel.enterIndent('{\n  "a": [  ', 12), '\n    ');
+  assert.equal(panel.enterIndent('abc', 3), '\n');
+});
+
+test('review R31: editor body: gutter nomor baris, tanpa wrap, Tab / Enter lewat insertText (Undo tetap jalan)', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const html = fs.readFileSync(join(dir, 'panel.html'), 'utf8');
+  const js = fs.readFileSync(join(dir, 'panel.js'), 'utf8');
+  assert.match(html, /<div class="bodyed" id="bodyEd"><pre id="bodyGutter" aria-hidden="true">1<\/pre><textarea id="bodyText" spellcheck="false" wrap="off"/);
+  assert.match(js, /document\.execCommand\('insertText', false,/);
+  assert.match(js, /\$\('bodyGutter'\)\.textContent = lineNumbers\(/);
 });
 
 test('review R7: body form / none menyembunyikan pembungkus editor teks (bukan hanya textarea)', () => {
