@@ -1081,6 +1081,12 @@
     },
     "keybindings": [
       {
+        "command": "httpme.sendRequest",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "editorTextFocus && resourceExtname == .http"
+      },
+      {
         "command": "httpme.saveUntitled",
         "key": "ctrl+s",
         "mac": "cmd+s",

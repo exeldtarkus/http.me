@@ -1,5 +1,7 @@
 import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { startServer } from './helpers/server';
 import type { ITests } from './it/index';
 
@@ -45,6 +47,28 @@ export const tests: ITests = {
       assert.equal(after.filter((x) => x.endsWith('Cancelled')).length, 2, after.join());
       assert.ok(!after.includes('0:■ Cancel All'));
     } finally {
+      await srv.close();
+    }
+  },
+  async 'Send Request (Ctrl+Enter) dari editor teks: blok di kursor dikirim + response tampil di samping'() {
+    const srv = await startServer(async (req) => ({ headers: { 'content-type': 'text/plain' }, body: `hit ${req.url}` }));
+    const dir = join(vscode.workspace.workspaceFolders![0].uri.fsPath, 'tmp-ctrl-enter-it');
+    try {
+      mkdirSync(dir, { recursive: true });
+      const file = join(dir, 'two.http'); // file .http di disk seperti test-extension/get.http
+      writeFileSync(file, `### A\nGET ${srv.url}/a\n\n### B\nGET ${srv.url}/b\n`);
+      const doc = await vscode.workspace.openTextDocument(file);
+      await vscode.window.showTextDocument(doc);
+      const ed = vscode.window.activeTextEditor!;
+      ed.selection = new vscode.Selection(4, 0, 4, 0); // baris di blok B
+      await vscode.commands.executeCommand('httpme.sendRequest');
+      const shown = vscode.window.visibleTextEditors.find((e) => e.document.uri.path === '/Response');
+      assert.ok(shown, 'response tidak dibuka');
+      assert.match(shown.document.getText(), /hit \/b/);
+      assert.equal(vscode.window.activeTextEditor?.document, doc, 'fokus tetap di editor .http');
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      rmSync(dir, { recursive: true, force: true });
       await srv.close();
     }
   },

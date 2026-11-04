@@ -114,3 +114,12 @@ test('review R11: sidebar = 4 section (Collections, Environments, Open, Cookies)
     if (w.contents.startsWith('No open requests')) assert.equal(w.view, 'httpme.open');
   }
 });
+
+test('Ctrl+Enter di editor teks .http = Send Request (tanpa panel)', () => {
+  const kb = (pkg.contributes.keybindings as { command: string; key: string; mac?: string; when?: string }[]).find((k) => k.command === 'httpme.sendRequest');
+  assert.ok(kb, 'keybinding httpme.sendRequest belum ada');
+  assert.equal(kb.key, 'ctrl+enter');
+  assert.equal(kb.mac, 'cmd+enter');
+  assert.match(kb.when ?? '', /editorTextFocus/);
+  assert.match(kb.when ?? '', /resourceExtname == \.http|editorLangId == http/);
+});
