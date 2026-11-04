@@ -1,0 +1,41 @@
+// History request (tanpa vscode): 1 chunk per request di httpme-cache/history/, 200 terakhir;
+// teks .http asli ({{var}} belum diganti) tanpa header secret / cookie, body > 64 KB tidak disimpan
+import { promises as fs } from 'node:fs';
+import { clearCache, prune, readChunks, remove, writeChunk } from './cache';
+import { serializeRequest, type ParsedRequest } from './httpFile';
+import type { HistorySummary } from './runningStatus';
+
+export const HISTORY_MAX = 200;
+const MAX_BODY = 64 * 1024;
+const SECRET_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie', 'set-cookie']);
+
+export type HistoryEntry = HistorySummary & { title?: string; /** blok ke-n di file multi-request */ block?: number; /** request sebagai teks .http */ text: string; note?: string };
+export type HistoryInput = Omit<HistorySummary, 'method' | 'url'> & { request: ParsedRequest; block?: number };
+
+/** id = waktu (15 digit) + urutan: urutan teks = urutan waktu */
+export const historyId = (time: number, seq: number): string => `${String(time).padStart(15, '0')}-${String(seq).padStart(6, '0')}`;
+
+export function historyEntry(i: HistoryInput): HistoryEntry {
+  const big = Buffer.byteLength(i.request.body) > MAX_BODY;
+  const r: ParsedRequest = { ...i.request, headers: i.request.headers.filter((h) => !SECRET_HEADERS.has(h.name.toLowerCase())), ...(big ? { body: '' } : {}) };
+  const { request: _r, ...rest } = i;
+  return {
+    ...rest, method: r.method, url: r.url, ...(r.title ? { title: r.title } : {}),
+    text: serializeRequest(r), ...(big ? { note: 'Body not saved (larger than 64 KB).' } : {}),
+  };
+}
+
+export async function listHistory(dir: string): Promise<HistoryEntry[]> {
+  return (await readChunks<HistoryEntry>(dir)).sort(([a], [b]) => (a < b ? 1 : -1)).map(([, e]) => e);
+}
+
+/** simpan lalu buang yang lebih lama dari 200 terakhir */
+export async function addHistory(dir: string, e: HistoryEntry): Promise<void> {
+  await writeChunk(dir, e.id, e);
+  // cukup nama file (id = urutan waktu), isi chunk tidak dibaca
+  const ids = (await fs.readdir(dir)).filter((n) => n.endsWith('.json')).map((n) => decodeURIComponent(n.slice(0, -5))).sort().reverse();
+  if (ids.length > HISTORY_MAX) await prune(dir, ids.slice(0, HISTORY_MAX));
+}
+
+export const removeHistory = (dir: string, id: string) => remove(dir, id);
+export const clearHistory = (dir: string) => clearCache(dir);

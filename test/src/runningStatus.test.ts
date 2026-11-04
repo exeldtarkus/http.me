@@ -20,3 +20,35 @@ test('runningItems: berjalan dengan durasi, antre dengan posisi Queued n/m', () 
     { id: 3, label: '$(clock) GET https://a.test/3', description: 'Queued 2/2' },
   ]);
 });
+
+test('shortPath: METHOD /path dari URL (origin / {{baseUrl}} dibuang, query tetap)', async () => {
+  const { shortPath } = await import('../../src/runningStatus');
+  assert.equal(shortPath('https://a.test/pos/log/post?x=1'), '/pos/log/post?x=1');
+  assert.equal(shortPath('{{baseUrl}}/pos/log'), '/pos/log');
+  assert.equal(shortPath('https://a.test'), '/');
+  assert.equal(shortPath('not a url'), 'not a url');
+});
+
+test('runningTooltip: satu baris per request (path — Environment · durasi), antre ditandai', async () => {
+  const { runningTooltip } = await import('../../src/runningStatus');
+  const jobs = [{ ...job(1, 'running', 7_000), label: 'POST https://a.test/pos/log/post', env: 'uat' }, { ...job(2, 'queued'), label: 'GET {{baseUrl}}/x' }];
+  assert.equal(runningTooltip(jobs, 10_000), 'POST /pos/log/post — uat · 3s\nGET /x · queued');
+});
+
+test('historyItems: ikon status, METHOD /path, deskripsi status · Environment · ago · ms, detail error / file', async () => {
+  const { historyItems, ago } = await import('../../src/runningStatus');
+  assert.deepEqual([ago(5_000), ago(120_000), ago(2 * 3600_000), ago(3 * 86400_000)], ['just now', '2 min ago', '2 h ago', '3 days ago']);
+  const now = 1_000_000_000;
+  const items = historyItems([
+    { id: 'a', time: now - 120_000, method: 'POST', url: '{{baseUrl}}/pos/log/post', env: 'uat', status: 200, ms: 184, file: 'file:///w/log/page-view.http' },
+    { id: 'b', time: now - 1_000, method: 'GET', url: 'https://a.test/x', status: 404, ms: 20 },
+    { id: 'c', time: now - 1_000, method: 'GET', url: 'https://a.test/y', error: 'connect ECONNREFUSED' },
+    { id: 'd', time: now - 1_000, method: 'DELETE', url: 'https://a.test/z', cancelled: true, env: 'dev' },
+  ], now);
+  assert.deepEqual(items, [
+    { id: 'a', label: '$(pass) POST /pos/log/post', description: '200 · uat · 2 min ago · 184 ms', detail: 'page-view.http' },
+    { id: 'b', label: '$(error) GET /x', description: '404 · just now · 20 ms', detail: undefined },
+    { id: 'c', label: '$(error) GET /y', description: 'Error · just now', detail: 'connect ECONNREFUSED' },
+    { id: 'd', label: '$(circle-slash) DELETE /z', description: 'Cancelled · dev · just now', detail: undefined },
+  ]);
+});

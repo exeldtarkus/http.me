@@ -23,3 +23,44 @@ export function runningItems(jobs: Job[], now: number): { id: number; label: str
     ? { id: j.id, label: `$(sync~spin) ${j.label}`, description: `running · ${duration(now - (j.startedAt ?? now))}` }
     : { id: j.id, label: `$(clock) ${j.label}`, description: `Queued ${queued.indexOf(j) + 1}/${queued.length}` });
 }
+
+/** `METHOD /path`: origin atau {{baseUrl}} di depan dibuang, query tetap */
+export function shortPath(url: string): string {
+  const v = /^\{\{[^}]+\}\}(.*)$/.exec(url.trim());
+  if (v) return v[1] || '/';
+  try {
+    const u = new URL(url);
+    return `${u.pathname}${u.search}`;
+  } catch {
+    return url; // bukan URL lengkap: tampil apa adanya
+  }
+}
+const labelPath = (label: string) => { const i = label.indexOf(' '); return i < 0 ? label : `${label.slice(0, i)} ${shortPath(label.slice(i + 1))}`; };
+
+/** tooltip status bar: satu baris per request */
+export function runningTooltip(jobs: Job[], now: number): string {
+  return jobs.map((j) => `${labelPath(j.label)}${j.env ? ` — ${j.env}` : ''} · ${j.state === 'running' ? duration(now - (j.startedAt ?? now)) : 'queued'}`).join('\n');
+}
+
+export function ago(ms: number): string {
+  const m = Math.floor(ms / 60_000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.floor(h / 24);
+  return `${d} day${d === 1 ? '' : 's'} ago`;
+}
+
+/** ringkasan satu entri History (isi lengkap di history.ts) */
+export type HistorySummary = { id: string; time: number; method: string; url: string; env?: string; status?: number; ms?: number; error?: string; cancelled?: boolean; file?: string };
+
+/** item Quick Pick History (terbaru di atas sudah diurutkan pemanggil) */
+export function historyItems(entries: HistorySummary[], now: number): { id: string; label: string; description: string; detail: string | undefined }[] {
+  return entries.map((e) => {
+    const icon = e.cancelled ? '$(circle-slash)' : e.error || (e.status ?? 0) >= 400 ? '$(error)' : '$(pass)';
+    const head = e.cancelled ? 'Cancelled' : e.error ? 'Error' : String(e.status);
+    const parts = [head, e.env, ago(now - e.time), e.ms !== undefined && !e.error && !e.cancelled ? `${e.ms} ms` : undefined].filter(Boolean);
+    return { id: e.id, label: `${icon} ${e.method} ${shortPath(e.url)}`, description: parts.join(' · '), detail: e.error ?? (e.file ? decodeURIComponent(e.file.split('/').pop() ?? '') : undefined) };
+  });
+}

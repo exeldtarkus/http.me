@@ -2,7 +2,7 @@
 import { RequestError } from './http';
 
 export type JobState = 'queued' | 'running';
-export type Job = { id: number; key: string; label: string; state: JobState; startedAt?: number; controller: AbortController };
+export type Job = { id: number; key: string; label: string; state: JobState; startedAt?: number; controller: AbortController; /** Environment aktif saat Send (tooltip) */ env?: string };
 type Entry = Job & { start: () => void; reject: (e: unknown) => void };
 
 export function createRunner(opts: { limit?: number; onChange?: () => void; now?: () => number } = {}) {
@@ -29,11 +29,11 @@ export function createRunner(opts: { limit?: number; onChange?: () => void; now?
   return {
     limit,
     /** jalankan task; job lain tidak menunggu job ini (kecuali batas `limit` penuh). Key sama (Send lagi di file yang sama) = job lama dibatalkan */
-    run<T>(key: string, label: string, task: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    run<T>(key: string, label: string, task: (signal: AbortSignal) => Promise<T>, env?: string): Promise<T> {
       for (const old of entries.filter((x) => x.key === key && !x.controller.signal.aborted)) cancelEntry(old);
       return new Promise<T>((resolve, reject) => {
         const e: Entry = {
-          id: nextId++, key, label, state: 'queued', controller: new AbortController(), reject,
+          id: nextId++, key, label, state: 'queued', controller: new AbortController(), reject, ...(env ? { env } : {}),
           start: () => {
             e.state = 'running';
             e.startedAt = now();

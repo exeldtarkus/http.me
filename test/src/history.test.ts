@@ -1,0 +1,38 @@
+import { test } from 'node:test';
+import * as assert from 'node:assert/strict';
+import { readdirSync, statSync } from 'node:fs';
+import { addHistory, clearHistory, historyEntry, historyId, listHistory, removeHistory, HISTORY_MAX } from '../../src/history';
+import { parseRequest } from '../../src/httpFile';
+import { withTempDir } from './helpers/tmp';
+
+test('historyEntry: header secret & cookie dibuang, body > 64 KB tidak disimpan, teks .http asli ({{var}} tetap)', () => {
+  const r = parseRequest('### Login\nPOST {{baseUrl}}/login\nAuthorization: Bearer abc\nCookie: sid=1\nProxy-Authorization: Basic x\nX-Api: {{key}}\n\n{"a":1}\n');
+  const e = historyEntry({ id: 'i', time: 5, request: r, env: 'uat', status: 200, ms: 12, file: 'file:///w/a.http' });
+  assert.equal(e.text, '### Login\nPOST {{baseUrl}}/login\nX-Api: {{key}}\n\n{"a":1}\n');
+  assert.deepEqual({ ...e, text: undefined }, { id: 'i', time: 5, method: 'POST', url: '{{baseUrl}}/login', title: 'Login', env: 'uat', status: 200, ms: 12, file: 'file:///w/a.http', text: undefined });
+  const big = historyEntry({ id: 'j', time: 6, request: parseRequest(`POST http://x\n\n${'a'.repeat(64 * 1024 + 1)}\n`), error: 'boom' });
+  assert.equal(big.text, 'POST http://x\n');
+  assert.equal(big.note, 'Body not saved (larger than 64 KB).');
+  assert.equal(big.error, 'boom');
+});
+
+test('history: 1 chunk per request 0600, terbaru di atas, prune > 200, remove, clear', () =>
+  withTempDir(async (dir) => {
+    const r = parseRequest('GET http://x/\n');
+    for (let i = 0; i < HISTORY_MAX + 3; i++) await addHistory(dir, historyEntry({ id: historyId(1000 + i, i), time: 1000 + i, request: r, status: 200 }));
+    const all = await listHistory(dir);
+    assert.equal(all.length, HISTORY_MAX);
+    assert.equal(all[0].time, 1000 + HISTORY_MAX + 2, 'terbaru di atas');
+    assert.equal(all[all.length - 1].time, 1003, '3 tertua dibuang');
+    assert.equal(readdirSync(dir).length, HISTORY_MAX);
+    assert.equal(statSync(`${dir}/${readdirSync(dir)[0]}`).mode & 0o777, 0o600);
+    await removeHistory(dir, all[0].id);
+    assert.equal((await listHistory(dir))[0].time, 1000 + HISTORY_MAX + 1);
+    await clearHistory(dir);
+    assert.deepEqual(await listHistory(dir), []);
+  }));
+
+test('historyId: urut waktu secara teks, unik per Send', () => {
+  assert.ok(historyId(999, 1) < historyId(1000, 0));
+  assert.notEqual(historyId(5, 1), historyId(5, 2));
+});
