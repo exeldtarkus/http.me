@@ -107,3 +107,12 @@ export function serialQueue() {
     return run;
   };
 }
+
+/**
+ * auto login ulang single-flight: pemanggil bersamaan berbagi satu promise login (pola ttlCache moonage);
+ * setelah selesai (berhasil / gagal) panggilan berikutnya login lagi
+ */
+export function singleFlight<T>(fn: () => Promise<T>): () => Promise<T> {
+  let current: Promise<T> | undefined;
+  return () => (current ??= fn().finally(() => { current = undefined; }));
+}

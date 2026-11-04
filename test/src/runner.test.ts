@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { createRunner, serialQueue, step } from '../../src/runner';
+import { createRunner, serialQueue, singleFlight, step } from '../../src/runner';
 import { readChunk, remove, writeChunk } from '../../src/cache';
 import { withTempDir } from './helpers/tmp';
 import { send } from '../../src/http';
@@ -161,4 +161,34 @@ test('serialQueue: tulisan yang gagal tidak menahan antrean; key berbeda jalan b
   const t0 = Date.now();
   await Promise.all([queue('a', () => wait(60)), queue('b', () => wait(60))]);
   assert.ok(Date.now() - t0 < 110, 'key berbeda tidak saling menunggu');
+});
+
+test('singleFlight: 2 request dengan session habis bersamaan = 1 POST /login, keduanya memakai hasil yang sama', async () => {
+  let logins = 0;
+  const srv = await startServer(async (req) => {
+    if (req.method === 'POST' && req.url === '/login') { logins++; await wait(50); return { headers: { 'set-cookie': `SID=s${logins}` }, body: 'ok' }; }
+    return { status: 401 };
+  });
+  try {
+    const login = singleFlight(async () => {
+      const res = await send({ method: 'POST', url: `${srv.url}/login`, headers: [], body: 'user=a' });
+      return res.headers.find(([k]) => k === 'set-cookie')![1];
+    });
+    const [a, b] = await Promise.all([login(), login()]);
+    assert.equal(logins, 1);
+    assert.deepEqual([a, b], ['SID=s1', 'SID=s1']);
+    assert.equal(await login(), 'SID=s2', 'setelah selesai, session habis berikutnya login lagi');
+    assert.equal(logins, 2);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('singleFlight: login gagal diteruskan ke semua penunggu, percobaan berikutnya login ulang', async () => {
+  let calls = 0;
+  const login = singleFlight(async () => { calls++; if (calls === 1) throw new Error('bad password'); return 'ok'; });
+  const results = await Promise.allSettled([login(), login()]);
+  assert.deepEqual(results.map((r) => r.status), ['rejected', 'rejected']);
+  assert.equal(await login(), 'ok');
+  assert.equal(calls, 2);
 });
