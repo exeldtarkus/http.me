@@ -47,6 +47,26 @@ export function createRunner(opts: { limit?: number; onChange?: () => void; now?
         changed();
       });
     },
+    /** Cancel Request (tab / file): job milik key, berjalan maupun antre; false = tidak ada */
+    cancel(key: string): boolean {
+      const hit = entries.filter((e) => e.key === key);
+      hit.forEach(cancelEntry);
+      if (hit.length) changed();
+      return hit.length > 0;
+    },
+    /** ✕ per request di Quick Pick */
+    cancelJob(id: number): boolean {
+      const e = entries.find((x) => x.id === id);
+      if (e) { cancelEntry(e); changed(); }
+      return !!e;
+    },
+    /** Cancel All Requests: jumlah job yang dibatalkan */
+    cancelAll(): number {
+      const all = [...entries];
+      all.forEach(cancelEntry);
+      if (all.length) changed();
+      return all.length;
+    },
     /** job berjalan + antre, urut waktu Send */
     jobs: (): Job[] => entries.map(({ start: _s, reject: _r, ...j }) => j),
     /** posisi antrean job milik key: n dari m (undefined = sedang jalan / tidak ada) */

@@ -203,7 +203,7 @@
   /** view dari host: running | response | error | cancelled | undefined (belum pernah Send) */
   let running = false;
   function renderView(view) {
-    running = view?.kind === 'running';
+    running = view?.kind === 'running' || view?.kind === 'queued';
     $('send').textContent = running ? 'Cancel' : 'Send';
     $('send').classList.toggle('busy', running);
     $('send').title = running ? 'Cancel' : 'Send (Ctrl+Enter)';
@@ -211,6 +211,7 @@
     $('ldCancel').textContent = 'Cancel';
     $('loading').hidden = !running;
     $('ldSub').textContent = running ? view.label : '';
+    $('ldText').textContent = view?.kind === 'queued' ? view.position : 'Sending request';
     const res = view?.kind === 'response' ? view : undefined;
     $('st').textContent = res ? res.status : view?.kind === 'cancelled' ? 'Cancelled' : view?.kind === 'error' ? 'Error' : '';
     $('st').className = `status ${res ? res.statusClass : view?.kind === 'error' ? 'st-5' : 'st-1'}`;

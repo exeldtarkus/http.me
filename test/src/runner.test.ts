@@ -97,3 +97,35 @@ test('step: cancel setelah request selesai = post-script tidak dijalankan; signa
   assert.deepEqual(ran, ['request']);
   assert.equal(await step(new AbortController().signal, async () => 7), 7);
 });
+
+test('cancel: request yang masih antre dibatalkan sebelum mulai (task tidak pernah jalan)', async () => {
+  const runner = createRunner({ limit: 1 });
+  let started = false;
+  const blocker = runner.run('x', 'x', () => wait(50).then(() => 'x'));
+  const queued = runner.run('q', 'q', async () => { started = true; });
+  const byId = runner.run('r', 'r', async () => { started = true; });
+  assert.equal(runner.cancel('q'), true);
+  assert.equal(runner.cancelJob(runner.jobs().find((j) => j.key === 'r')!.id), true);
+  assert.equal(runner.cancel('missing'), false);
+  await assert.rejects(queued, (e: Error & { kind?: string }) => e.kind === 'cancelled');
+  await assert.rejects(byId, (e: Error & { kind?: string }) => e.kind === 'cancelled');
+  assert.equal(await blocker, 'x');
+  assert.equal(started, false);
+  assert.deepEqual(runner.jobs(), []);
+});
+
+test('Cancel All: semua yang berjalan + antre dibatalkan', async () => {
+  const srv = await startServer(async () => { await wait(1000); return { body: 'late' }; });
+  try {
+    const runner = createRunner({ limit: 2 });
+    const all = ['a', 'b', 'c'].map((k) => runner.run(k, k, (signal) => send({ method: 'GET', url: srv.url, headers: [] }, { signal })));
+    await wait(30);
+    const t0 = Date.now();
+    assert.equal(runner.cancelAll(), 3);
+    for (const p of all) await assert.rejects(p, (e: Error & { kind?: string }) => e.kind === 'cancelled');
+    assert.ok(Date.now() - t0 < 500);
+    assert.deepEqual(runner.jobs(), []);
+  } finally {
+    await srv.close();
+  }
+});

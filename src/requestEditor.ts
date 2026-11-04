@@ -11,18 +11,21 @@ import { NEW_REQUEST_TEXT, newRequestName } from './newRequest';
 import { parseRequest, serializeRequest, toHttpRequest, type ParsedRequest } from './httpFile';
 import { DEFAULT_TIMEOUT_MS, RequestError, send } from './http';
 import { responseView, type ResponseView } from './response';
+import { createRunner } from './runner';
 import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
 
 export const REQUEST_VIEW = 'httpme.request';
 
 type View =
+  | { kind: 'queued'; label: string; position: string }
   | { kind: 'running'; label: string }
   | ({ kind: 'response' } & ResponseView)
   | { kind: 'error'; message: string }
   | { kind: 'cancelled' };
 type DocState = {
-  panels: Set<vscode.WebviewPanel>; view?: View; running?: AbortController;
+  panels: Set<vscode.WebviewPanel>; view?: View;
+  /** penanda Send terakhir: hasil Send lama yang selesai belakangan tidak menimpa view */ token?: symbol;
   /** file body utuh (> 1 MB / biner) di cache; dihapus saat Send berikutnya / tab ditutup */ bodyFile?: string;
   contentType?: string; url?: string;
 };
@@ -36,7 +39,9 @@ const stateOf = (doc: vscode.TextDocument): DocState => {
   if (!s) docs.set(key, (s = { panels: new Set() }));
   return s;
 };
-const bodyPath = (doc: vscode.TextDocument) => join(bodyDir, createHash('sha1').update(doc.uri.toString()).digest('hex'));
+// nama unik per Send: file Send lama yang dibatalkan (dihapus http.ts) tidak bentrok dengan Send baru
+let sendSeq = 0;
+const bodyPath = (doc: vscode.TextDocument) => join(bodyDir, `${createHash('sha1').update(doc.uri.toString()).digest('hex')}-${++sendSeq}`);
 
 async function dropBodyFile(s: DocState): Promise<void> {
   const f = s.bodyFile;
@@ -44,6 +49,23 @@ async function dropBodyFile(s: DocState): Promise<void> {
   if (f) await fs.rm(f, { force: true });
 }
 const postView = (s: DocState) => s.panels.forEach((p) => void p.webview.postMessage({ type: 'view', view: s.view }));
+
+const listeners = new Set<() => void>();
+/** antrean request semua tab (maks 6 bersamaan); posisi Queued n/m ikut diperbarui di panel */
+export const runner = createRunner({
+  onChange: () => {
+    for (const [key, s] of docs) {
+      const pos = runner.queuePosition(key);
+      if (pos && s.view?.kind === 'queued') {
+        s.view = { ...s.view, position: `Queued ${pos.n}/${pos.m}` };
+        postView(s);
+      }
+    }
+    listeners.forEach((l) => l());
+  },
+});
+/** status bar / Quick Pick ikut perubahan antrean */
+export const onRunnerChange = (l: () => void): vscode.Disposable => (listeners.add(l), new vscode.Disposable(() => listeners.delete(l)));
 
 /** pesan dari webview = input tak tepercaya: cek bentuknya sebelum ditulis ke dokumen / dikirim */
 function isRequest(v: unknown): v is ParsedRequest {
@@ -63,34 +85,36 @@ async function writeDocument(doc: vscode.TextDocument, text: string): Promise<vo
   await vscode.workspace.applyEdit(edit);
 }
 
-/** Send: request lama di dokumen yang sama dibatalkan; hasil disimpan di state dokumen */
+/** Send lewat runner: request lama di dokumen yang sama dibatalkan; hasil disimpan di state dokumen */
 async function sendRequest(doc: vscode.TextDocument, s: DocState, parsed: ParsedRequest): Promise<void> {
-  s.running?.abort();
-  const ac = new AbortController();
-  s.running = ac;
   const r = toHttpRequest(parsed);
-  s.view = { kind: 'running', label: `${r.method} ${r.url}` };
-  postView(s);
+  const label = `${r.method} ${r.url}`;
+  const token = Symbol(label);
+  s.token = token;
+  s.view = { kind: 'queued', label, position: 'Queued' };
   let view: View;
   try {
-    await dropBodyFile(s);
-    await fs.mkdir(bodyDir, { recursive: true, mode: 0o700 });
-    const res = await send(r, {
-      signal: ac.signal, bodyFile: bodyPath(doc), followRedirects: parsed.followRedirects, insecure: parsed.insecure,
-      onError: (where, e) => log().error(errorLine(where, e)),
-      timeoutMs: parsed.timeoutSec !== undefined ? parsed.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS,
+    const res = await runner.run(doc.uri.toString(), label, async (signal) => {
+      if (s.token === token) { s.view = { kind: 'running', label }; postView(s); }
+      await dropBodyFile(s);
+      await fs.mkdir(bodyDir, { recursive: true, mode: 0o700 });
+      return send(r, {
+        signal, bodyFile: bodyPath(doc), followRedirects: parsed.followRedirects, insecure: parsed.insecure,
+        onError: (where, e) => log().error(errorLine(where, e)),
+        timeoutMs: parsed.timeoutSec !== undefined ? parsed.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS,
+      });
     });
-    if (s.running === ac) Object.assign(s, { bodyFile: res.bodyFile, contentType: res.headers.find(([k]) => k === 'content-type')?.[1], url: res.url });
+    if (s.token !== token) { if (res.bodyFile) await fs.rm(res.bodyFile, { force: true }); return; } // hasil Send lama: dibuang
+    Object.assign(s, { bodyFile: res.bodyFile, contentType: res.headers.find(([k]) => k === 'content-type')?.[1], url: res.url });
     view = { kind: 'response', ...responseView(res, r.method) };
   } catch (e) {
     if (e instanceof RequestError && e.kind === 'cancelled') view = { kind: 'cancelled' };
     else {
-      log().error(errorLine(`sendRequest ${r.method} ${r.url}`, e)); // gagal kirim tampil di panel, detail + stack di output channel
+      log().error(errorLine(`sendRequest ${label}`, e)); // gagal kirim tampil di panel, detail + stack di output channel
       view = { kind: 'error', message: errMsg(e) };
     }
   }
-  if (s.running !== ac) return; // sudah diganti Send yang lebih baru
-  s.running = undefined;
+  if (s.token !== token) return; // sudah diganti Send yang lebih baru
   s.view = view;
   postView(s);
 }
@@ -111,7 +135,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
           written = serializeRequest(m.req);
           await writeDocument(doc, written);
         } else if (m.type === 'send') await sendRequest(doc, s, isRequest(m.req) ? m.req : parseRequest(doc.getText()));
-        else if (m.type === 'cancel') s.running?.abort();
+        else if (m.type === 'cancel') runner.cancel(doc.uri.toString());
         else if (m.type === 'openBody') await openBody(s);
         else if (m.type === 'saveBody') await saveBody(s);
       } catch (e) {
@@ -158,7 +182,7 @@ async function saveBody(s: DocState): Promise<void> {
 export function releaseDocument(doc: vscode.TextDocument): void {
   const s = docs.get(doc.uri.toString());
   if (!s) return;
-  s.running?.abort();
+  runner.cancel(doc.uri.toString());
   docs.delete(doc.uri.toString());
   dropBodyFile(s).catch((e) => log().error(errorLine('releaseDocument', e)));
 }
