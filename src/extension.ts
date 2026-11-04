@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { isNewerMinor, whatsNewHtml } from './whatsNew';
+import { clearCacheFlow } from './cache';
 import { errMsg } from './log';
 import { log, reportError } from './output';
 
@@ -18,9 +19,25 @@ function openWhatsNew(ctx: vscode.ExtensionContext): void {
   }
 }
 
+/** Clear Cache: hapus globalStorage/httpme-cache/ (dibuat ulang saat dipakai) + ttlCache di memory */
+async function clearCacheCommand(ctx: vscode.ExtensionContext): Promise<void> {
+  const dir = vscode.Uri.joinPath(ctx.globalStorageUri, 'httpme-cache').fsPath;
+  try {
+    const mb = await clearCacheFlow(dir, async (size) => (await vscode.window.showWarningMessage(`Clear the http.me cache (${size} MB)?`, {
+      modal: true, detail: 'Removes cached history and response bodies. Collections (.http files) and Environments are kept.',
+    }, 'Clear Cache')) === 'Clear Cache');
+    if (mb === undefined) return;
+    log().info(`clear cache: ${mb} MB removed (${dir})`);
+    void vscode.window.showInformationMessage(`http.me cache cleared (${mb} MB).`);
+  } catch (e) {
+    reportError('clearCache', e, `Clear Cache failed: ${errMsg(e)}`);
+  }
+}
+
 export function activate(ctx: vscode.ExtensionContext): void {
   ctx.subscriptions.push(log());
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.whatsNew', () => openWhatsNew(ctx)));
+  ctx.subscriptions.push(vscode.commands.registerCommand('httpme.clearCache', () => clearCacheCommand(ctx)));
 
   // aktivasi malas: dicek saat extension pertama dipakai, bukan saat VS Code start
   const version: string = ctx.extension.packageJSON.version;

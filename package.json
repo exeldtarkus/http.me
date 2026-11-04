@@ -30,6 +30,11 @@
         "command": "httpme.whatsNew",
         "title": "What's New",
         "category": "http.me"
+      },
+      {
+        "command": "httpme.clearCache",
+        "title": "Clear Cache",
+        "category": "http.me"
       }
     ]
   },

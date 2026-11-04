@@ -2,6 +2,7 @@
 import { promises as fs } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
+import { clearAllCaches } from './memo';
 
 const file = (dir: string, key: string) => join(dir, `${encodeURIComponent(key)}.json`);
 
@@ -54,3 +55,12 @@ export async function dirSize(dir: string): Promise<number> {
 
 /** Clear Cache: hapus seluruh folder cache; dibuat ulang saat dipakai lagi */
 export const clearCache = (dir: string) => fs.rm(dir, { recursive: true, force: true });
+
+/** alur command Clear Cache: ukuran (MB, 1 desimal) -> ask (konfirmasi) -> hapus folder + semua ttlCache; batal = undefined */
+export async function clearCacheFlow(dir: string, ask: (mb: string) => Promise<boolean>): Promise<string | undefined> {
+  const mb = ((await dirSize(dir)) / 1024 / 1024).toFixed(1);
+  if (!(await ask(mb))) return undefined;
+  await clearCache(dir);
+  clearAllCaches();
+  return mb;
+}
