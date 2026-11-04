@@ -185,12 +185,49 @@
     };
   }
 
+  let resTab = 'rbody';
+  function showResTab(name) {
+    resTab = name;
+    for (const x of $('resTabs').querySelectorAll('button')) x.classList.toggle('on', x.dataset.r === name);
+    for (const p of document.querySelectorAll('.resbody > .pane')) p.hidden = p.id !== `r-${name}`;
+  }
+  for (const b of $('resTabs').querySelectorAll('button')) b.onclick = () => showResTab(b.dataset.r);
+
+  /** view dari host: running | response | error | cancelled | undefined (belum pernah Send) */
+  function renderView(view) {
+    const running = view?.kind === 'running';
+    $('loading').hidden = !running;
+    $('ldSub').textContent = running ? view.label : '';
+    const res = view?.kind === 'response' ? view : undefined;
+    $('st').textContent = res ? res.status : view?.kind === 'cancelled' ? 'Cancelled' : view?.kind === 'error' ? 'Error' : '';
+    $('st').className = `status ${res ? res.statusClass : view?.kind === 'error' ? 'st-5' : 'st-1'}`;
+    $('ms').textContent = res ? res.time : '';
+    $('sz').textContent = res ? res.size : '';
+    $('resEmpty').hidden = !!view && !running;
+    $('resBody').className = `code${view?.kind === 'error' ? ' error' : ''}`;
+    if (res) $('resBody').innerHTML = res.bodyHtml; // sudah di-escape di host (response.ts)
+    else $('resBody').textContent = view?.kind === 'error' ? view.message : view?.kind === 'cancelled' ? 'The request was cancelled.' : '';
+    $('resHeaders').replaceChildren(...(res ? res.headers : []).map(([k, v]) => el('tr', {}, [el('td', { textContent: k }), el('td', { textContent: v })])));
+    $('nResHeaders').textContent = res ? String(res.headers.length) : '';
+    $('allow').hidden = !res?.allow;
+    if (res?.allow) $('allow').replaceChildren(el('b', { textContent: 'Allowed methods' }), res.allow.length ? res.allow.join(', ') : 'none listed by the server');
+    $('resBodyTab').disabled = !!res?.head;
+    showResTab(res?.head ? 'rheaders' : resTab);
+  }
+
+  function sendNow() {
+    flush();
+    post({ type: 'send', req });
+  }
+  $('send').onclick = sendNow;
+
   window.addEventListener('message', (e) => {
     const m = e.data;
     if (m.type === 'state') {
       req = m.req;
       renderRequest();
     }
+    if ('view' in m) renderView(m.view);
   });
   window.addEventListener('blur', flush);
   post({ type: 'ready' });
