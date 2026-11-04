@@ -199,6 +199,15 @@ test('review R6: urutan Tab tabel key/value = Key → Value → ✕ → Key bari
   assert.match(fs.readFileSync(join(dir, 'panel.js'), 'utf8'), /el\('input', \{ type: 'checkbox', checked: row\.enabled, title: '[^']*', tabIndex: -1 \}\)/);
 });
 
+test('review R25: tabel key/value (Params / Headers / form): Value tidak bisa diisi selama Key kosong', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const js = fs.readFileSync(join(dir, 'panel.js'), 'utf8');
+  assert.match(js, /const lockValue = \(\) => \{ v\.disabled = !row\[keyName\]; v\.title = v\.disabled \? 'Fill in the Key first' : ''; \};/);
+  assert.match(js, /k\.oninput = \(\) => \{ live\(\); row\[keyName\] = k\.value; lockValue\(\); onChange\(false\); \};/);
+  assert.match(fs.readFileSync(join(dir, 'panel.html'), 'utf8'), /\.kv input\[type=text\]:disabled \{[^}]*cursor: not-allowed;[^}]*\}/);
+});
+
 test('review R7: body form / none menyembunyikan pembungkus editor teks (bukan hanya textarea)', () => {
   const fs = require('node:fs') as typeof import('node:fs');
   const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
