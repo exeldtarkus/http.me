@@ -14,3 +14,7 @@ export function maskSecrets(s: string): string {
 /** `<konteks> - EXCEPTION CAUGHT | <pesan> - stack-trace: <stack>` untuk output channel "http.me" */
 export const errorLine = (where: string, e: unknown): string =>
   maskSecrets(`${where} - EXCEPTION CAUGHT | ${errMsg(e)} - stack-trace: ${errStack(e)}`);
+
+/** nilai Secret Environment / Globals tidak boleh masuk log / history */
+export const maskValues = (s: string, values: readonly string[]): string =>
+  [...values].filter(Boolean).sort((a, b) => b.length - a.length).reduce((acc, v) => acc.split(v).join('***'), s);

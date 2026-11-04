@@ -79,3 +79,9 @@ export async function dropKeepIfUsed(dir: string): Promise<void> {
   const names = await fs.readdir(dir).catch(() => [] as string[]); // folder tidak ada / tidak terbaca: tidak ada yang dibersihkan
   if (names.includes(KEEP_FILE) && names.some((n) => /\.http$/i.test(n))) await fs.rm(join(dir, KEEP_FILE), { force: true });
 }
+
+/** nama file Environment: `<nama>.json` di .httpme/environments (tanpa / dan ..) */
+export function environmentFileName(input: string): string | Err {
+  const name = siblingName(input.trim().replace(/\.json$/i, ''), false);
+  return typeof name === 'string' ? `${name}.json` : name;
+}

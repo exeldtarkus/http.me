@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { errorLine, maskSecrets } from '../../src/log';
+import { errorLine, maskSecrets, maskValues } from '../../src/log';
 
 const SRC = join(__dirname, '..', '..', '..', 'src');
 
@@ -42,4 +42,9 @@ test('setiap notifikasi error punya tombol Show Log', () => {
     });
   }
   assert.deepEqual(bad, []);
+});
+
+test('maskValues: nilai Secret Environment / Globals di-mask (terpanjang dulu), nilai kosong diabaikan', () => {
+  assert.equal(maskValues('GET https://a/?k=s3cret-long&p=s3cret token s3cret', ['s3cret', 's3cret-long', '']), 'GET https://a/?k=***&p=*** token ***');
+  assert.equal(maskValues('nothing', []), 'nothing');
 });
