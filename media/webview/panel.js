@@ -586,7 +586,6 @@
       $('bodyText').focus();
     };
   }
-  if (/Mac/.test(navigator.platform)) $('sendKbd').textContent = '⌘ ↵';
   for (const b of $('reqTabs').querySelectorAll('button')) {
     b.onclick = () => {
       for (const x of $('reqTabs').querySelectorAll('button')) x.classList.toggle('on', x === b);
