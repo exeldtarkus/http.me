@@ -34,3 +34,22 @@ test('All Environments: sel NULL / secret / key hilang, baris bertanda NULL', ()
   ]);
   assert.deepEqual(m.map((r) => [r.key, r.cells.map((c) => c.kind).join(','), r.hasNull]), [['a', 'value,value', false], ['b', 'null,absent', true], ['s', 'secret,null', true]]);
 });
+
+test('review R13: Add variable — Enter tambah & tetap di Add, Tab tambah & pindah ke Initial value, duplikat / kosong ditolak', () => {
+  const e = env as unknown as { addKeyAction(key: string, existing: string[], k: string, shift: boolean): string };
+  assert.equal(e.addKeyAction('token', ['a'], 'Enter', false), 'add-stay');
+  assert.equal(e.addKeyAction('token', ['a'], 'Tab', false), 'add-value');
+  assert.equal(e.addKeyAction('token', ['a'], 'Tab', true), 'none', 'Shift+Tab tetap mundur');
+  assert.equal(e.addKeyAction('', ['a'], 'Tab', false), 'none', 'kosong: Tab biasa');
+  assert.equal(e.addKeyAction(' a ', ['a'], 'Enter', false), 'duplicate');
+  assert.equal(e.addKeyAction('a', ['a'], 'Tab', false), 'duplicate');
+  assert.equal(e.addKeyAction('x', [], 'a', false), 'none');
+});
+
+test('review R14: tombol Save di editor Environment & panel request', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  for (const f of ['environment.html', 'panel.html']) {
+    assert.match(fs.readFileSync(join(media, f), 'utf8'), /<button[^>]*id="save"[^>]*title="Save \(Ctrl\+S\)"[^>]*>Save<\/button>/, f);
+  }
+  for (const f of ['environment.js', 'panel.js']) assert.match(fs.readFileSync(join(media, f), 'utf8'), /\$\('save'\)\.onclick = \(\) => \{[^}]*post\(\{ type: 'save' \}\)/, f);
+});

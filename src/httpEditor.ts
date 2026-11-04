@@ -410,10 +410,11 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   let written: string | undefined; // teks terakhir yang ditulis dari panel: echo-nya tidak dikirim balik
   let cookieTimer: ReturnType<typeof setTimeout> | undefined;
   const postState = () => void panel.webview.postMessage({
-    type: 'state', req: parseRequest(doc.getText()), view: s.view, multi: splitBlocks(doc.getText()).length,
+    type: 'state', req: parseRequest(doc.getText()), view: s.view, multi: splitBlocks(doc.getText()).length, dirty: doc.isDirty || doc.isUntitled,
   });
 
   const postMsg = (x: unknown) => void panel.webview.postMessage(x);
+  const postDirty = () => postMsg({ type: 'dirty', dirty: doc.isDirty || doc.isUntitled });
   /** jumlah request lain (tab / file lain) yang sedang berjalan atau antre: loading sebaris */
   const postOthers = () => postMsg({ type: 'others', n: runner.jobs().filter((j) => j.key !== doc.uri.toString() && !j.key.startsWith(`${doc.uri.toString()}#`)).length });
   let scriptsTimer: ReturnType<typeof setTimeout> | undefined;
@@ -440,6 +441,10 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
         else if (m.type === 'pasteCurl' && typeof m.text === 'string') await importCurlText(m.text, doc);
         else if (m.type === 'cancel') runner.cancel(doc.uri.toString());
         else if (m.type === 'showRunning') await vscode.commands.executeCommand('httpme.showRunning');
+        else if (m.type === 'save') {
+          if (doc.isUntitled) await vscode.commands.executeCommand('httpme.saveUntitled', doc.uri);
+          else await saveScripts(doc, true); // script rantai yang berubah + .http
+        }
         else if (m.type === 'copyBody' && typeof m.text === 'string') {
           // body terpotong (> 1 MB): isi utuh dari file cache
           const full = s.view?.kind === 'response' && s.view.canOpen && s.bodyFile ? await fs.readFile(s.bodyFile, 'utf8') : m.text;
@@ -474,8 +479,10 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
       if (e.document === doc) e.waitUntil(saveScripts(doc, false).catch((err) => reportError('requestEditor.saveScripts', err, `Could not save scripts: ${errMsg(err)}`)));
     }),
     vscode.workspace.onDidChangeTextDocument((e) => {
-      if (e.document === doc && e.contentChanges.length) refreshScripts();
+      if (e.document === doc && e.contentChanges.length) { refreshScripts(); postDirty(); }
     }),
+    // tombol Save panel ikut status dirty (edit dari panel sendiri tidak mengirim ulang state)
+    vscode.workspace.onDidSaveTextDocument((d) => { if (d === doc) postDirty(); }),
     vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document !== doc || !e.contentChanges.length) return;
       if (doc.getText() !== written) postState();

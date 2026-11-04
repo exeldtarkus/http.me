@@ -134,7 +134,7 @@ async function stateOf(doc: vscode.TextDocument): Promise<Record<string, unknown
     const vars = parseEnvironment(doc.getText(), `${name || 'Globals'}.json`);
     const secretSet: Record<string, boolean> = {};
     for (const x of vars) if (x.secret) secretSet[x.key] = (await envs.secret(name, x.key)) !== undefined;
-    return { type: 'state', name: name || 'Globals', globals: name === GLOBALS, active: name !== GLOBALS && envs.active === name, vars, current: name === GLOBALS ? {} : envs.current(name), secretSet };
+    return { type: 'state', name: name || 'Globals', globals: name === GLOBALS, active: name !== GLOBALS && envs.active === name, vars, current: name === GLOBALS ? {} : envs.current(name), secretSet, dirty: doc.isDirty };
   } catch (e) {
     log().error(errorLine(`environmentEditor.state ${name}`, e)); // JSON rusak (edit manual): pesan tampil di editor, perbaiki lewat Open as Text
     return { type: 'state', name: name || 'Globals', globals: name === GLOBALS, error: errMsg(e) };
@@ -162,6 +162,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
         else if (m.type === 'rename') await vscode.commands.executeCommand('httpme.renameEnvironment', nameOf(doc));
         else if (m.type === 'compare') await openCompare();
         else if (m.type === 'openAsText') await vscode.commands.executeCommand('vscode.openWith', doc.uri, 'default');
+        else if (m.type === 'save') await doc.save();
         else if (m.type === 'showSecret' && typeof m.key === 'string') {
           void panel.webview.postMessage({ type: 'secret', key: m.key, value: (await envs.secret(nameOf(doc), m.key)) ?? null });
         } else await envOp(doc, m as unknown as EnvOp);
@@ -170,6 +171,8 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
       }
     }),
     vscode.workspace.onDidChangeTextDocument((e) => { if (e.document === doc && e.contentChanges.length) void post(); }),
+    // tombol Save ikut status dirty (simpan / revert tidak selalu mengubah isi)
+    vscode.workspace.onDidSaveTextDocument((d) => { if (d === doc) void post(); }),
     envs.onDidChange(() => void post()),
     panel.onDidChangeViewState(() => { if (panel.active) takeFocus(); }),
   ];

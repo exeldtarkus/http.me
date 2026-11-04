@@ -33,7 +33,16 @@
     return out;
   }
 
-  const api = { rowErrors, visibleRows, moveRow };
+  /** tombol di kolom Add variable: Enter = tambah (fokus tetap), Tab = tambah lalu ke Initial value; kosong = Tab biasa */
+  function addKeyAction(key, existing, k, shift) {
+    if (k !== 'Enter' && (k !== 'Tab' || shift)) return 'none';
+    const name = key.trim();
+    if (!name) return k === 'Enter' ? 'invalid' : 'none';
+    if (existing.includes(name)) return 'duplicate';
+    return k === 'Enter' ? 'add-stay' : 'add-value';
+  }
+
+  const api = { rowErrors, visibleRows, moveRow, addKeyAction };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -100,11 +109,13 @@
   }
 
   let dragFrom = -1;
+  let refocusAdd = false; // Enter di Add variable: setelah digambar ulang fokus kembali ke Add
   function render() {
     $('fileError').hidden = !st.error;
     $('fileError').textContent = st.error ? `${st.error}. Fix the file with Open as Text.` : '';
     $('editor').hidden = !!st.error;
     $('title').textContent = st.name;
+    $('save').disabled = !st.dirty;
     $('title').disabled = !!st.globals;
     $('activeBadge').hidden = !st.active;
     $('setActive').hidden = !!st.active || !!st.globals;
@@ -145,15 +156,22 @@
       tr.ondrop = (e) => { e.preventDefault(); tr.classList.remove('drop'); if (dragFrom >= 0 && dragFrom !== i) { vars = moveRow(vars, dragFrom, i); render(); sendEdit(); } dragFrom = -1; };
       $('rows').append(tr);
     }
-    // baris terakhir: Add variable (Enter = ke semua Environment dengan NULL)
-    const add = el('input', { type: 'text', placeholder: 'Add variable', spellcheck: false, id: 'addKey' });
+    // baris terakhir: Add variable (ke semua Environment dengan NULL); Enter = tetap di sini, Tab = lanjut isi Initial value
+    const add = el('input', { type: 'text', placeholder: 'Add variable (Enter / Tab)', spellcheck: false, id: 'addKey' });
+    add.oninput = () => add.setCustomValidity('');
     add.onkeydown = (e) => {
-      if (e.key !== 'Enter') return;
+      const act = addKeyAction(add.value, vars.map((x) => x.key), e.key, e.shiftKey);
+      if (act === 'none') return;
+      e.preventDefault();
       const k = add.value.trim();
-      if (!k || vars.some((x) => x.key === k)) { add.setCustomValidity(k ? `Duplicate variable "${k}"` : ''); add.reportValidity(); return; }
+      if (act === 'duplicate' || act === 'invalid') { add.setCustomValidity(act === 'duplicate' ? `Duplicate variable "${k}"` : ''); add.reportValidity(); return; }
+      // Tab: setelah host menulis key baru, editor Initial value baris itu dibuka & difokus (openNull)
+      if (act === 'add-value') openNull = k;
+      else refocusAdd = true;
       post({ type: 'addKey', key: k });
       add.value = '';
     };
+    if (refocusAdd) { refocusAdd = false; setTimeout(() => $('addKey')?.focus()); }
     $('rows').append(el('tr', { className: 'add' }, [el('td'), el('td'), el('td', {}, [add]), el('td', { colSpan: 4 })]));
   }
   /** nama sedang diketik: tandai merah tanpa menggambar ulang (fokus tetap) */
@@ -188,6 +206,7 @@
   $('setActive').onclick = () => post({ type: 'setActive' });
   $('compare').onclick = () => post({ type: 'compare' });
   $('openAsText').onclick = () => post({ type: 'openAsText' });
+  $('save').onclick = () => { post({ type: 'save' }); };
   $('reset').onclick = () => post({ type: 'resetCurrent' });
   $('persist').onclick = () => post({ type: 'persistAll' });
   $('search').oninput = render;

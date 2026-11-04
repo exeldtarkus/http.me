@@ -546,6 +546,14 @@
   // Copy: teks body yang tampil; body > 1 MB diambil utuh dari file cache oleh host
   $('copyBody').onclick = () => post({ type: 'copyBody', text: $('resBody').textContent });
   $('openBody').onclick = () => post({ type: 'openBody' });
+  // Save aktif bila .http atau script rantainya belum disimpan
+  let docDirty = false;
+  const paintSave = () => {
+    const scriptDirty = !!scripts && !!scripts.available && [...scripts.pre, ...scripts.post].some((x) => x.dirty);
+    $('save').disabled = !(docDirty || scriptDirty);
+  };
+  // Save: .http + script yang berubah; request untitled = dialog Save http.me
+  $('save').onclick = () => { flush(); scFlush(); post({ type: 'save' }); };
   $('openAsText').onclick = () => post({ type: 'openAsText' });
   $('saveBody').onclick = () => post({ type: 'saveBody' });
 
@@ -738,6 +746,8 @@
   window.addEventListener('message', (e) => {
     const m = e.data;
     if (m.type === 'state') {
+      docDirty = m.dirty;
+      paintSave();
       req = m.req;
       renderRequest();
       $('multi').hidden = !(m.multi > 1);
@@ -751,7 +761,8 @@
       $('reqCookies').replaceChildren(...m.list.map((c) => el('tr', {}, [el('td', { textContent: c.name }), el('td', { textContent: c.value, title: 'Masked' }), el('td', { textContent: c.domain }), el('td', { textContent: c.path })])));
       $('reqCookiesNote').textContent = m.off ? 'Send saved cookies is off for this request (Settings).' : m.list.length ? 'These saved cookies are sent with the request (values masked). Manage them in the Cookies view of the http.me sidebar.' : 'No saved cookie matches this URL yet. Cookies from responses are saved automatically.';
     }
-    if (m.type === 'scripts') { scripts = m; renderScripts(); }
+    if (m.type === 'dirty') { docDirty = m.dirty; paintSave(); }
+    if (m.type === 'scripts') { scripts = m; renderScripts(); paintSave(); }
     if (m.type === 'beautifyResult') { $('beautifyNote').hidden = !m.error; $('beautifyNote').textContent = m.error || ''; }
     if (m.type === 'others') { $('others').hidden = !m.n; $('othersText').textContent = othersText(m.n); }
     if (m.type === 'scriptSelect') { scripts && renderScripts(); const it = scItems().find((x) => x.file === m.path); if (it) scSelect(it); }
