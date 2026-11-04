@@ -3,6 +3,7 @@ import { isNewerMinor, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
 import { errMsg } from './log';
 import { log, reportError } from './output';
+import { newRequest, registerRequestEditor } from './requestEditor';
 
 // versi terakhir yang pernah aktif, untuk What's New sekali per minor
 const VERSION_KEY = 'httpme.version';
@@ -38,6 +39,9 @@ export function activate(ctx: vscode.ExtensionContext): void {
   ctx.subscriptions.push(log());
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.whatsNew', () => openWhatsNew(ctx)));
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.clearCache', () => clearCacheCommand(ctx)));
+  ctx.subscriptions.push(registerRequestEditor());
+  ctx.subscriptions.push(vscode.commands.registerCommand('httpme.newRequest', () =>
+    newRequest().catch((e) => reportError('newRequest', e, `New Request failed: ${errMsg(e)}`))));
 
   // aktivasi malas: dicek saat extension pertama dipakai, bukan saat VS Code start
   const version: string = ctx.extension.packageJSON.version;

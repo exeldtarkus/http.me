@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline';">
+<style>
+  body { margin: 0; padding: 16px 20px; color: var(--vscode-foreground); background: var(--vscode-editor-background); font-family: var(--vscode-font-family); font-size: 13px; }
+  h1 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+  p { margin: 0 0 12px; color: var(--vscode-descriptionForeground); }
+  pre { margin: 0; padding: 10px 12px; border: 1px solid var(--vscode-panel-border, #8884); border-radius: 4px; font-family: var(--vscode-editor-font-family, monospace); white-space: pre-wrap; word-break: break-all; }
+</style>
+</head>
+<body>
+<h1>{{title}}</h1>
+<p>The request editor is coming in the next version. Use Reopen Editor With… → Text Editor to edit this request.</p>
+<pre>{{text}}</pre>
+</body>
+</html>
