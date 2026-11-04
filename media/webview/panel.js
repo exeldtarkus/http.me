@@ -368,6 +368,7 @@
         changed();
       });
     } else $('bodyText').value = req.body;
+    $('bodyEmpty').hidden = req.bodyType !== 'none' || !!req.bodyFile;
     paintBodyError();
   }
   /** garis merah + pesan di bawah editor Body bila JSON / XML tidak valid */
@@ -576,6 +577,16 @@
       changed();
     };
   }
+  // body none: tombol + JSON / + Form / + Text = pilih tipe body itu
+  for (const b of $('bodyEmpty').querySelectorAll('button')) {
+    b.onclick = () => {
+      const r = [...document.getElementsByName('bt')].find((x) => x.value === b.dataset.bt);
+      r.checked = true;
+      r.onchange();
+      $('bodyText').focus();
+    };
+  }
+  if (/Mac/.test(navigator.platform)) $('sendKbd').textContent = '⌘ ↵';
   for (const b of $('reqTabs').querySelectorAll('button')) {
     b.onclick = () => {
       for (const x of $('reqTabs').querySelectorAll('button')) x.classList.toggle('on', x === b);
@@ -596,7 +607,7 @@
   let cancelling = false; // Cancel diklik: tombol tetap "Cancelling…" sampai request benar-benar berhenti
   function renderView(view) {
     running = view?.kind === 'running' || view?.kind === 'queued';
-    $('sendIcon').hidden = running;
+    $('sendIdle').hidden = running;
     $('sendLabel').hidden = !running;
     $('send').setAttribute('aria-label', running ? 'Cancel request' : 'Send request');
     $('send').classList.toggle('busy', running);
