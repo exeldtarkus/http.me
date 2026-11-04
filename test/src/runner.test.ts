@@ -50,3 +50,25 @@ test('runner: onChange dipanggil saat job mulai / antre / selesai', async () => 
   await runner.run('a', 'a', async () => 1);
   assert.deepEqual(seen, ['r', '']);
 });
+
+test('Send lagi di file yang sama membatalkan request lama (berjalan maupun antre)', async () => {
+  const srv = await startServer(async () => { await wait(300); return { body: 'done' }; });
+  try {
+    const runner = createRunner();
+    const first = runner.run('a.http', 'GET 1', (signal) => send({ method: 'GET', url: srv.url, headers: [] }, { signal }));
+    await wait(20);
+    const second = runner.run('a.http', 'GET 2', (signal) => send({ method: 'GET', url: srv.url, headers: [] }, { signal }));
+    await assert.rejects(first, (e: Error & { kind?: string }) => e.kind === 'cancelled');
+    assert.equal((await second).body.toString(), 'done');
+
+    const one = createRunner({ limit: 1 });
+    const blocker = one.run('x', 'x', () => wait(50));
+    const queued = one.run('q', 'q 1', async () => 'old');
+    const replaced = one.run('q', 'q 2', async () => 'new');
+    await assert.rejects(queued, (e: Error & { kind?: string }) => e.kind === 'cancelled');
+    assert.equal(await replaced, 'new');
+    await blocker;
+  } finally {
+    await srv.close();
+  }
+});
