@@ -162,7 +162,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
         else if (m.type === 'rename') await vscode.commands.executeCommand('httpme.renameEnvironment', nameOf(doc));
         else if (m.type === 'compare') await openCompare();
         else if (m.type === 'openAsText') await vscode.commands.executeCommand('vscode.openWith', doc.uri, 'default');
-        else if (m.type === 'save') { await doc.save(); if (nameOf(doc) !== GLOBALS) await envs.sync(); }
+        else if (m.type === 'save') await doc.save();
         else if (m.type === 'showSecret' && typeof m.key === 'string') {
           void panel.webview.postMessage({ type: 'secret', key: m.key, value: (await envs.secret(nameOf(doc), m.key)) ?? null });
         } else await envOp(doc, m as unknown as EnvOp);

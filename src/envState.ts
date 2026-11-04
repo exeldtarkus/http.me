@@ -247,6 +247,8 @@ export class Environments {
         docTimer = setTimeout(() => this.fire(), 300);
       }),
       new vscode.Disposable(() => { clearTimeout(timer); clearTimeout(docTimer); }),
+      // Save (tombol editor atau Ctrl+S): key disinkronkan ke semua Environment; Globals tidak ikut
+      vscode.workspace.onDidSaveTextDocument((d) => { const name = this.nameOf(d.uri); if (name === undefined || name === GLOBALS) return; void this.sync().catch((e) => log().error(errorLine('Environments.save', e))); }),
     );
   }
 }
