@@ -123,3 +123,9 @@ test('Ctrl+Enter di editor teks .http = Send Request (tanpa panel)', () => {
   assert.match(kb.when ?? '', /editorTextFocus/);
   assert.match(kb.when ?? '', /resourceExtname == \.http|editorLangId == http/);
 });
+
+test('review R33: output response di panel bawah (samping Terminal): view container panel + webview httpme.response', () => {
+  const panel = pkg.contributes.viewsContainers.panel as { id: string; title: string }[];
+  assert.ok(panel.some((c) => c.id === 'httpme-output' && c.title === 'http.me'), 'container panel http.me');
+  assert.deepEqual(pkg.contributes.views['httpme-output'], [{ type: 'webview', id: 'httpme.response', name: 'Response' }]);
+});

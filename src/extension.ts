@@ -3,7 +3,7 @@ import { isNewerMinor, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
 import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
-import { applyPanelEdit, importCurlText, saveUntitled, type SaveInput, cancelActive, cancelBlock, cancelFile, newRequest, openAsText, openInPanel, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
+import { applyPanelEdit, importCurlText, saveUntitled, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
 import { registerSidebar, type Sidebars } from './sidebar';
 import { historyAction, registerActivity, statusBar, type HistoryAction } from './activity';
@@ -59,6 +59,8 @@ export type HttpmeApi = {
   /** pesan tab Scripts seperti dari webview; kembalikan pesan balasan host */
   scriptsCall(uri: vscode.Uri, m: ScriptsMessage): Promise<unknown[]>;
   statusBar: typeof statusBar;
+  /** layout response (single / two pane / panel bawah) + view Response panel bawah */
+  layout: { get: typeof getLayout; set: typeof setLayout; outputKey: typeof outputKey; outputShown: typeof outputShown };
   history: { list(): ReturnType<typeof listHistory>; action(id: string, a: HistoryAction): Promise<void> };
 };
 async function scriptsCall(uri: vscode.Uri, m: ScriptsMessage): Promise<unknown[]> {
@@ -109,7 +111,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   ctx.subscriptions.push(log());
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.whatsNew', () => openWhatsNew(ctx)));
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.clearCache', () => clearCacheCommand(ctx)));
-  ctx.subscriptions.push(registerRequestEditor(vscode.Uri.joinPath(ctx.globalStorageUri, 'httpme-cache').fsPath));
+  ctx.subscriptions.push(registerRequestEditor(vscode.Uri.joinPath(ctx.globalStorageUri, 'httpme-cache').fsPath, ctx.globalState));
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.newRequest', () =>
     newRequest().catch((e) => reportError('newRequest', e, `New Request failed: ${errMsg(e)}`))));
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.sendRequest', () =>
@@ -176,7 +178,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   void ctx.globalState.update(VERSION_KEY, version);
   if (isNewerMinor(version, previous)) openWhatsNew(ctx);
   return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt, scriptsCall,
-    statusBar, history: { list: () => listHistory(historyDir), action: (id, a) => historyAction(historyDir, id, a) } };
+    statusBar, layout: { get: getLayout, set: setLayout, outputKey, outputShown }, history: { list: () => listHistory(historyDir), action: (id, a) => historyAction(historyDir, id, a) } };
 }
 
 export function deactivate(): void {}
