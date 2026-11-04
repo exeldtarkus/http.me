@@ -11,6 +11,8 @@ const panel = require(join(__dirname, '..', '..', '..', 'media', 'webview', 'pan
   tokenClass(name: string, vars: Vars, file: string[]): string;
   segments(text: string, vars: Vars, file: string[]): { text: string; name?: string; cls?: string }[];
   completionPrefix(before: string): string | undefined;
+  bodyError(text: string, type: string): { start: number; end: number; message: string } | undefined;
+  markSegments(segs: { text: string; name?: string; cls?: string }[], start: number, end: number): { text: string; name?: string; cls?: string; err?: boolean }[];
 };
 type Vars = { ok: string[]; nulls: string[]; names: string[] };
 
@@ -216,6 +218,48 @@ test('review R26: baris URL ringkas: semua kontrol setinggi --ctl-h, Send ikon 3
   assert.match(css, /#send \{[^}]*width: 32px;[^}]*height: var\(--ctl-h\);/);
   assert.match(css, /#save \{[^}]*height: var\(--ctl-h\);/);
   assert.match(css, /\.subtabs \.n:not\(:empty\) \{[^}]*background: var\(--vscode-badge-background/);
+});
+
+test('review R28: bodyError JSON: posisi + pesan Line/column, {{variable}} boleh jadi nilai', () => {
+  const e = panel.bodyError('{\n  name: "exel"\n}', 'json')!;
+  assert.deepEqual([e.start, e.end], [4, 8], 'kata name digaris merah');
+  assert.match(e.message, /^Line 2, column 3: Expected a double-quoted property name/);
+  assert.match(panel.bodyError('{"a":1,}', 'json')!.message, /^Line 1, column 7: Trailing comma/);
+  assert.deepEqual([panel.bodyError('{"a":1,}', 'json')!.start], [6]);
+  const end = panel.bodyError('{"a":\n', 'json')!;
+  assert.match(end.message, /Unexpected end of JSON/);
+  assert.equal(end.start, 4, 'akhir teks: tanda di karakter terakhir yang bukan spasi');
+  assert.match(panel.bodyError('{"a":tru}', 'json')!.message, /Unexpected character 't'/);
+  assert.match(panel.bodyError('{"a":"x\ny"}', 'json')!.message, /Unterminated string/);
+  assert.match(panel.bodyError('{"a":1} x', 'json')!.message, /Unexpected content after JSON/);
+  for (const ok of ['', '  ', '{{body}}', '{"a": {{v}}, "b": "{{w}}", "c": [1, -2.5e3, true, null]}', '[]']) assert.equal(panel.bodyError(ok, 'json'), undefined, ok);
+  assert.equal(panel.bodyError('{bad', 'text'), undefined, 'jenis lain tidak dicek');
+});
+
+test('review R28: bodyError XML: tag penutup tidak cocok / tidak ditutup / < tanpa >', () => {
+  const x = panel.bodyError('<a>\n  <b>1</a>', 'xml')!;
+  assert.match(x.message, /^Line 2, column 7: Closing tag <\/a> does not match <b>/);
+  assert.deepEqual([x.start, x.end], [10, 14]);
+  assert.match(panel.bodyError('<a><b/>', 'xml')!.message, /^Line 1, column 1: Tag <a> is not closed/);
+  assert.match(panel.bodyError('<a', 'xml')!.message, /Unclosed '<'/);
+  assert.match(panel.bodyError('</a>', 'xml')!.message, /Unexpected closing tag <\/a>/);
+  for (const ok of ['', '<?xml version="1.0"?>\n<!-- c <x> -->\n<a x="1>2"><![CDATA[<b>]]><c/>{{v}}</a>', '<!DOCTYPE a><a/>']) assert.equal(panel.bodyError(ok, 'xml'), undefined, ok);
+});
+
+test('review R28: editor Body: pesan error di bawah editor + garis bergelombang merah + border merah', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const html = fs.readFileSync(join(dir, 'panel.html'), 'utf8');
+  assert.match(html, /<span class="note err" id="bodyErr" role="status" hidden><\/span>/);
+  assert.match(html, /\.synerr \{ text-decoration: underline wavy var\(--err\);/);
+  assert.match(html, /\.vwrap\.area\.bad > textarea \{ border-color: var\(--err\); \}/);
+  assert.match(fs.readFileSync(join(dir, 'panel.js'), 'utf8'), /\$\('bodyText'\)\.oninput = \(\) => \{[^}]*paintBodyError\(\);/);
+});
+
+test('review R28: markSegments memotong segmen mirror untuk garis merah (token variable tetap utuh)', () => {
+  const segs = [{ text: '{"a": ' }, { text: '{{v}}', name: 'v', cls: 'ok' }, { text: ' x}' }];
+  assert.deepEqual(panel.markSegments(segs, 12, 13), [{ text: '{"a": ' }, { text: '{{v}}', name: 'v', cls: 'ok' }, { text: ' ' }, { text: 'x', err: true }, { text: '}' }]);
+  assert.deepEqual(panel.markSegments([{ text: 'abc' }], 0, 3), [{ text: 'abc', err: true }]);
 });
 
 test('review R7: body form / none menyembunyikan pembungkus editor teks (bukan hanya textarea)', () => {
