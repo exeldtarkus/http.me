@@ -110,3 +110,13 @@ test('review R22: header tabel (Variable, Initial value, Current value, Secret) 
   assert.match(html, /th \{[^}]*position: sticky;[^}]*top: 0;[^}]*background: var\(--bg\)/);
 });
 
+test('review R23: klik Save menampilkan loading lalu notifikasi (host kirim "saved" setelah doc.save)', () => {
+  const js = require('node:fs').readFileSync(join(media, 'environment.js'), 'utf8') as string;
+  assert.match(js, /\$\('save'\)\.onclick = \(\) => \{ saving = true; render\(\); post\(\{ type: 'save' \}\); \}/, 'klik Save: loading');
+  assert.match(js, /\$\('save'\)\.disabled = !st\.dirty \|\| saving;/, 'Save nonaktif saat loading');
+  assert.match(js, /\$\('save'\)\.textContent = saving \? 'Saving…' : 'Save';/, 'teks Saving… saat loading');
+  assert.match(js, /else if \(m\.type === 'saved'\) \{ saving = false; render\(\); \}/, 'loading selesai saat host membalas');
+  const ts = require('node:fs').readFileSync(join(__dirname, '..', '..', '..', 'src', 'environmentEditor.ts'), 'utf8') as string;
+  assert.match(ts, /else if \(m\.type === 'save'\) \{[\s\S]{0,300}finally \{ void panel\.webview\.postMessage\(\{ type: 'saved' \}\)/, 'host kirim saved di finally');
+  assert.match(ts, /showInformationMessage\(`Environment "\$\{nameOf\(doc\)\}" saved\.`\)/, 'notifikasi sukses');
+});

@@ -119,12 +119,14 @@
   let dragFrom = -1;
   let refocusAdd = false; // Enter di Add variable: setelah digambar ulang fokus kembali ke Add
   let rendering = false; // render() melepas input yang fokus; blur dari pelepasan itu bukan keputusan user
+  let saving = false; // klik Save menunggu balasan 'saved' dari host (loading)
   function render() {
     $('fileError').hidden = !st.error;
     $('fileError').textContent = st.error ? `${st.error}. Fix the file with Open as Text.` : '';
     $('editor').hidden = !!st.error;
     $('title').textContent = st.name;
-    $('save').disabled = !st.dirty;
+    $('save').disabled = !st.dirty || saving;
+    $('save').textContent = saving ? 'Saving…' : 'Save';
     $('title').disabled = !!st.globals;
     $('activeBadge').hidden = !st.active;
     $('setActive').hidden = !!st.active || !!st.globals;
@@ -227,7 +229,7 @@
   $('setActive').onclick = () => post({ type: 'setActive' });
   $('compare').onclick = () => post({ type: 'compare' });
   $('openAsText').onclick = () => post({ type: 'openAsText' });
-  $('save').onclick = () => { post({ type: 'save' }); };
+  $('save').onclick = () => { saving = true; render(); post({ type: 'save' }); };
   $('reset').onclick = () => post({ type: 'resetCurrent' });
   $('persist').onclick = () => post({ type: 'persistAll' });
   $('search').oninput = render;
@@ -248,6 +250,7 @@
         if (inp) { inp.focus(); inp.setSelectionRange(keep[2], keep[2]); }
       }
     } else if (m.type === 'focus') focusKey(m.key, m.mode);
+    else if (m.type === 'saved') { saving = false; render(); }
     else if (m.type === 'secret') { if (m.value !== null) shown[m.key] = m.value; render(); }
   });
   post({ type: 'ready' });
