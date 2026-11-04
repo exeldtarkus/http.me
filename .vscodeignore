@@ -18,3 +18,4 @@ logs/**
 images/*.svg
 images/screenshots/**
 deployment/**
+test-extension/**

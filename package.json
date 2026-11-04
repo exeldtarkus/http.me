@@ -29,6 +29,7 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "dev": "npm run compile && bash scripts/dev.sh",
     "test": "npm run compile && node --test out/test/src/*.test.js",
     "package": "vsce package --skip-license",
     "install:local": "node scripts/install-local.js"

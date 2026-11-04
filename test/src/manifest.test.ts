@@ -49,3 +49,11 @@ test('script install:local + package tersedia', () => {
   assert.equal(pkg.scripts?.package, 'vsce package --skip-license');
   assert.ok(existsSync(join(root, 'scripts', 'install-local.js')), 'scripts/install-local.js belum ada');
 });
+
+test('npm run dev membuka Extension Development Host + folder contoh', () => {
+  assert.equal(pkg.scripts?.dev, 'npm run compile && bash scripts/dev.sh');
+  assert.ok(existsSync(join(root, 'scripts', 'dev.sh')), 'scripts/dev.sh belum ada');
+  assert.ok(existsSync(join(root, 'test-extension')), 'folder test-extension/ belum ada');
+  const ignore = readFileSync(join(root, '.vscodeignore'), 'utf8').split('\n').map((l) => l.trim());
+  assert.ok(ignore.includes('test-extension/**'), '.vscodeignore tidak berisi test-extension/**');
+});
