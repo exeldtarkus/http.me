@@ -42,3 +42,30 @@ export async function scriptChain(root: string, httpFile: string, r: ParsedReque
   }
   return out;
 }
+
+/** path di baris `< x` / `> x` sebuah .http (posisi karakter di baris): pre = sebelum baris request, body = `< file` setelah header, post = `>` */
+export type PathRef = { path: string; line: number; start: number; end: number; kind: ScriptKind | 'body' };
+
+export function scriptPaths(text: string): PathRef[] {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const out: PathRef[] = [];
+  let afterRequest = false;
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    const t = l.trim();
+    if (t.startsWith('###')) { afterRequest = false; continue; }
+    const m = /^(\s*)([<>])\s*(\S.*?)\s*$/.exec(l);
+    if (m && m[3].startsWith('{%')) {
+      // inline {% … %}: lewati sampai penutup
+      if (!m[3].includes('%}')) while (i + 1 < lines.length && !lines[++i].includes('%}'));
+      continue;
+    }
+    if (m) {
+      const start = l.indexOf(m[3], m[1].length + 1);
+      out.push({ path: m[3], line: i, start, end: start + m[3].length, kind: m[2] === '>' ? 'post' : afterRequest ? 'body' : 'pre' });
+      continue;
+    }
+    if (t !== '' && !/^(#|\/\/|@[\w.-]+\s*=)/.test(t)) afterRequest = true;
+  }
+  return out;
+}

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { scriptChain } from '../../src/scripts';
+import { scriptChain, scriptPaths } from '../../src/scripts';
 import { parseRequest } from '../../src/httpFile';
 import { withTempDir } from './helpers/tmp';
 
@@ -41,3 +41,28 @@ test('scriptChain: path tidak ada / berkoma = error; .http di luar root hanya fo
     put(root, 'out/pre-request.js'); put(root, 'pre-request.js');
     assert.deepEqual(await scriptChain(join(root, 'ws'), join(root, 'out/r.http'), parseRequest('GET http://x\n'), 'pre'), [{ file: join(root, 'out/pre-request.js') }]);
   }));
+
+test('scriptPaths: posisi path di baris < / >, jenis pre / body / post per blok, inline dilewati', () => {
+  const text = [
+    '### a',          // 0
+    '<  ./sign.js',   // 1
+    '< {% x %}',      // 2
+    'POST http://x',  // 3
+    '',               // 4
+    '< ./body.json',  // 5
+    '',               // 6
+    '> ./save.js ',   // 7
+    '> {%',           // 8
+    '< ./no.js',      // 9 (di dalam inline)
+    '%}',             // 10
+    '### b',          // 11
+    '< ../pre.js',    // 12
+    'GET http://y',   // 13
+  ].join('\n');
+  assert.deepEqual(scriptPaths(text), [
+    { path: './sign.js', line: 1, start: 3, end: 12, kind: 'pre' },
+    { path: './body.json', line: 5, start: 2, end: 13, kind: 'body' },
+    { path: './save.js', line: 7, start: 2, end: 11, kind: 'post' },
+    { path: '../pre.js', line: 12, start: 2, end: 11, kind: 'pre' },
+  ]);
+});
