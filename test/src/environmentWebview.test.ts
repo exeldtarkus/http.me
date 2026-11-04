@@ -89,6 +89,22 @@ test('review R15: Save (tombol & Ctrl+S) memicu sync key ke semua Environment, G
   const src = (require('node:fs') as typeof import('node:fs')).readFileSync(join(__dirname, '..', '..', '..', 'src', 'envState.ts'), 'utf8');
   assert.match(src, /vscode\.workspace\.onDidSaveTextDocument\(\(d\) => \{ const name = this\.nameOf\(d\.uri\); if \(name === undefined \|\| name === GLOBALS\) return; void this\.sync\(\)/);
 });
+test('review R20: tombol Save di bawah editor Environment (setelah tabel & catatan)', () => {
+  const html = require('node:fs').readFileSync(join(media, 'environment.html'), 'utf8') as string;
+  const headEnd = html.indexOf('<div class="head">');
+  const saveAt = html.indexOf('id="save"');
+  const tableAt = html.indexOf('<table>');
+  assert.ok(saveAt > tableAt, 'tombol Save ada setelah tabel');
+  assert.ok(html.indexOf('</table>') < saveAt && saveAt > headEnd, 'tombol Save tidak lagi di header');
+  assert.ok(html.slice(0, html.indexOf('<div class="msg"')).indexOf('id="save"') === -1, 'tombol Save bukan di header');
+});
+
+test('review R21: klik di luar / Enter di kolom Initial value = commit (flush edit, tutup editor NULL)', () => {
+  const src = require('node:fs').readFileSync(join(media, 'environment.js'), 'utf8') as string;
+  assert.match(src, /function flushEdit\(\) \{[\s\S]{0,200}clearTimeout\(editTimer\)/, 'flushEdit mengirim edit tertunda sekarang');
+  assert.match(src, /inp\.onkeydown = \(e\) => \{ if \(e\.key === 'Enter'\) \{ e\.preventDefault\(\); inp\.blur\(\); \} \}/, 'Enter di Initial value = commit');
+  assert.match(src, /inp\.onblur = \(\) => \{ if \(rendering \|\| !inp\.isConnected \|\| !document\.hasFocus\(\)\) return; flushEdit\(\);/, 'blur (klik di luar) = commit');
+});
 test('review R22: header tabel (Variable, Initial value, Current value, Secret) tetap terlihat saat scroll', () => {
   const html = require('node:fs').readFileSync(join(media, 'environment.html'), 'utf8') as string;
   assert.match(html, /th \{[^}]*position: sticky;[^}]*top: 0;[^}]*background: var\(--bg\)/);

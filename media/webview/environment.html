@@ -58,6 +58,7 @@
   .msg { color: var(--err); padding: 12px; border: 1px solid var(--err); border-radius: 4px; }
   .add input { font-style: italic; }
   .na { color: var(--muted); font-size: 12px; }
+  .foot { display: flex; justify-content: flex-end; margin-top: 12px; }
 </style>
 </head>
 <body>
@@ -68,7 +69,6 @@
   <span class="spacer"></span>
   <button class="btn ghost" id="compare" type="button">All Environments</button>
   <button class="btn ghost" id="openAsText" type="button">Open as Text</button>
-  <button class="btn pri" id="save" type="button" title="Save (Ctrl+S)" disabled>Save</button>
 </div>
 <div class="msg" id="fileError" hidden></div>
 <div id="editor">
@@ -87,6 +87,7 @@
   <p class="err" id="errors" hidden></p>
   <p class="na">Initial values are saved in the file (commit them). Current values stay on this computer. Secret values are kept in VS Code SecretStorage, never in the file.</p>
 </div>
+<div class="foot"><button class="btn pri" id="save" type="button" title="Save (Ctrl+S)" disabled>Save</button></div>
 <script nonce="{{nonce}}" src="environment.js"></script>
 </body>
 </html>

@@ -75,6 +75,13 @@
     editTimer = setTimeout(() => { editTimer = undefined; post({ type: 'edit', vars }); }, 250);
   }
 
+  function flushEdit() {
+    if (editTimer === undefined) return;
+    clearTimeout(editTimer);
+    editTimer = undefined;
+    post({ type: 'edit', vars });
+  }
+
   function valueCell(x) {
     const box = el('div', { className: 'val' });
     if (x.secret) {
@@ -100,8 +107,9 @@
     }
     const inp = el('input', { type: 'text', value: x.value ?? '', spellcheck: false, placeholder: x.value === null ? 'Value' : '' });
     inp.oninput = () => { x.value = inp.value; sendEdit(); };
+    inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } };
     // blur dari input yang sudah dilepas render ulang (state echo) tidak boleh menutup editor
-    inp.onblur = () => { if (rendering || !inp.isConnected || !document.hasFocus()) return; if (openNull === x.key) { openNull = null; if (x.value === null) render(); } };
+    inp.onblur = () => { if (rendering || !inp.isConnected || !document.hasFocus()) return; flushEdit(); if (openNull === x.key) { openNull = null; if (x.value === null) render(); } };
     const setNull = el('button', { className: 'mini', type: 'button', textContent: '⊘', title: 'Set NULL' });
     setNull.onclick = () => { x.value = null; openNull = null; render(); sendEdit(); };
     box.append(inp, setNull);
