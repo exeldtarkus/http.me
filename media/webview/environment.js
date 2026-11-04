@@ -100,16 +100,17 @@
     }
     const inp = el('input', { type: 'text', value: x.value ?? '', spellcheck: false, placeholder: x.value === null ? 'Value' : '' });
     inp.oninput = () => { x.value = inp.value; sendEdit(); };
-    inp.onblur = () => { if (openNull === x.key) { openNull = null; if (x.value === null) render(); } };
+    // blur dari input yang sudah dilepas render ulang (state echo) tidak boleh menutup editor
+    inp.onblur = () => { if (rendering || !inp.isConnected || !document.hasFocus()) return; if (openNull === x.key) { openNull = null; if (x.value === null) render(); } };
     const setNull = el('button', { className: 'mini', type: 'button', textContent: '⊘', title: 'Set NULL' });
     setNull.onclick = () => { x.value = null; openNull = null; render(); sendEdit(); };
     box.append(inp, setNull);
-    if (openNull === x.key) setTimeout(() => inp.focus());
     return box;
   }
 
   let dragFrom = -1;
   let refocusAdd = false; // Enter di Add variable: setelah digambar ulang fokus kembali ke Add
+  let rendering = false; // render() melepas input yang fokus; blur dari pelepasan itu bukan keputusan user
   function render() {
     $('fileError').hidden = !st.error;
     $('fileError').textContent = st.error ? `${st.error}. Fix the file with Open as Text.` : '';
@@ -121,6 +122,7 @@
     $('setActive').hidden = !!st.active || !!st.globals;
     $('reset').hidden = $('persist').hidden = !!st.globals;
     if (st.error) return;
+    rendering = true;
     const nulls = vars.filter((x) => (x.secret ? !st.secretSet[x.key] : x.value === null)).length;
     $('nullCount').textContent = nulls ? `${nulls} NULL` : '';
     const rows = visibleRows(vars, st.current, $('search').value, $('nullOnly').checked);
@@ -157,8 +159,18 @@
       $('rows').append(tr);
     }
     // baris terakhir: Add variable (ke semua Environment dengan NULL); Enter = tetap di sini, Tab = lanjut isi Initial value
+    // Initial value yang sedang diisi (openNull) difokuskan di sini, setelah baris digambar, agar tidak balapan dengan render ulang
+    const fill = openNull !== null ? [...$('rows').querySelectorAll('tr[data-key]')].find((r) => r.dataset.key === openNull) : undefined;
+    fill?.querySelector('.val input[type=text]')?.focus();
     const add = el('input', { type: 'text', placeholder: 'Add variable (Enter / Tab)', spellcheck: false, id: 'addKey' });
-    add.oninput = () => add.setCustomValidity('');
+    add.oninput = () => {
+      add.setCustomValidity('');
+      const name = add.value.trim();
+      const dup = !!name && vars.some((x) => x.key === name);
+      add.classList.toggle('bad', dup);
+      $('errors').hidden = !dup;
+      $('errors').textContent = dup ? `Variable "${name}" already exists` : '';
+    };
     add.onkeydown = (e) => {
       const act = addKeyAction(add.value, vars.map((x) => x.key), e.key, e.shiftKey);
       if (act === 'none') return;
@@ -173,6 +185,7 @@
     };
     if (refocusAdd) { refocusAdd = false; setTimeout(() => $('addKey')?.focus()); }
     $('rows').append(el('tr', { className: 'add' }, [el('td'), el('td'), el('td', {}, [add]), el('td', { colSpan: 4 })]));
+    rendering = false;
   }
   /** nama sedang diketik: tandai merah tanpa menggambar ulang (fokus tetap) */
   function sendEditCheckOnly() {

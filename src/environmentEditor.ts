@@ -60,7 +60,6 @@ export async function envOp(doc: vscode.TextDocument, op: EnvOp, ask = true): Pr
       const key = op.key.trim();
       if (!key || vars.some((x) => x.key === key)) return;
       await writeDoc(doc, withKey(vars, key, !!op.secret));
-      if (shared) await envs.updateOthers((v) => withKey(v, key, !!op.secret), name);
       return;
     }
     case 'renameKey': {

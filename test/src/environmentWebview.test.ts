@@ -46,6 +46,38 @@ test('review R13: Add variable — Enter tambah & tetap di Add, Tab tambah & pin
   assert.equal(e.addKeyAction('x', [], 'a', false), 'none');
 });
 
+test('review R13b: input Initial value tidak tertutup oleh blur dari render ulang (state echo)', () => {
+  const src = require('node:fs').readFileSync(join(media, 'environment.js'), 'utf8') as string;
+  assert.match(src, /inp\.onblur = \(\) => \{ if \(rendering \|\| !inp\.isConnected/, 'blur dari input yang sudah dilepas tidak boleh mereset openNull');
+  assert.doesNotMatch(src, /setTimeout\(\(\) => \{ if \(inp\.isConnected\) inp\.focus\(\); \}\)/, 'fokus tidak lagi lewat setTimeout di valueCell (balapan dengan render ulang)');
+  assert.match(src, /\.find\(\(r\) => r\.dataset\.key === openNull\)[\s\S]{0,200}\.focus\(\)/, 'render memfokuskan input Initial value yang sedang diisi (openNull) secara sinkron');
+});
+
+test('review R16: addKey hanya menulis Environment aktif, key baru ikut ke environment lain saat save (sync)', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const src = fs.readFileSync(join(__dirname, '..', '..', '..', 'src', 'environmentEditor.ts'), 'utf8') as string;
+  const addKeyCase = src.slice(src.indexOf("case 'addKey'"), src.indexOf("case 'renameKey'"));
+  assert.ok(addKeyCase.length > 0);
+  assert.doesNotMatch(addKeyCase, /updateOthers/, 'addKey tidak boleh menambah key ke environment lain');
+});
+
+test('review R17: peringatan di editor saat key di Add variable sudah ada', () => {
+  const src = require('node:fs').readFileSync(join(media, 'environment.js'), 'utf8') as string;
+  assert.match(src, /add\.oninput = \(\) => \{[\s\S]{0,300}already exists[\s\S]{0,40}\};/, 'oninput menampilkan peringatan key sudah ada');
+});
+
+test('review R18: blur karena fokus keluar dari webview tidak menghapus openNull (input Initial value tidak jadi NULL)', () => {
+  const src = require('node:fs').readFileSync(join(media, 'environment.js'), 'utf8') as string;
+  assert.match(src, /inp\.onblur = \(\) => \{ if \(rendering \|\| !inp\.isConnected \|\| !document\.hasFocus\(\)\) return;/, 'blur akibat window kehilangan fokus diabaikan');
+});
+
+test('review R19: blur saat render() mengganti baris (input masih terhubung) tidak menghapus openNull', () => {
+  const src = require('node:fs').readFileSync(join(media, 'environment.js'), 'utf8') as string;
+  assert.match(src, /let rendering = false;/, 'flag rendering ada');
+  assert.match(src, /if \(st\.error\) return;\s*rendering = true;/, 'render menyalakan flag setelah cek error');
+  assert.match(src, /rendering = false;\s*\}\);?\s*\}|append\(el\('tr', \{ className: 'add' \}[\s\S]{0,200}rendering = false;/, 'render mematikan flag di akhir');
+});
+
 test('review R14: tombol Save di editor Environment & panel request', () => {
   const fs = require('node:fs') as typeof import('node:fs');
   for (const f of ['environment.html', 'panel.html']) {
