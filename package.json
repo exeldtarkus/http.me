@@ -37,6 +37,21 @@
         "category": "http.me"
       },
       {
+        "command": "httpme.cancelRequest",
+        "title": "Cancel Request",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.cancelAllRequests",
+        "title": "Cancel All Requests",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.showRunning",
+        "title": "Show Running Requests",
+        "category": "http.me"
+      },
+      {
         "command": "httpme.whatsNew",
         "title": "What's New",
         "category": "http.me"

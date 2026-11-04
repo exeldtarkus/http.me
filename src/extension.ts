@@ -3,7 +3,8 @@ import { isNewerMinor, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
 import { errMsg } from './log';
 import { log, reportError } from './output';
-import { newRequest, registerRequestEditor, sendActive, viewOf } from './requestEditor';
+import { cancelActive, newRequest, registerRequestEditor, runner, sendActive, viewOf } from './requestEditor';
+import { registerActivity } from './activity';
 
 // versi terakhir yang pernah aktif, untuk What's New sekali per minor
 const VERSION_KEY = 'httpme.version';
@@ -36,7 +37,7 @@ async function clearCacheCommand(ctx: vscode.ExtensionContext): Promise<void> {
 }
 
 /** API extension: hanya untuk itest (membaca state request di extension host) */
-export type HttpmeApi = { viewOf: typeof viewOf };
+export type HttpmeApi = { viewOf: typeof viewOf; runningCount: () => number };
 
 export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   ctx.subscriptions.push(log());
@@ -47,13 +48,16 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
     newRequest().catch((e) => reportError('newRequest', e, `New Request failed: ${errMsg(e)}`))));
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.sendRequest', () =>
     sendActive().catch((e) => reportError('sendRequest', e, `Send failed: ${errMsg(e)}`))));
+  ctx.subscriptions.push(vscode.commands.registerCommand('httpme.cancelRequest', () =>
+    cancelActive().catch((e) => reportError('cancelRequest', e, `Cancel failed: ${errMsg(e)}`))));
+  ctx.subscriptions.push(registerActivity());
 
   // aktivasi malas: dicek saat extension pertama dipakai, bukan saat VS Code start
   const version: string = ctx.extension.packageJSON.version;
   const previous = ctx.globalState.get<string>(VERSION_KEY);
   void ctx.globalState.update(VERSION_KEY, version);
   if (isNewerMinor(version, previous)) openWhatsNew(ctx);
-  return { viewOf };
+  return { viewOf, runningCount: () => runner.jobs().length };
 }
 
 export function deactivate(): void {}

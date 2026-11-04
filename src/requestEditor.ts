@@ -221,5 +221,11 @@ export async function sendActive(): Promise<void> {
   await sendRequest(doc, stateOf(doc), parseRequest(doc.getText()));
 }
 
+/** command Cancel Request: batalkan request tab aktif (berjalan / antre) */
+export async function cancelActive(): Promise<void> {
+  const doc = await activeRequestDoc();
+  if (doc) runner.cancel(doc.uri.toString());
+}
+
 /** state tampilan per dokumen (dipakai itest lewat exports extension) */
 export const viewOf = (uri: string): View | undefined => docs.get(uri)?.view;

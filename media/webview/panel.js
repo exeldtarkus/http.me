@@ -206,7 +206,7 @@
     running = view?.kind === 'running' || view?.kind === 'queued';
     $('send').textContent = running ? 'Cancel' : 'Send';
     $('send').classList.toggle('busy', running);
-    $('send').title = running ? 'Cancel' : 'Send (Ctrl+Enter)';
+    $('send').title = running ? 'Cancel (Escape)' : 'Send (Ctrl+Enter)';
     $('ldCancel').disabled = false;
     $('ldCancel').textContent = 'Cancel';
     $('loading').hidden = !running;
@@ -246,6 +246,7 @@
   $('ldCancel').onclick = cancel;
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendNow(); }
+    else if (e.key === 'Escape' && running) { e.preventDefault(); cancel(); }
   });
   $('redir').onchange = () => { req.followRedirects = $('redir').value === 'yes'; changed(); };
   $('tls').onchange = () => { req.insecure = $('tls').value === 'ignore'; changed(); };
