@@ -51,6 +51,8 @@
   .dots { font: 12px var(--mono); color: var(--muted); padding: 0 5px; }
   .del { border: 0; background: none; color: var(--muted); visibility: hidden; }
   tr:hover .del { visibility: visible; }
+  .del svg, .del-icon svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.2; vertical-align: -2px; }
+  .del:hover, .del-icon:hover { color: var(--vscode-errorForeground, #f2676b); }
   .err { color: var(--err); font-size: 12px; margin: 6px 0 0; }
   .err[hidden], .msg[hidden] { display: none; }
   .msg { color: var(--err); padding: 12px; border: 1px solid var(--err); border-radius: 4px; }

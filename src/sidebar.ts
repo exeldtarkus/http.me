@@ -1,8 +1,9 @@
-// sidebar http.me: satu TreeView native, isi berganti per mode (Collections / Environments / Open). Logika murni di sidebarModel.ts.
+// sidebar http.me: 4 section TreeView native (Collections, Environments, Open, Cookies) seperti Explorer VS Code,
+// tiap section punya judul & tombol aksinya sendiri. Satu class Sidebar per section (mode tetap). Logika murni di sidebarModel.ts.
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import {
-  arrangeOpen, filterFiles, folderChildren, modeOf, moveInOrder, openChildren, requestSummary, UNTITLED, viewTitle,
+  arrangeOpen, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED,
   type OpenTab, type RequestSummary, type SidebarMode,
 } from './sidebarModel';
 import { createFolder, dropKeepIfUsed, duplicateFile, KEEP_FILE, siblingName } from './store';
@@ -19,7 +20,8 @@ import { maskCookie } from './httpEditor';
 import { ENV_DIR } from './environments';
 
 export const VIEW_ID = 'httpme.sidebar';
-const MODE_KEY = 'sidebar.mode';
+/** id view per section (Collections tetap memakai id lama) */
+export const VIEW_IDS: Record<SidebarMode, string> = { collections: VIEW_ID, environments: 'httpme.environments', open: 'httpme.open', cookies: 'httpme.cookies' };
 const FLAT_KEY = 'collections.flat';
 const OPEN_FLAT_KEY = 'open.flat';
 const OPEN_ORDER = 'open.order';
@@ -67,32 +69,26 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
   private filter = '';
   private onlyUnsaved = false;
 
-  constructor(private state: vscode.Memento, private envs: Environments, private cookies: Cookies) {}
+  constructor(private state: vscode.Memento, private envs: Environments, private cookies: Cookies, readonly mode: SidebarMode = 'collections') {}
 
-  get mode(): SidebarMode { return modeOf(this.state.get(MODE_KEY)); }
   private get flat(): boolean { return this.state.get<boolean>(this.mode === 'open' ? OPEN_FLAT_KEY : FLAT_KEY, false); }
 
-  /** ganti mode: context key (ikon aktif di title bar), judul view, isi tree; diingat per workspace */
-  async setMode(mode: SidebarMode): Promise<void> {
-    await this.state.update(MODE_KEY, mode);
-    await this.applyContext();
-    this.changed.fire();
-  }
   async toggleFlat(): Promise<void> {
     await this.state.update(this.mode === 'open' ? OPEN_FLAT_KEY : FLAT_KEY, !this.flat);
     await this.applyContext();
     this.changed.fire();
   }
+  /** context key tombol toolbar section ini (ikon List / Tree, filter, Unsaved only) */
   async applyContext(): Promise<void> {
-    const m = this.mode;
-    await vscode.commands.executeCommand('setContext', 'httpme.sidebarMode', m);
-    await vscode.commands.executeCommand('setContext', 'httpme.sidebarFlat', this.flat);
-    await vscode.commands.executeCommand('setContext', 'httpme.openOnlyUnsaved', this.onlyUnsaved);
-    await vscode.commands.executeCommand('setContext', 'httpme.collectionsFiltered', !!this.filter);
-    if (this.view) {
-      this.view.title = viewTitle(m);
-      this.updateDescription();
+    if (this.mode === 'collections') {
+      await vscode.commands.executeCommand('setContext', 'httpme.collectionsFlat', this.flat);
+      await vscode.commands.executeCommand('setContext', 'httpme.collectionsFiltered', !!this.filter);
     }
+    if (this.mode === 'open') {
+      await vscode.commands.executeCommand('setContext', 'httpme.openFlat', this.flat);
+      await vscode.commands.executeCommand('setContext', 'httpme.openOnlyUnsaved', this.onlyUnsaved);
+    }
+    if (this.view) this.updateDescription();
   }
 
   /** scan ulang (watcher / perubahan file); tampilan Open digambar ulang tanpa scan */
@@ -111,11 +107,14 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
   }
 
   private updateDescription(): void {
+    if (this.mode !== 'open') {
+      this.view.description = this.mode === 'collections' && this.filter ? `Filter: ${this.filter}` : undefined;
+      return;
+    }
     const tabs = this.openTabs();
     const unsaved = tabs.filter((t) => t.dirty).length;
     this.view.badge = unsaved ? { value: unsaved, tooltip: `${unsaved} unsaved request${unsaved === 1 ? '' : 's'}` } : undefined;
-    this.view.description = this.mode === 'open' ? `${this.onlyUnsaved ? 'Unsaved' : 'Open'} (${this.onlyUnsaved ? unsaved : tabs.length})`
-      : this.mode === 'collections' && this.filter ? `Filter: ${this.filter}` : undefined;
+    this.view.description = this.onlyUnsaved ? `Unsaved (${unsaved})` : tabs.length ? String(tabs.length) : undefined;
   }
 
   // ---------- Collections ----------
@@ -476,11 +475,40 @@ export async function openRequest(uri: vscode.Uri): Promise<void> {
   else await vscode.commands.executeCommand('vscode.openWith', uri, REQUEST_VIEW);
 }
 
-export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments, cookies: Cookies): { sidebar: Sidebar; disposable: vscode.Disposable } {
-  const sidebar = new Sidebar(ctx.workspaceState, envs, cookies);
-  const view = vscode.window.createTreeView(VIEW_ID, { treeDataProvider: sidebar, dragAndDropController: sidebar, canSelectMany: true, showCollapseAll: true });
-  sidebar.view = view;
-  void sidebar.applyContext();
+/**
+ * 4 section sidebar + facade untuk extension.ts / itest: refresh / redraw semua section; `mode` = section terakhir
+ * yang dibuka lewat command Show… (getChildren / getTreeItem diteruskan ke section itu)
+ */
+export class Sidebars {
+  current: SidebarMode = 'collections';
+  constructor(readonly sections: Record<SidebarMode, Sidebar>) {}
+  get mode(): SidebarMode { return this.current; }
+  private get s(): Sidebar { return this.sections[this.current]; }
+  refresh(): void { this.sections.collections.refresh(); }
+  redraw(): void { for (const x of Object.values(this.sections)) x.redraw(); }
+  getChildren(n?: Node): Promise<Node[]> { return this.s.getChildren(n); }
+  getTreeItem(n: Node): Promise<vscode.TreeItem> { return this.s.getTreeItem(n); }
+  getParent(n: Node): Node | undefined { return this.s.getParent(n); }
+  handleDrop(target: Node | undefined, data: vscode.DataTransfer): Promise<void> { return this.s.handleDrop(target, data); }
+  handleDrag(nodes: readonly Node[], data: vscode.DataTransfer): void { this.s.handleDrag(nodes, data); }
+  openTabs() { return this.sections.open.openTabs(); }
+}
+
+export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments, cookies: Cookies): { sidebar: Sidebars; disposable: vscode.Disposable } {
+  const make = (mode: SidebarMode, dnd: boolean): Sidebar => {
+    const s = new Sidebar(ctx.workspaceState, envs, cookies, mode);
+    s.view = vscode.window.createTreeView(VIEW_IDS[mode], {
+      treeDataProvider: s, ...(dnd ? { dragAndDropController: s } : {}), canSelectMany: mode === 'collections', showCollapseAll: mode !== 'environments',
+    });
+    void s.applyContext();
+    return s;
+  };
+  const sections = { collections: make('collections', true), environments: make('environments', false), open: make('open', true), cookies: make('cookies', false) };
+  const all = new Sidebars(sections);
+  // Collections = section utama: command file / folder / filter bekerja di sini
+  const sidebar = sections.collections;
+  const view = sidebar.view;
+  const openSide = sections.open;
 
   const run = (name: string, fn: (...a: never[]) => unknown) => (...args: never[]) =>
     Promise.resolve().then(() => fn(...args)).catch((e) => reportError(name, e, `http.me: ${errMsg(e)}`));
@@ -494,11 +522,11 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
 
   // Open: ikut tab / dirty / save tanpa polling
   let openTimer: ReturnType<typeof setTimeout> | undefined;
-  const redrawOpen = () => { clearTimeout(openTimer); openTimer = setTimeout(() => sidebar.redraw(), 100); };
+  const redrawOpen = () => { clearTimeout(openTimer); openTimer = setTimeout(() => openSide.redraw(), 100); };
 
   // Open and Reveal: file aktif disorot di Collections
   const revealActive = async () => {
-    if (sidebar.mode !== 'collections' || !view.visible) return;
+    if (!view.visible) return;
     const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input as { uri?: vscode.Uri } | undefined;
     const uri = input?.uri;
     if (!uri || !/\.http$/i.test(uri.path) || uri.scheme !== 'file') return;
@@ -507,21 +535,24 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
   };
 
   const disposable = vscode.Disposable.from(
-    view, ...watchers, new vscode.Disposable(() => { clearTimeout(timer); clearTimeout(openTimer); }),
+    ...Object.values(sections).map((x) => x.view), ...watchers, new vscode.Disposable(() => { clearTimeout(timer); clearTimeout(openTimer); }),
     vscode.window.tabGroups.onDidChangeTabs(() => { redrawOpen(); void revealActive().catch((e) => log().error(errorLine('revealActive', e))); }),
     vscode.workspace.onDidChangeTextDocument((e) => { if (isHttpmeFile(e.document.uri)) redrawOpen(); }),
     vscode.workspace.onDidSaveTextDocument(redrawOpen),
     vscode.workspace.onDidChangeWorkspaceFolders(() => sidebar.refresh()),
-    envs.onDidChange(() => { if (sidebar.mode === 'environments' || sidebar.mode === 'cookies') sidebar.redraw(); }),
-    cookies.onDidChange(() => { if (sidebar.mode === 'cookies') sidebar.redraw(); }),
+    envs.onDidChange(() => { sections.environments.redraw(); sections.cookies.redraw(); }),
+    cookies.onDidChange(() => sections.cookies.redraw()),
 
-    // mode: ikon berbeda untuk mode aktif (fallback `toggled` yang belum didukung kontribusi extension di VS Code 1.90)
+    // Show Collections / Environments / Open / Cookies: buka & fokus section itu
     ...(['collections', 'environments', 'open', 'cookies'] as const).flatMap((m) => {
       const name = m[0].toUpperCase() + m.slice(1);
-      return [cmd(`httpme.show${name}`, () => sidebar.setMode(m)), cmd(`httpme.show${name}Active`, () => sidebar.setMode(m))];
+      const show = async () => { all.current = m; await vscode.commands.executeCommand(`${VIEW_IDS[m]}.focus`); };
+      return [cmd(`httpme.show${name}`, show), cmd(`httpme.show${name}Active`, show)];
     }),
     cmd('httpme.toggleFlat', () => sidebar.toggleFlat()),
     cmd('httpme.toggleFlatOff', () => sidebar.toggleFlat()),
+    cmd('httpme.toggleOpenFlat', () => openSide.toggleFlat()),
+    cmd('httpme.toggleOpenFlatOff', () => openSide.toggleFlat()),
     cmd('httpme.refreshCollections', () => sidebar.refresh()),
     cmd('httpme.filterCollections', async (input?: string) => {
       const f = input ?? await vscode.window.showInputBox({ title: 'Filter Collections', placeHolder: 'Name, method or URL', value: '' });
@@ -607,8 +638,8 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
     cmd('httpme.moveTo', (uri: vscode.Uri, dest: vscode.Uri) => moveInto([uri], dest).then(() => sidebar.refresh())),
 
     // Open
-    cmd('httpme.openShowUnsaved', () => sidebar.setOnlyUnsaved(true)),
-    cmd('httpme.openShowAll', () => sidebar.setOnlyUnsaved(false)),
+    cmd('httpme.openShowUnsaved', () => openSide.setOnlyUnsaved(true)),
+    cmd('httpme.openShowAll', () => openSide.setOnlyUnsaved(false)),
     cmd('httpme.focusTab', async (uri: string, viewType?: string) => {
       const u = vscode.Uri.parse(uri);
       if (viewType) await vscode.commands.executeCommand('vscode.openWith', u, viewType);
@@ -631,20 +662,21 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
       if (!u) return;
       const pinned = ctx.workspaceState.get<string[]>(OPEN_PINNED, []);
       await ctx.workspaceState.update(OPEN_PINNED, pinned.includes(u) ? pinned : [...pinned, u]);
-      sidebar.redraw();
+      openSide.redraw();
     }),
     cmd('httpme.unpinTab', async (a?: Arg) => {
       const u = uriOf(a)?.toString();
       await ctx.workspaceState.update(OPEN_PINNED, ctx.workspaceState.get<string[]>(OPEN_PINNED, []).filter((x) => x !== u));
-      sidebar.redraw();
+      openSide.redraw();
     }),
     cmd('httpme.revealInCollections', async (a?: Arg) => {
       const u = uriOf(a);
-      await sidebar.setMode('collections');
+      all.current = 'collections';
+      await vscode.commands.executeCommand(`${VIEW_ID}.focus`);
       if (u?.scheme === 'file') await view.reveal({ kind: 'file', uri: u }, { select: true, focus: true, expand: true });
     }),
     cmd('httpme.saveAll', () => vscode.commands.executeCommand('workbench.action.files.saveAll')),
     cmd('httpme.closeAll', () => vscode.commands.executeCommand('workbench.action.closeAllEditors')),
   );
-  return { sidebar, disposable };
+  return { sidebar: all, disposable };
 }

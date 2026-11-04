@@ -38,6 +38,8 @@
   if (typeof acquireVsCodeApi !== 'function') return;
 
   const vscode = acquireVsCodeApi();
+  /** ikon tempat sampah untuk tombol hapus (bukan ✕) */
+  const TRASH = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.8 9.5h6.4l.8-9.5M6.6 7v4.5M9.4 7v4.5"/></svg>';
   const $ = (id) => document.getElementById(id);
   const post = (m) => vscode.postMessage(m);
   let st = { vars: [], current: {}, secretSet: {} };
@@ -133,7 +135,7 @@
       if (cur.tagName === 'INPUT') cur.onchange = () => post({ type: 'setCurrent', key: x.key, value: cur.value === '' ? undefined : cur.value });
       const sec = el('input', { type: 'checkbox', checked: !!x.secret, title: 'Secret: the value is kept in VS Code SecretStorage' });
       sec.onchange = () => post({ type: 'setSecret', key: x.key, secret: sec.checked });
-      const del = el('button', { className: 'del', type: 'button', textContent: '✕', title: 'Delete variable' });
+      const del = el('button', { className: 'del', type: 'button', innerHTML: TRASH, title: 'Delete variable', ariaLabel: 'Delete variable' });
       del.onclick = () => post({ type: 'deleteKey', key: x.key });
       tr.append(el('td', { className: 'g' }, [el('span', { className: 'grip', textContent: '⋮⋮', title: 'Drag to reorder' })]), el('td', { className: 'c' }, [on]),
         el('td', {}, [key]), el('td', {}, [valueCell(x)]), el('td', {}, [cur]), el('td', { className: 's' }, [sec]), el('td', { className: 'x' }, [del]));

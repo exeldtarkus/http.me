@@ -88,3 +88,29 @@ test('sidebar welcome: Loading http.me… sebelum aktif, Scanning saat scan, No 
   assert.match(find('No .http files.')?.contents ?? '', /\[New Request\]\(command:httpme\.newRequest\)/);
   for (const x of w.filter((y) => y.when.includes('!= empty') && !y.contents.startsWith('Loading'))) assert.match(x.when, /httpme\.loaded/, x.contents);
 });
+
+test('review R11: sidebar = 4 section (Collections, Environments, Open, Cookies), toolbar & menu per section', () => {
+  const views = pkg.contributes.views.httpme as { id: string; name: string }[];
+  assert.deepEqual(views.map((v) => [v.id, v.name]), [
+    ['httpme.sidebar', 'Collections'], ['httpme.environments', 'Environments'], ['httpme.open', 'Open'], ['httpme.cookies', 'Cookies'],
+  ]);
+  type M = { command: string; when: string; group?: string };
+  const title = pkg.contributes.menus['view/title'] as M[];
+  assert.ok(!title.some((m) => /^httpme\.show(Collections|Environments|Open|Cookies)/.test(m.command)), 'tanpa tombol pindah tab');
+  assert.ok(!JSON.stringify(pkg.contributes).includes('sidebarMode'), 'context sidebarMode tidak dipakai lagi');
+  const viewOf = (cmd: string) => title.filter((m) => m.command === cmd).map((m) => /view == ([\w.]+)/.exec(m.when)?.[1]);
+  assert.deepEqual(viewOf('httpme.add'), ['httpme.sidebar']);
+  assert.deepEqual(viewOf('httpme.newEnvironment'), ['httpme.environments']);
+  assert.deepEqual(viewOf('httpme.newRequest'), ['httpme.open']);
+  assert.deepEqual(viewOf('httpme.addCookie'), ['httpme.cookies']);
+  assert.deepEqual(viewOf('httpme.toggleOpenFlat'), ['httpme.open']);
+  const item = pkg.contributes.menus['view/item/context'] as M[];
+  const expect: [RegExp, string][] = [[/OpenTab/, 'httpme.open'], [/Environment|Globals/, 'httpme.environments'], [/Cookie/, 'httpme.cookies'], [/File|Folder|Root/, 'httpme.sidebar']];
+  for (const m of item) {
+    const want = expect.find(([re]) => re.test(m.when))![1];
+    for (const v of m.when.match(/view == [\w.]+/g) ?? []) assert.equal(v, `view == ${want}`, `${m.command}: ${m.when}`);
+  }
+  for (const w of pkg.contributes.viewsWelcome as { view: string; contents: string }[]) {
+    if (w.contents.startsWith('No open requests')) assert.equal(w.view, 'httpme.open');
+  }
+});

@@ -1,13 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { arrangeOpen, defaultFileName, filterFiles, folderChildren, modeOf, moveInOrder, openChildren, requestSummary, UNTITLED, viewTitle } from '../../src/sidebarModel';
-
-test('mode sidebar: nilai tersimpan divalidasi (default Collections), judul view per mode', () => {
-  assert.equal(modeOf(undefined), 'collections');
-  assert.equal(modeOf('open'), 'open');
-  assert.equal(modeOf('nonsense'), 'collections');
-  assert.deepEqual(['collections', 'environments', 'open', 'cookies'].map((m) => viewTitle(modeOf(m))), ['Collections', 'Environments', 'Open', 'Cookies']);
-});
+import { arrangeOpen, defaultFileName, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED } from '../../src/sidebarModel';
 
 test('folderChildren: folder dulu lalu file, urut nama; folder kosong (.httpmekeep) ikut; tampilan rata', () => {
   const files = ['api/auth/login.http', 'api/users.http', 'b.http', 'a.http'];

@@ -84,6 +84,8 @@
   .kv tr.off input[type=text] { color: var(--muted); text-decoration: line-through; }
   .kv .del { border: 0; background: none; color: var(--muted); visibility: hidden; }
   .kv tr:hover .del, .kv tr:focus-within .del { visibility: visible; }
+  .del svg, .del-icon svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.2; vertical-align: -2px; }
+  .del:hover, .del-icon:hover { color: var(--vscode-errorForeground, #f2676b); }
   .note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
   .note.warn { color: var(--warn); }
   .multi { position: fixed; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; background: var(--bg); text-align: center; }

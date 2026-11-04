@@ -1,13 +1,7 @@
-// model sidebar http.me (tanpa vscode): mode view, isi folder Collections, ringkasan request, filter
+// model sidebar http.me (tanpa vscode): jenis section, isi folder Collections, ringkasan request, filter
 import { parseRequest, splitBlocks } from './httpFile';
 
 export type SidebarMode = 'collections' | 'environments' | 'open' | 'cookies';
-export const MODES: SidebarMode[] = ['collections', 'environments', 'open', 'cookies'];
-const TITLES: Record<SidebarMode, string> = { collections: 'Collections', environments: 'Environments', open: 'Open', cookies: 'Cookies' };
-
-/** mode tersimpan (workspaceState) divalidasi; default Collections */
-export const modeOf = (v: unknown): SidebarMode => (MODES.includes(v as SidebarMode) ? (v as SidebarMode) : 'collections');
-export const viewTitle = (m: SidebarMode): string => TITLES[m];
 
 /**
  * anak folder `parent` ('' = root) dari daftar file .http (path relatif '/'), plus folder kosong yang punya .httpmekeep.

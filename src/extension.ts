@@ -5,7 +5,7 @@ import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
 import { applyPanelEdit, importCurlText, saveUntitled, type SaveInput, cancelActive, cancelBlock, cancelFile, newRequest, openAsText, openInPanel, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
-import { registerSidebar, type Sidebar } from './sidebar';
+import { registerSidebar, type Sidebars } from './sidebar';
 import { historyAction, registerActivity, statusBar, type HistoryAction } from './activity';
 import { listHistory } from './history';
 import { Environments } from './envState';
@@ -54,7 +54,7 @@ async function clearCacheCommand(ctx: vscode.ExtensionContext): Promise<void> {
 
 /** API extension: hanya untuk itest (membaca state request di extension host) */
 export type HttpmeApi = {
-  viewOf: typeof viewOf; runningCount: () => number; applyPanelEdit: typeof applyPanelEdit; sidebar: Sidebar;
+  viewOf: typeof viewOf; runningCount: () => number; applyPanelEdit: typeof applyPanelEdit; sidebar: Sidebars;
   envs: Environments; cookies: Cookies; envOp: typeof envOp; focusOf: typeof focusOf; compareView: typeof compareView; setNullPrompt: typeof setNullPrompt;
   /** pesan tab Scripts seperti dari webview; kembalikan pesan balasan host */
   scriptsCall(uri: vscode.Uri, m: ScriptsMessage): Promise<unknown[]>;

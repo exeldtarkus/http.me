@@ -301,7 +301,7 @@ export const tests: ITests = {
   async 'Command Palette: semua command httpme terdaftar di contributes.commands (kategori http.me), tanpa dropdown Environment di panel'() {
     const pkg = vscode.extensions.getExtension('exeltarkus.httpme')!.packageJSON as { contributes: { commands: { command: string; title: string; category: string }[]; keybindings: { command: string; key: string; mac: string }[] } };
     const declared = new Set(pkg.contributes.commands.map((c) => c.command));
-    const registered = (await vscode.commands.getCommands(true)).filter((c) => c.startsWith('httpme.') && !c.startsWith('httpme.sidebar.') && !c.endsWith('.focus') && !c.includes('resetViewLocation'));
+    const registered = (await vscode.commands.getCommands(true)).filter((c) => c.startsWith('httpme.') && !/^httpme\.(sidebar|environments|open|cookies)\./.test(c) && !c.endsWith('.focus') && !c.includes('resetViewLocation'));
     assert.deepEqual(registered.filter((c) => !declared.has(c)), [], 'command terdaftar tapi tidak ada di package.json');
     assert.deepEqual([...declared].filter((c) => !registered.includes(c)), [], 'command di package.json tanpa implementasi');
     assert.deepEqual(pkg.contributes.commands.filter((c) => c.category !== 'http.me').map((c) => c.command), []);

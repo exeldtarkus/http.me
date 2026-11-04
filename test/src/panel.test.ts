@@ -208,3 +208,15 @@ test('review R9: tombol Copy di bar response', () => {
   const html = require('node:fs').readFileSync(join(__dirname, '..', '..', '..', 'media', 'webview', 'panel.html'), 'utf8') as string;
   assert.match(html, /<button[^>]*id="copyBody"[^>]*aria-label="Copy response body"[^>]*><svg[\s\S]*?<\/svg><\/button>/, 'R10: ikon saja');
 });
+
+test('review R12: tombol hapus / lepas memakai ikon tempat sampah, bukan ✕', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  for (const f of ['panel.js', 'environment.js']) {
+    const js = fs.readFileSync(join(dir, f), 'utf8');
+    assert.doesNotMatch(js, /textContent: '✕'/, f);
+    assert.match(js, /const TRASH = '<svg/, f);
+  }
+  const pkg = JSON.parse(fs.readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
+  assert.equal(pkg.contributes.commands.find((c: { command: string }) => c.command === 'httpme.clearCookies').icon, '$(trash)');
+});

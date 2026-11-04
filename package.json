@@ -490,7 +490,7 @@
         "command": "httpme.clearCookies",
         "title": "Delete All Cookies",
         "category": "http.me",
-        "icon": "$(clear-all)"
+        "icon": "$(trash)"
       },
       {
         "command": "httpme.setLoginRequest",
@@ -512,6 +512,18 @@
         "command": "httpme.copyAsCurlWithCookies",
         "title": "Copy as cURL with Cookies",
         "category": "http.me"
+      },
+      {
+        "command": "httpme.toggleOpenFlat",
+        "title": "View as List",
+        "category": "http.me",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "httpme.toggleOpenFlatOff",
+        "title": "View as Tree",
+        "category": "http.me",
+        "icon": "$(list-tree)"
       }
     ],
     "customEditors": [
@@ -757,138 +769,116 @@
         {
           "command": "httpme.setLoginRequest",
           "when": "resourceExtname == .http"
+        },
+        {
+          "command": "httpme.toggleOpenFlat",
+          "when": "false"
+        },
+        {
+          "command": "httpme.toggleOpenFlatOff",
+          "when": "false"
         }
       ],
       "view/title": [
         {
-          "command": "httpme.showCollections",
-          "when": "view == httpme.sidebar && httpme.sidebarMode && httpme.sidebarMode != collections",
-          "group": "navigation@1"
-        },
-        {
-          "command": "httpme.showCollectionsActive",
-          "when": "view == httpme.sidebar && (httpme.sidebarMode == collections || !httpme.sidebarMode)",
-          "group": "navigation@1"
-        },
-        {
-          "command": "httpme.showEnvironments",
-          "when": "view == httpme.sidebar && httpme.sidebarMode != environments",
-          "group": "navigation@2"
-        },
-        {
-          "command": "httpme.showEnvironmentsActive",
-          "when": "view == httpme.sidebar && httpme.sidebarMode == environments",
-          "group": "navigation@2"
-        },
-        {
-          "command": "httpme.showOpen",
-          "when": "view == httpme.sidebar && httpme.sidebarMode != open",
-          "group": "navigation@3"
-        },
-        {
-          "command": "httpme.showOpenActive",
-          "when": "view == httpme.sidebar && httpme.sidebarMode == open",
-          "group": "navigation@3"
-        },
-        {
           "command": "httpme.add",
-          "when": "view == httpme.sidebar && (httpme.sidebarMode == collections || !httpme.sidebarMode)",
-          "group": "navigation@10"
+          "when": "view == httpme.sidebar",
+          "group": "navigation@1"
         },
         {
           "command": "httpme.filterCollections",
-          "when": "view == httpme.sidebar && (httpme.sidebarMode == collections || !httpme.sidebarMode) && !httpme.collectionsFiltered",
-          "group": "navigation@11"
+          "when": "view == httpme.sidebar && !httpme.collectionsFiltered",
+          "group": "navigation@2"
         },
         {
           "command": "httpme.clearFilter",
-          "when": "view == httpme.sidebar && (httpme.sidebarMode == collections || !httpme.sidebarMode) && httpme.collectionsFiltered",
-          "group": "navigation@11"
-        },
-        {
-          "command": "httpme.newRequest",
-          "when": "view == httpme.sidebar && httpme.sidebarMode == open",
-          "group": "navigation@10"
-        },
-        {
-          "command": "httpme.saveAll",
-          "when": "view == httpme.sidebar && httpme.sidebarMode == open",
-          "group": "navigation@11"
-        },
-        {
-          "command": "httpme.closeAll",
-          "when": "view == httpme.sidebar && httpme.sidebarMode == open",
-          "group": "navigation@12"
-        },
-        {
-          "command": "httpme.openShowUnsaved",
-          "when": "view == httpme.sidebar && httpme.sidebarMode == open && !httpme.openOnlyUnsaved",
-          "group": "navigation@13"
-        },
-        {
-          "command": "httpme.openShowAll",
-          "when": "view == httpme.sidebar && httpme.sidebarMode == open && httpme.openOnlyUnsaved",
-          "group": "navigation@13"
+          "when": "view == httpme.sidebar && httpme.collectionsFiltered",
+          "group": "navigation@2"
         },
         {
           "command": "httpme.toggleFlat",
-          "when": "view == httpme.sidebar && !httpme.sidebarFlat && httpme.sidebarMode != environments",
-          "group": "navigation@20"
+          "when": "view == httpme.sidebar && !httpme.collectionsFlat",
+          "group": "navigation@3"
         },
         {
           "command": "httpme.toggleFlatOff",
-          "when": "view == httpme.sidebar && httpme.sidebarFlat && httpme.sidebarMode != environments",
-          "group": "navigation@20"
+          "when": "view == httpme.sidebar && httpme.collectionsFlat",
+          "group": "navigation@3"
         },
         {
           "command": "httpme.refreshCollections",
-          "when": "view == httpme.sidebar && (httpme.sidebarMode == collections || !httpme.sidebarMode)",
-          "group": "more"
+          "when": "view == httpme.sidebar",
+          "group": "more@1"
         },
         {
           "command": "httpme.importFromClipboard",
-          "when": "view == httpme.sidebar && (httpme.sidebarMode == collections || !httpme.sidebarMode)",
-          "group": "more"
+          "when": "view == httpme.sidebar",
+          "group": "more@2"
         },
         {
           "command": "httpme.newEnvironment",
-          "when": "view == httpme.sidebar && httpme.sidebarMode == environments",
-          "group": "navigation@10"
+          "when": "view == httpme.environments",
+          "group": "navigation@1"
         },
         {
           "command": "httpme.importEnvironment",
-          "when": "view == httpme.sidebar && httpme.sidebarMode == environments",
-          "group": "navigation@11"
+          "when": "view == httpme.environments",
+          "group": "navigation@2"
         },
         {
           "command": "httpme.compareEnvironments",
-          "when": "view == httpme.sidebar && httpme.sidebarMode == environments",
-          "group": "navigation@12"
+          "when": "view == httpme.environments",
+          "group": "navigation@3"
         },
         {
-          "command": "httpme.showCookies",
-          "when": "view == httpme.sidebar && httpme.sidebarMode != cookies",
+          "command": "httpme.newRequest",
+          "when": "view == httpme.open",
+          "group": "navigation@1"
+        },
+        {
+          "command": "httpme.saveAll",
+          "when": "view == httpme.open",
+          "group": "navigation@2"
+        },
+        {
+          "command": "httpme.closeAll",
+          "when": "view == httpme.open",
+          "group": "navigation@3"
+        },
+        {
+          "command": "httpme.openShowUnsaved",
+          "when": "view == httpme.open && !httpme.openOnlyUnsaved",
           "group": "navigation@4"
         },
         {
-          "command": "httpme.showCookiesActive",
-          "when": "view == httpme.sidebar && httpme.sidebarMode == cookies",
+          "command": "httpme.openShowAll",
+          "when": "view == httpme.open && httpme.openOnlyUnsaved",
           "group": "navigation@4"
+        },
+        {
+          "command": "httpme.toggleOpenFlat",
+          "when": "view == httpme.open && !httpme.openFlat",
+          "group": "navigation@5"
+        },
+        {
+          "command": "httpme.toggleOpenFlatOff",
+          "when": "view == httpme.open && httpme.openFlat",
+          "group": "navigation@5"
         },
         {
           "command": "httpme.addCookie",
-          "when": "view == httpme.sidebar && httpme.sidebarMode == cookies",
-          "group": "navigation@10"
+          "when": "view == httpme.cookies",
+          "group": "navigation@1"
         },
         {
           "command": "httpme.pasteCookies",
-          "when": "view == httpme.sidebar && httpme.sidebarMode == cookies",
-          "group": "navigation@11"
+          "when": "view == httpme.cookies",
+          "group": "navigation@2"
         },
         {
           "command": "httpme.clearCookies",
-          "when": "view == httpme.sidebar && httpme.sidebarMode == cookies",
-          "group": "navigation@12"
+          "when": "view == httpme.cookies",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -944,107 +934,107 @@
         },
         {
           "command": "httpme.closeTab",
-          "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTab/",
+          "when": "view == httpme.open && viewItem =~ /^httpmeOpenTab/",
           "group": "inline@1"
         },
         {
           "command": "httpme.saveTab",
-          "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTab/",
+          "when": "view == httpme.open && viewItem =~ /^httpmeOpenTab/",
           "group": "1_file@1"
         },
         {
           "command": "httpme.revertTab",
-          "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTab/",
+          "when": "view == httpme.open && viewItem =~ /^httpmeOpenTab/",
           "group": "1_file@2"
         },
         {
           "command": "httpme.closeTab",
-          "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTab/",
+          "when": "view == httpme.open && viewItem =~ /^httpmeOpenTab/",
           "group": "1_file@3"
         },
         {
           "command": "httpme.pinTab",
-          "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTab(Untitled)?$/",
+          "when": "view == httpme.open && viewItem =~ /^httpmeOpenTab(Untitled)?$/",
           "group": "2_pin@1"
         },
         {
           "command": "httpme.unpinTab",
-          "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTabPinned/",
+          "when": "view == httpme.open && viewItem =~ /^httpmeOpenTabPinned/",
           "group": "2_pin@1"
         },
         {
           "command": "httpme.revealInCollections",
-          "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTab(Pinned)?$/",
+          "when": "view == httpme.open && viewItem =~ /^httpmeOpenTab(Pinned)?$/",
           "group": "3_reveal@1"
         },
         {
           "command": "httpme.setActiveEnvironment",
-          "when": "view == httpme.sidebar && viewItem == httpmeEnvironment",
+          "when": "view == httpme.environments && viewItem == httpmeEnvironment",
           "group": "inline"
         },
         {
           "command": "httpme.setActiveEnvironment",
-          "when": "view == httpme.sidebar && viewItem == httpmeEnvironment",
+          "when": "view == httpme.environments && viewItem == httpmeEnvironment",
           "group": "1_env@1"
         },
         {
           "command": "httpme.renameEnvironment",
-          "when": "view == httpme.sidebar && viewItem =~ /^httpmeEnvironment/",
+          "when": "view == httpme.environments && viewItem =~ /^httpmeEnvironment/",
           "group": "2_edit@1"
         },
         {
           "command": "httpme.duplicateEnvironment",
-          "when": "view == httpme.sidebar && viewItem =~ /^httpmeEnvironment/",
+          "when": "view == httpme.environments && viewItem =~ /^httpmeEnvironment/",
           "group": "2_edit@2"
         },
         {
           "command": "httpme.deleteEnvironment",
-          "when": "view == httpme.sidebar && viewItem =~ /^httpmeEnvironment/",
+          "when": "view == httpme.environments && viewItem =~ /^httpmeEnvironment/",
           "group": "2_edit@3"
         },
         {
           "command": "httpme.revealEnvironment",
-          "when": "view == httpme.sidebar && viewItem =~ /^httpmeEnvironment/",
+          "when": "view == httpme.environments && viewItem =~ /^httpmeEnvironment/",
           "group": "3_open@1"
         },
         {
           "command": "httpme.openEnvironmentAsText",
-          "when": "view == httpme.sidebar && viewItem =~ /^httpmeEnvironment/ || view == httpme.sidebar && viewItem == httpmeGlobals",
+          "when": "view == httpme.environments && viewItem =~ /^httpmeEnvironment/ || view == httpme.environments && viewItem == httpmeGlobals",
           "group": "3_open@2"
         },
         {
           "command": "httpme.deleteCookie",
-          "when": "view == httpme.sidebar && viewItem == httpmeCookie",
+          "when": "view == httpme.cookies && viewItem == httpmeCookie",
           "group": "inline"
         },
         {
           "command": "httpme.editCookie",
-          "when": "view == httpme.sidebar && viewItem == httpmeCookie",
+          "when": "view == httpme.cookies && viewItem == httpmeCookie",
           "group": "1_edit@1"
         },
         {
           "command": "httpme.deleteCookie",
-          "when": "view == httpme.sidebar && viewItem == httpmeCookie",
+          "when": "view == httpme.cookies && viewItem == httpmeCookie",
           "group": "1_edit@2"
         },
         {
           "command": "httpme.addCookie",
-          "when": "view == httpme.sidebar && viewItem == httpmeCookieDomain",
+          "when": "view == httpme.cookies && viewItem == httpmeCookieDomain",
           "group": "1_edit@1"
         },
         {
           "command": "httpme.deleteCookieDomain",
-          "when": "view == httpme.sidebar && viewItem == httpmeCookieDomain",
+          "when": "view == httpme.cookies && viewItem == httpmeCookieDomain",
           "group": "1_edit@2"
         },
         {
           "command": "httpme.pasteCookies",
-          "when": "view == httpme.sidebar && viewItem =~ /^httpmeCookie(Env|Domain)$/",
+          "when": "view == httpme.cookies && viewItem =~ /^httpmeCookie(Env|Domain)$/",
           "group": "1_edit@3"
         },
         {
           "command": "httpme.clearCookies",
-          "when": "view == httpme.sidebar && viewItem == httpmeCookieEnv",
+          "when": "view == httpme.cookies && viewItem == httpmeCookieEnv",
           "group": "2_clear@1"
         },
         {
@@ -1073,6 +1063,19 @@
         {
           "id": "httpme.sidebar",
           "name": "Collections"
+        },
+        {
+          "id": "httpme.environments",
+          "name": "Environments"
+        },
+        {
+          "id": "httpme.open",
+          "name": "Open"
+        },
+        {
+          "id": "httpme.cookies",
+          "name": "Cookies",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -1118,22 +1121,22 @@
       {
         "view": "httpme.sidebar",
         "contents": "Scanning the workspace for .http files…",
-        "when": "workbenchState != empty && httpme.loaded && httpme.scanning && (httpme.sidebarMode == collections || !httpme.sidebarMode)"
+        "when": "workbenchState != empty && httpme.loaded && httpme.scanning"
       },
       {
         "view": "httpme.sidebar",
         "contents": "No request matches the filter.\n[Clear Filter](command:httpme.clearFilter)",
-        "when": "workbenchState != empty && httpme.loaded && !httpme.scanning && httpme.collectionsFiltered && (httpme.sidebarMode == collections || !httpme.sidebarMode)"
+        "when": "workbenchState != empty && httpme.loaded && !httpme.scanning && httpme.collectionsFiltered"
       },
       {
         "view": "httpme.sidebar",
         "contents": "No .http files.\n[New Request](command:httpme.newRequest)\n[New Collection](command:httpme.newCollection)",
-        "when": "workbenchState != empty && httpme.loaded && !httpme.scanning && !httpme.collectionsFiltered && (httpme.sidebarMode == collections || !httpme.sidebarMode)"
+        "when": "workbenchState != empty && httpme.loaded && !httpme.scanning && !httpme.collectionsFiltered"
       },
       {
-        "view": "httpme.sidebar",
+        "view": "httpme.open",
         "contents": "No open requests.\n[New Request](command:httpme.newRequest)",
-        "when": "workbenchState != empty && httpme.loaded && httpme.sidebarMode == open"
+        "when": "workbenchState != empty"
       }
     ],
     "configuration": {

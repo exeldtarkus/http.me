@@ -142,6 +142,8 @@
   if (typeof acquireVsCodeApi !== 'function') return;
 
   const vscode = acquireVsCodeApi();
+  /** ikon tempat sampah untuk tombol hapus / lepas (bukan ✕) */
+  const TRASH = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.8 9.5h6.4l.8-9.5M6.6 7v4.5M9.4 7v4.5"/></svg>';
   const $ = (id) => document.getElementById(id);
   /** request seperti ParsedRequest di httpFile.ts */
   let req;
@@ -177,11 +179,12 @@
     tbody.replaceChildren();
     const addRow = (row, isNew) => {
       const tr = el('tr', { className: row.enabled ? '' : 'off' });
-      // checkbox di luar urutan Tab: Tab dari Value → ✕ → Key baris berikutnya (klik tetap bisa)
+      // checkbox di luar urutan Tab: Tab dari Value → hapus → Key baris berikutnya (klik tetap bisa)
       const on = el('input', { type: 'checkbox', checked: row.enabled, title: 'Enabled (click to turn on / off)', tabIndex: -1 });
       const k = el('input', { type: 'text', value: row[keyName], placeholder: isNew ? 'Key' : '', spellcheck: false });
       const v = el('input', { type: 'text', value: row.value, placeholder: isNew ? 'Value' : '', spellcheck: false });
-      const del = el('button', { className: 'del', type: 'button', title: 'Remove', textContent: '✕' });
+      const del = el('button', { className: 'del', type: 'button', title: 'Remove', innerHTML: TRASH });
+      del.setAttribute('aria-label', 'Remove');
       tr.append(el('td', { className: 'c' }, [on]), el('td', {}, [mirror(k)]), el('td', {}, [mirror(v)]), el('td', { className: 'x' }, [del]));
       tbody.append(tr);
       const live = () => {
@@ -601,7 +604,7 @@
         li.append(
           el('button', { type: 'button', className: 'mini', textContent: '◀', title: 'Run earlier', disabled: li2 === 0, onclick: () => post({ type: 'scriptMove', kind: scKind, from: li2, to: li2 - 1 }) }),
           el('button', { type: 'button', className: 'mini', textContent: '▶', title: 'Run later', disabled: li2 === lines.length - 1, onclick: () => post({ type: 'scriptMove', kind: scKind, from: li2, to: li2 + 1 }) }),
-          el('button', { type: 'button', className: 'mini', textContent: '✕', title: 'Remove from this request (the file is kept)', onclick: () => post({ type: 'scriptRemove', kind: scKind, path: x.file }) }),
+          el('button', { type: 'button', className: 'mini del-icon', innerHTML: TRASH, title: 'Remove from this request (the file is kept)', ariaLabel: 'Remove from this request', onclick: () => post({ type: 'scriptRemove', kind: scKind, path: x.file }) }),
         );
       }
       return li;
