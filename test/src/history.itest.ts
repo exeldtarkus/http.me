@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { startServer } from './helpers/server';
 import type { ITests } from './it/index';
 
-type Entry = { id: string; method: string; url: string; status?: number; cancelled?: boolean; error?: string; file?: string; text: string };
+type Entry = { id: string; time: number; method: string; url: string; status?: number; cancelled?: boolean; error?: string; file?: string; text: string };
 type Api = {
   viewOf(uri: string): { kind: string } | undefined;
   statusBar(): { running?: { text: string; tooltip: string }; history: string } | undefined;
@@ -48,8 +48,10 @@ export const tests: ITests = {
       const file = join(dir, 'h.http');
       writeFileSync(file, `GET ${srv.url}/missing\nAuthorization: Bearer secret-token\nX-A: 1\n`);
       const doc = await vscode.workspace.openTextDocument(file);
+      const start = Date.now(); // History bertahan antar run itest: entri lama diabaikan
+      const mine = async () => (await api().history.list()).filter((x) => x.file === doc.uri.toString() && x.time >= start);
       await vscode.commands.executeCommand('httpme.sendBlock', doc.uri, 0);
-      const e = await until('entri History', async () => (await api().history.list()).find((x) => x.file === doc.uri.toString()));
+      const e = await until('entri History', async () => (await mine())[0]);
       assert.equal(e.status, 404);
       assert.equal(e.text, `GET ${srv.url}/missing\nX-A: 1\n`, 'header Authorization tidak disimpan');
 
@@ -59,7 +61,7 @@ export const tests: ITests = {
       await until('panel file asal', () => (vscode.window.tabGroups.activeTabGroup.activeTab?.input as { uri?: vscode.Uri })?.uri?.fsPath === file);
 
       await api().history.action(e.id, 'send');
-      await until('Send again tercatat', async () => (await api().history.list()).filter((x) => x.file === doc.uri.toString()).length === 2);
+      await until('Send again tercatat', async () => (await mine()).length === 2);
 
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       rmSync(file);
