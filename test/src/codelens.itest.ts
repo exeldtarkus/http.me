@@ -72,4 +72,27 @@ export const tests: ITests = {
       await srv.close();
     }
   },
+  async 'Layout Bottom panel: Send dari editor teks tidak membuka dokumen Response di samping, hasil tampil di view httpme.response'() {
+    const api = vscode.extensions.getExtension('exeltarkus.httpme')!.exports as { layout: { get(): string; set(l: string): Promise<void>; outputKey(): string | undefined; outputShown(): boolean } };
+    const srv = await startServer(async () => ({ headers: { 'content-type': 'text/plain' }, body: 'bottom' }));
+    const dir = join(vscode.workspace.workspaceFolders![0].uri.fsPath, 'tmp-layout-it');
+    try {
+      assert.equal(api.layout.get(), 'single', 'bawaan Single pane');
+      await api.layout.set('panel');
+      mkdirSync(dir, { recursive: true });
+      const file = join(dir, 'one.http');
+      writeFileSync(file, `GET ${srv.url}/x\n`);
+      const doc = await vscode.workspace.openTextDocument(file);
+      await vscode.window.showTextDocument(doc);
+      await vscode.commands.executeCommand('httpme.sendRequest');
+      assert.equal(api.layout.outputKey(), doc.uri.toString(), 'view bawah menampilkan Send terakhir');
+      assert.ok(api.layout.outputShown(), 'view httpme.response dibuka');
+      assert.ok(!vscode.window.visibleTextEditors.some((e) => e.document.uri.path === '/Response'), 'tanpa dokumen Response di samping');
+    } finally {
+      await api.layout.set('single');
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      rmSync(dir, { recursive: true, force: true });
+      await srv.close();
+    }
+  },
 };

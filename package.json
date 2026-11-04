@@ -1056,9 +1056,23 @@
           "title": "http.me",
           "icon": "media/httpme.svg"
         }
+      ],
+      "panel": [
+        {
+          "id": "httpme-output",
+          "title": "http.me",
+          "icon": "media/httpme.svg"
+        }
       ]
     },
     "views": {
+      "httpme-output": [
+        {
+          "type": "webview",
+          "id": "httpme.response",
+          "name": "Response"
+        }
+      ],
       "httpme": [
         {
           "id": "httpme.sidebar",

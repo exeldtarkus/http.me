@@ -72,7 +72,63 @@ async function dropBodyFile(s: DocState): Promise<void> {
 const listeners = new Set<() => void>();
 const postView = (s: DocState) => {
   s.panels.forEach((p) => void p.webview.postMessage({ type: 'view', view: s.view }));
+  if (output.view && output.key !== undefined && docs.get(output.key) === s) void output.view.webview.postMessage({ type: 'view', view: s.view });
   listeners.forEach((l) => l());
+};
+
+// ---- layout response: single / two pane di panel request, atau view Response di panel bawah (samping Terminal) ----
+export type Layout = 'single' | 'two' | 'panel';
+export const OUTPUT_VIEW = 'httpme.response';
+const LAYOUT_KEY = 'httpme.responseLayout';
+let layoutState: vscode.Memento | undefined;
+/** view Response panel bawah + key Send terakhir yang ditampilkannya */
+const output: { view?: vscode.WebviewView; key?: string } = {};
+export const getLayout = (): Layout => layoutState?.get<Layout>(LAYOUT_KEY, 'single') ?? 'single';
+export async function setLayout(l: Layout): Promise<void> {
+  await layoutState?.update(LAYOUT_KEY, l);
+  for (const s of docs.values()) s.panels.forEach((p) => void p.webview.postMessage({ type: 'layout', layout: l }));
+  void output.view?.webview.postMessage({ type: 'layout', layout: l });
+  if (l === 'panel') await revealOutput();
+}
+async function revealOutput(): Promise<void> {
+  if (output.view) output.view.show(true);
+  else await vscode.commands.executeCommand(`${OUTPUT_VIEW}.focus`); // view belum pernah dibuka: resolveWebviewView yang menggambar
+}
+export const outputKey = (): string | undefined => output.key;
+export const outputShown = (): boolean => !!output.view;
+const isLayout = (x: unknown): x is Layout => x === 'single' || x === 'two' || x === 'panel';
+
+/** Copy response body: body terpotong (> 1 MB) diambil utuh dari file cache */
+async function copyBody(s: DocState, text: string): Promise<void> {
+  const full = s.view?.kind === 'response' && s.view.canOpen && s.bodyFile ? await fs.readFile(s.bodyFile, 'utf8') : text;
+  await vscode.env.clipboard.writeText(full);
+  void vscode.window.showInformationMessage('Response body copied to the clipboard.');
+}
+
+const outputProvider: vscode.WebviewViewProvider = {
+  resolveWebviewView(view) {
+    output.view = view;
+    view.webview.options = { enableScripts: true };
+    view.webview.html = webviewPage('panel', { cspSource: view.webview.cspSource, nonce: randomBytes(16).toString('base64') });
+    view.onDidDispose(() => { if (output.view === view) output.view = undefined; });
+    view.webview.onDidReceiveMessage(async (m: { type?: string; layout?: unknown; text?: unknown }) => {
+      const s = output.key === undefined ? undefined : docs.get(output.key);
+      try {
+        if (m.type === 'ready') {
+          await view.webview.postMessage({ type: 'mode', responseOnly: true });
+          await view.webview.postMessage({ type: 'layout', layout: getLayout() });
+          await view.webview.postMessage({ type: 'view', view: s?.view });
+        } else if (m.type === 'layout' && isLayout(m.layout)) await setLayout(m.layout);
+        else if (m.type === 'cancel' && output.key !== undefined) runner.cancel(output.key);
+        else if (m.type === 'showRunning') await vscode.commands.executeCommand('httpme.showRunning');
+        else if (m.type === 'copyBody' && s && typeof m.text === 'string') await copyBody(s, m.text);
+        else if (m.type === 'openBody' && s) await openBody(s);
+        else if (m.type === 'saveBody' && s) await saveBody(s);
+      } catch (e) {
+        reportError(`responseView.${m.type}`, e, `http.me: ${errMsg(e)}`);
+      }
+    });
+  },
 };
 
 /** antrean request semua tab (maks 6 bersamaan); posisi Queued n/m ikut diperbarui di panel */
@@ -275,6 +331,10 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
   const hasScripts = () => scripts.tests.length > 0 || scripts.console.length > 0 || !!scripts.error || !!scripts.skippedNote;
   secrets = [...secrets, ...((await session?.values()) ?? [])]; // nilai cookie ikut di-mask di log
   const label = `${original.method} ${original.url}`;
+  // view Response panel bawah ikut Send terakhir
+  output.key = key;
+  if (output.view) output.view.description = label;
+  if (getLayout() === 'panel') await revealOutput();
   const token = Symbol(label);
   s.token = token;
   s.view = { kind: 'queued', label, position: 'Queued' };
@@ -425,10 +485,10 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   };
   const subs = [
     onRunnerChange(postOthers),
-    panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown }) => {
+    panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown; layout?: unknown }) => {
       try {
         if (await handleScriptsMessage(doc, m, postMsg)) return;
-        if (m.type === 'ready') { postOthers(); postState(); await postVars(panel); await postCookies(panel, doc.uri.toString()); } else if (m.type === 'varHover' && typeof m.name === 'string' && hooks) {
+        if (m.type === 'ready') { postMsg({ type: 'layout', layout: getLayout() }); postOthers(); postState(); await postVars(panel); await postCookies(panel, doc.uri.toString()); } else if (m.type === 'varHover' && typeof m.name === 'string' && hooks) {
           const info = await hooks.hover(m.name, new Map(parseRequest(doc.getText()).vars.map((v) => [v.name, v.value])));
           void panel.webview.postMessage({ type: 'varHover', name: m.name, info });
         } else if (m.type === 'varGoto' && typeof m.name === 'string') await vscode.commands.executeCommand('httpme.gotoVariable', m.name);
@@ -445,12 +505,9 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
           if (doc.isUntitled) await vscode.commands.executeCommand('httpme.saveUntitled', doc.uri);
           else await saveScripts(doc, true); // script rantai yang berubah + .http
         }
-        else if (m.type === 'copyBody' && typeof m.text === 'string') {
-          // body terpotong (> 1 MB): isi utuh dari file cache
-          const full = s.view?.kind === 'response' && s.view.canOpen && s.bodyFile ? await fs.readFile(s.bodyFile, 'utf8') : m.text;
-          await vscode.env.clipboard.writeText(full);
-          void vscode.window.showInformationMessage('Response body copied to the clipboard.');
-        } else if (m.type === 'beautify') {
+        else if (m.type === 'copyBody' && typeof m.text === 'string') await copyBody(s, m.text);
+        else if (m.type === 'layout' && isLayout(m.layout)) await setLayout(m.layout);
+        else if (m.type === 'beautify') {
           const r = parseRequest(doc.getText());
           const out = beautifyBody(r.body, r.bodyType);
           if (out.text !== undefined && out.text !== r.body) await writeDocument(doc, serializeRequest({ ...r, body: out.text }));
@@ -548,8 +605,9 @@ export async function openAsText(uri: vscode.Uri): Promise<void> {
 const provider: vscode.CustomTextEditorProvider = { resolveCustomTextEditor: resolve };
 
 // shortcut: file body dari sesi yang ditutup paksa (VS Code crash) tidak dibersihkan otomatis; Clear Cache menghapusnya
-export const registerRequestEditor = (cacheDir: string): vscode.Disposable => (bodyDir = join(cacheDir, 'body'), vscode.Disposable.from(
+export const registerRequestEditor = (cacheDir: string, state: vscode.Memento): vscode.Disposable => (bodyDir = join(cacheDir, 'body'), layoutState = state, vscode.Disposable.from(
   vscode.window.registerCustomEditorProvider(REQUEST_VIEW, provider, { webviewOptions: { retainContextWhenHidden: false } }),
+  vscode.window.registerWebviewViewProvider(OUTPUT_VIEW, outputProvider),
   vscode.workspace.onDidCloseTextDocument(releaseDocument),
   vscode.workspace.registerTextDocumentContentProvider(RESPONSE_SCHEME, responseProvider),
   responseChanged,
@@ -766,7 +824,7 @@ export async function sendActive(): Promise<void> {
   const key = blockKey(doc, index, blocks.length);
   await sendBlock(doc, index);
   // editor teks tidak punya panel response: tampilkan hasil di samping (fokus tetap di .http)
-  if (fromText && viewOf(key)?.kind === 'response') await showResponse(key);
+  if (fromText && viewOf(key)?.kind === 'response' && getLayout() !== 'panel') await showResponse(key);
 }
 
 /** Send file tertentu (status bar Login): tampil di panel / CodeLens file itu */
