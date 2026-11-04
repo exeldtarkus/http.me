@@ -1,7 +1,7 @@
 // CodeLens di editor teks .http: ▶ Send per blok, ⟳ Sending… / ■ Cancel saat jalan, hasil (klik = Show Response), ▶ Send All / ■ Cancel All
 import * as vscode from 'vscode';
 import { splitBlocks } from './httpFile';
-import { isRunning, onRunnerChange, viewOf } from './requestEditor';
+import { isRunning, onRunnerChange, viewOf } from './httpEditor';
 
 export const HTTP_FILES: vscode.DocumentSelector = [{ language: 'http' }, { pattern: '**/*.http' }];
 

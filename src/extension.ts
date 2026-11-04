@@ -3,7 +3,7 @@ import { isNewerMinor, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
 import { errMsg } from './log';
 import { log, reportError } from './output';
-import { cancelActive, cancelBlock, cancelFile, newRequest, openAsText, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './requestEditor';
+import { applyPanelEdit, cancelActive, cancelBlock, cancelFile, newRequest, openAsText, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
 import { registerActivity } from './activity';
 
@@ -38,7 +38,7 @@ async function clearCacheCommand(ctx: vscode.ExtensionContext): Promise<void> {
 }
 
 /** API extension: hanya untuk itest (membaca state request di extension host) */
-export type HttpmeApi = { viewOf: typeof viewOf; runningCount: () => number };
+export type HttpmeApi = { viewOf: typeof viewOf; runningCount: () => number; applyPanelEdit: typeof applyPanelEdit };
 
 export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   ctx.subscriptions.push(log());
@@ -75,7 +75,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   const previous = ctx.globalState.get<string>(VERSION_KEY);
   void ctx.globalState.update(VERSION_KEY, version);
   if (isNewerMinor(version, previous)) openWhatsNew(ctx);
-  return { viewOf, runningCount: () => runner.jobs().length };
+  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit };
 }
 
 export function deactivate(): void {}

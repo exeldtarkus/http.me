@@ -1,6 +1,6 @@
 // status bar request berjalan + Quick Pick Cancel (lem tipis VS Code; teks di runningStatus.ts)
 import * as vscode from 'vscode';
-import { onRunnerChange, REQUEST_VIEW, runner } from './requestEditor';
+import { onRunnerChange, REQUEST_VIEW, runner } from './httpEditor';
 import { runningItems, runningText } from './runningStatus';
 
 type Item = vscode.QuickPickItem & { id: number };

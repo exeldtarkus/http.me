@@ -304,5 +304,11 @@ export async function cancelActive(): Promise<void> {
   if (doc) cancelFile(doc.uri.toString());
 }
 
+/** jalur yang sama dengan edit dari panel: request -> teks .http -> WorkspaceEdit (dipakai itest lewat exports) */
+export async function applyPanelEdit(uri: vscode.Uri, req: ParsedRequest): Promise<void> {
+  if (!isRequest(req)) throw new Error('Invalid request');
+  await writeDocument(await vscode.workspace.openTextDocument(uri), serializeRequest(req));
+}
+
 /** state tampilan per dokumen (dipakai itest lewat exports extension) */
 export const viewOf = (key: string): View | undefined => docs.get(key)?.view;
