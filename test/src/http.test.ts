@@ -4,6 +4,8 @@ import { allowedMethods, isBinaryType, MAX_BODY_MEMORY, send } from '../../src/h
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { withTempDir } from './helpers/tmp';
+import { createServer as createHttpsServer } from 'node:https';
+import type { AddressInfo } from 'node:net';
 import { startServer } from './helpers/server';
 
 const wait = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
@@ -148,4 +150,70 @@ test('body biner: tidak ditahan di memory, ditulis utuh ke file; body kecil tida
 test('isBinaryType: gambar / pdf / zip / octet-stream biner; teks, JSON, XML, JS bukan', () => {
   for (const t of ['image/png', 'application/pdf', 'application/zip', 'application/octet-stream', 'audio/mpeg', 'video/mp4', 'font/woff2', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']) assert.equal(isBinaryType(t), true, t);
   for (const t of ['text/html; charset=utf-8', 'application/json', 'application/problem+json', 'application/xml', 'image/svg+xml', 'application/javascript', 'application/x-www-form-urlencoded', '']) assert.equal(isBinaryType(t), false, t);
+});
+
+const redirectServer = () => startServer(async (req, body) => {
+  const u = req.url ?? '';
+  if (u === '/a') return { status: 302, headers: { location: '/b' } };
+  if (u === '/loop') return { status: 302, headers: { location: '/loop' } };
+  if (u.startsWith('/s')) return { status: Number(u.slice(2)), headers: { location: '/echo' } };
+  return { headers: { 'content-type': 'text/plain' }, body: `${req.method} ${u} body=${body} ct=${req.headers['content-type'] ?? '-'} auth=${req.headers.authorization ?? '-'}` };
+});
+
+test('redirect: diikuti (default, maks 10), url akhir + daftar hop; @no-redirect = response 3xx apa adanya', async () => {
+  const srv = await redirectServer();
+  try {
+    const res = await send({ method: 'GET', url: `${srv.url}/a`, headers: [] });
+    assert.equal(res.status, 200);
+    assert.equal(res.url, `${srv.url}/b`);
+    assert.deepEqual(res.redirects, [{ status: 302, url: `${srv.url}/a` }]);
+    const no = await send({ method: 'GET', url: `${srv.url}/a`, headers: [] }, { followRedirects: false });
+    assert.equal(no.status, 302);
+    assert.ok(no.headers.some(([k, v]) => k === 'location' && v === '/b'));
+    await assert.rejects(send({ method: 'GET', url: `${srv.url}/loop`, headers: [] }), /Too many redirects \(10\)/);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('redirect: 303 & 301/302 POST jadi GET tanpa body; 307/308 tetap method + body', async () => {
+  const srv = await redirectServer();
+  const post = (code: number) => send({ method: 'POST', url: `${srv.url}/s${code}`, headers: [['Content-Type', 'text/plain']], body: 'hi' }).then((r) => r.body.toString());
+  try {
+    assert.equal(await post(303), 'GET /echo body= ct=- auth=-');
+    assert.equal(await post(302), 'GET /echo body= ct=- auth=-');
+    assert.equal(await post(301), 'GET /echo body= ct=- auth=-');
+    assert.equal(await post(307), 'POST /echo body=hi ct=text/plain auth=-');
+    assert.equal(await post(308), 'POST /echo body=hi ct=text/plain auth=-');
+  } finally {
+    await srv.close();
+  }
+});
+
+test('redirect ke origin lain: Authorization tidak ikut dikirim', async () => {
+  const target = await redirectServer();
+  const from = await startServer(async () => ({ status: 302, headers: { location: `${target.url}/echo` } }));
+  try {
+    const res = await send({ method: 'GET', url: from.url, headers: [['Authorization', 'Bearer secret']] });
+    assert.match(res.body.toString(), /auth=-$/);
+    const same = await send({ method: 'GET', url: `${target.url}/a`, headers: [['Authorization', 'Bearer t']] });
+    assert.match(same.body.toString(), /auth=Bearer t$/);
+  } finally {
+    await from.close();
+    await target.close();
+  }
+});
+
+test('SSL: sertifikat self-signed ditolak, kecuali # @insecure', async () => {
+  const fx = join(__dirname, '..', '..', '..', 'test', 'fixtures');
+  const srv = createHttpsServer({ key: readFileSync(join(fx, 'localhost-key.pem')), cert: readFileSync(join(fx, 'localhost-cert.pem')) }, (_req, res) => res.end('secure'));
+  await new Promise<void>((ok) => srv.listen(0, '127.0.0.1', ok));
+  const url = `https://127.0.0.1:${(srv.address() as AddressInfo).port}/`;
+  try {
+    await assert.rejects(send({ method: 'GET', url, headers: [] }), (e: Error & { kind?: string }) => e.kind === 'network' && /self.signed/i.test(e.message));
+    assert.equal((await send({ method: 'GET', url, headers: [] }, { insecure: true })).body.toString(), 'secure');
+  } finally {
+    srv.closeAllConnections();
+    await new Promise((ok) => srv.close(ok));
+  }
 });

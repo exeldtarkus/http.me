@@ -7,6 +7,8 @@ import { createWriteStream, type WriteStream } from 'node:fs';
 export type HttpRequest = { method: string; url: string; headers: [string, string][]; body?: string | Buffer };
 export type SendOptions = {
   signal?: AbortSignal; timeoutMs?: number;
+  /** default true; false = response 3xx dikembalikan apa adanya (# @no-redirect) */ followRedirects?: boolean;
+  /** abaikan sertifikat SSL (# @insecure) */ insecure?: boolean;
   /** batas body di memory (default 1 MB); sisanya hanya di bodyFile */ maxMemory?: number;
   /** file tujuan body utuh bila body > maxMemory atau biner (tidak dibuat untuk body kecil) */ bodyFile?: string;
 };
@@ -15,6 +17,7 @@ export type HttpResponse = {
   /** body di memory: utuh, atau potongan awal bila truncated, kosong bila biner */ body: Buffer;
   /** ukuran body dalam byte */ size: number; timeMs: number; url: string;
   truncated?: boolean; binary?: boolean; bodyFile?: string;
+  /** hop redirect yang diikuti: status + URL asal */ redirects?: { status: number; url: string }[];
 };
 export type ErrorKind = 'timeout' | 'cancelled' | 'network';
 export class RequestError extends Error {
@@ -60,66 +63,113 @@ function responseHeaders(raw: string[]): [string, string][] {
   return out;
 }
 
-export async function send(req: HttpRequest, opts: SendOptions = {}): Promise<HttpResponse> {
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+const parseUrl = (raw: string, base?: URL): URL => {
   let url: URL;
   try {
-    url = new URL(req.url);
+    url = new URL(raw, base);
   } catch (e) {
-    throw new RequestError(`Invalid URL: ${req.url}`, 'network', { cause: e });
+    throw new RequestError(`Invalid URL: ${raw}`, 'network', { cause: e });
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new RequestError(`Unsupported protocol ${url.protocol} (use http:// or https://)`, 'network');
+  return url;
+};
+
+export const MAX_REDIRECTS = 10;
+const REDIRECT = new Set([301, 302, 303, 307, 308]);
+
+/** satu hop: kirim request, tunggu header response (body belum dibaca) */
+function request(url: URL, method: string, headers: [string, string][], body: string | Buffer | undefined, signal: AbortSignal, insecure: boolean): Promise<http.IncomingMessage> {
+  return new Promise((resolve, reject) => {
+    const h = headerObject(headers);
+    // Node tidak memakai chunked untuk DELETE/OPTIONS: tanpa Content-Length body merusak koneksi
+    if (body !== undefined && !Object.keys(h).some((k) => /^(content-length|transfer-encoding)$/i.test(k))) h['Content-Length'] = Buffer.byteLength(body);
+    const lib = url.protocol === 'https:' ? https : http;
+    const r = lib.request(url, { method, headers: h, signal, rejectUnauthorized: !insecure }, resolve);
+    r.on('error', reject);
+    r.end(body);
+  });
+}
+
+/** baca body: potongan awal di memory, body besar / biner ditulis bertahap ke bodyFile */
+function readBody(res: http.IncomingMessage, opts: SendOptions): Promise<{ body: Buffer; size: number; truncated: boolean; binary: boolean; bodyFile?: string }> {
+  return new Promise((resolve, reject) => {
+    const binary = isBinaryType(String(res.headers['content-type'] ?? ''));
+    const max = opts.maxMemory ?? MAX_BODY_MEMORY;
+    const chunks: Buffer[] = [];
+    let kept = 0;
+    let size = 0;
+    let file: WriteStream | undefined;
+    res.on('data', (c: Buffer) => {
+      size += c.length;
+      if (!file && opts.bodyFile && (binary || size > max)) {
+        file = createWriteStream(opts.bodyFile, { mode: 0o600 });
+        file.on('error', (e) => res.destroy(e));
+        for (const k of chunks) file.write(k); // potongan yang sudah di memory ikut ditulis dulu
+      }
+      file?.write(c);
+      if (!binary && kept < max) {
+        const part = c.subarray(0, max - kept);
+        chunks.push(part);
+        kept += part.length;
+      }
+    });
+    res.on('error', (e) => { file?.destroy(); reject(e); });
+    res.on('end', () => {
+      const done = () => resolve({ body: Buffer.concat(chunks), size, truncated: !binary && size > max, binary, bodyFile: file && opts.bodyFile });
+      if (file) file.end(done);
+      else done();
+    });
+  });
+}
+
+/**
+ * kirim request; redirect diikuti sendiri (maks 10) seperti fetch: 303 dan 301/302 untuk POST jadi GET tanpa body,
+ * 307/308 tetap method + body, Authorization dibuang bila pindah origin.
+ */
+export async function send(req: HttpRequest, opts: SendOptions = {}): Promise<HttpResponse> {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  let url = parseUrl(req.url);
   if (opts.signal?.aborted) throw new RequestError('Cancelled', 'cancelled');
 
   const started = performance.now();
   const timeout = AbortSignal.timeout(timeoutMs);
   const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
   const fail = (e: unknown): RequestError => {
+    if (e instanceof RequestError) return e;
     if (opts.signal?.aborted) return new RequestError('Cancelled', 'cancelled', { cause: e });
     if (timeout.aborted) return new RequestError(`Request timed out after ${timeoutMs / 1000} s`, 'timeout', { cause: e });
     return new RequestError(e instanceof Error ? e.message : String(e), 'network', { cause: e });
   };
 
-  return new Promise<HttpResponse>((resolve, reject) => {
-    const lib = url.protocol === 'https:' ? https : http;
-    const body = sendsBody(req.method) ? req.body : undefined;
-    const headers = headerObject(req.headers);
-    // Node tidak memakai chunked untuk DELETE/OPTIONS: tanpa Content-Length body merusak koneksi
-    if (body !== undefined && !Object.keys(headers).some((k) => /^(content-length|transfer-encoding)$/i.test(k))) headers['Content-Length'] = Buffer.byteLength(body);
-    const r = lib.request(url, { method: req.method, headers, signal }, (res) => {
-      const binary = isBinaryType(String(res.headers['content-type'] ?? ''));
-      const max = opts.maxMemory ?? MAX_BODY_MEMORY;
-      const chunks: Buffer[] = [];
-      let kept = 0;
-      let size = 0;
-      let file: WriteStream | undefined;
-      res.on('data', (c: Buffer) => {
-        size += c.length;
-        if (!file && opts.bodyFile && (binary || size > max)) {
-          // body besar / biner: tulis bertahap ke file, potongan yang sudah di memory ikut ditulis dulu
-          file = createWriteStream(opts.bodyFile, { mode: 0o600 });
-          file.on('error', (e) => r.destroy(e));
-          for (const k of chunks) file.write(k);
-        }
-        file?.write(c);
-        if (!binary && kept < max) {
-          const part = c.subarray(0, max - kept);
-          chunks.push(part);
-          kept += part.length;
-        }
-      });
-      res.on('error', (e) => { file?.destroy(); reject(fail(e)); });
-      res.on('end', () => {
-        const timeMs = Math.round(performance.now() - started);
-        const done = () => resolve({
-          status: res.statusCode ?? 0, statusText: res.statusMessage ?? '', headers: responseHeaders(res.rawHeaders),
-          body: Buffer.concat(chunks), size, timeMs, url: url.href, truncated: !binary && size > max, binary, bodyFile: file && opts.bodyFile,
-        });
-        if (file) file.end(done);
-        else done();
-      });
-    });
-    r.on('error', (e) => reject(fail(e)));
-    r.end(body);
-  });
+  let method = req.method;
+  let headers = req.headers;
+  let body = sendsBody(method) ? req.body : undefined;
+  const redirects: { status: number; url: string }[] = [];
+  try {
+    for (;;) {
+      const res = await request(url, method, headers, body, signal, !!opts.insecure);
+      const status = res.statusCode ?? 0;
+      const location = res.headers.location;
+      if (opts.followRedirects === false || !REDIRECT.has(status) || !location) {
+        const b = await readBody(res, opts);
+        return {
+          status, statusText: res.statusMessage ?? '', headers: responseHeaders(res.rawHeaders), ...b,
+          timeMs: Math.round(performance.now() - started), url: url.href, redirects,
+        };
+      }
+      res.resume(); // body halaman redirect tidak dipakai
+      if (redirects.length >= MAX_REDIRECTS) throw new RequestError(`Too many redirects (${MAX_REDIRECTS})`, 'network');
+      redirects.push({ status, url: url.href });
+      const next = parseUrl(location, url);
+      if (status === 303 ? method !== 'HEAD' : (status === 301 || status === 302) && method === 'POST') {
+        method = 'GET';
+        body = undefined;
+        headers = headers.filter(([k]) => !/^content-(type|length)$/i.test(k));
+      }
+      if (next.origin !== url.origin) headers = headers.filter(([k]) => k.toLowerCase() !== 'authorization');
+      url = next;
+    }
+  } catch (e) {
+    throw fail(e);
+  }
 }

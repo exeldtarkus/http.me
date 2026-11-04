@@ -76,7 +76,7 @@ async function sendRequest(doc: vscode.TextDocument, s: DocState, parsed: Parsed
     await dropBodyFile(s);
     await fs.mkdir(bodyDir, { recursive: true, mode: 0o700 });
     const res = await send(r, {
-      signal: ac.signal, bodyFile: bodyPath(doc),
+      signal: ac.signal, bodyFile: bodyPath(doc), followRedirects: parsed.followRedirects, insecure: parsed.insecure,
       timeoutMs: parsed.timeoutSec !== undefined ? parsed.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS,
     });
     if (s.running === ac) Object.assign(s, { bodyFile: res.bodyFile, contentType: res.headers.find(([k]) => k === 'content-type')?.[1], url: res.url });
@@ -110,6 +110,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
           written = serializeRequest(m.req);
           await writeDocument(doc, written);
         } else if (m.type === 'send') await sendRequest(doc, s, isRequest(m.req) ? m.req : parseRequest(doc.getText()));
+        else if (m.type === 'cancel') s.running?.abort();
         else if (m.type === 'openBody') await openBody(s);
         else if (m.type === 'saveBody') await saveBody(s);
       } catch (e) {

@@ -161,7 +161,14 @@
     renderParams();
     renderHeaders();
     renderBody();
+    renderSettings();
     counts();
+  }
+
+  function renderSettings() {
+    $('redir').value = req.followRedirects ? 'yes' : 'no';
+    $('tls').value = req.insecure ? 'ignore' : 'verify';
+    $('tmo').value = req.timeoutSec === undefined ? '' : String(req.timeoutSec);
   }
 
   $('method').replaceChildren(...METHODS.map((m) => el('option', { value: m, textContent: m, className: `m-${m}` })));
@@ -194,8 +201,14 @@
   for (const b of $('resTabs').querySelectorAll('button')) b.onclick = () => showResTab(b.dataset.r);
 
   /** view dari host: running | response | error | cancelled | undefined (belum pernah Send) */
+  let running = false;
   function renderView(view) {
-    const running = view?.kind === 'running';
+    running = view?.kind === 'running';
+    $('send').textContent = running ? 'Cancel' : 'Send';
+    $('send').classList.toggle('busy', running);
+    $('send').title = running ? 'Cancel' : 'Send (Ctrl+Enter)';
+    $('ldCancel').disabled = false;
+    $('ldCancel').textContent = 'Cancel';
     $('loading').hidden = !running;
     $('ldSub').textContent = running ? view.label : '';
     const res = view?.kind === 'response' ? view : undefined;
@@ -223,7 +236,23 @@
     flush();
     post({ type: 'send', req });
   }
-  $('send').onclick = sendNow;
+  function cancel() {
+    $('ldCancel').disabled = true;
+    $('ldCancel').textContent = 'Cancelling…';
+    post({ type: 'cancel' });
+  }
+  $('send').onclick = () => (running ? cancel() : sendNow());
+  $('ldCancel').onclick = cancel;
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendNow(); }
+  });
+  $('redir').onchange = () => { req.followRedirects = $('redir').value === 'yes'; changed(); };
+  $('tls').onchange = () => { req.insecure = $('tls').value === 'ignore'; changed(); };
+  $('tmo').oninput = () => {
+    const n = parseInt($('tmo').value, 10);
+    req.timeoutSec = n > 0 ? n : undefined;
+    changed();
+  };
   $('openBody').onclick = () => post({ type: 'openBody' });
   $('saveBody').onclick = () => post({ type: 'saveBody' });
 
