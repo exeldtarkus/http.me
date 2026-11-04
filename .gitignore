@@ -1,0 +1,9 @@
+node_modules/
+out/
+*.vsix
+.vscode-test/
+deployment/vsx/
+# semua dokumen markdown (RANCANGAN, FITUR, TODO, CLAUDE, README, ...) hanya lokal
+*.md
+# mockup desain hanya lokal
+design/
