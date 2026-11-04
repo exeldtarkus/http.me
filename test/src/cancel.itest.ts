@@ -15,7 +15,8 @@ async function sendInNewTab(url: string): Promise<string> {
   edit.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), `GET ${url}\n`);
   await vscode.workspace.applyEdit(edit);
   void vscode.commands.executeCommand('httpme.sendRequest');
-  await wait(50);
+  // Send menyelesaikan {{variable}} dulu (async) sebelum masuk antrean
+  for (let i = 0; i < 60 && !['running', 'queued'].includes(api().viewOf(input.uri.toString())?.kind ?? ''); i++) await wait(50);
   return input.uri.toString();
 }
 

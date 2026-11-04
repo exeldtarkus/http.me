@@ -28,13 +28,13 @@ export function serializeEnvironment(vars: readonly EnvVar[]): string {
 
 /** nama kosong / duplikat: baris ditandai merah, editor tidak menyimpan */
 export function validateVars(vars: readonly EnvVar[]): { index: number; message: string }[] {
-  const seen = new Set<string>();
+  const count = new Map<string, number>();
+  for (const x of vars) count.set(x.key.trim(), (count.get(x.key.trim()) ?? 0) + 1);
   const out: { index: number; message: string }[] = [];
   vars.forEach((x, index) => {
     const k = x.key.trim();
     if (!k) out.push({ index, message: 'Variable name is required' });
-    else if (seen.has(k)) out.push({ index, message: `Duplicate variable "${k}"` });
-    seen.add(k);
+    else if (count.get(k)! > 1) out.push({ index, message: `Duplicate variable "${k}"` });
   });
   return out;
 }
@@ -176,4 +176,18 @@ export function fromPostmanEnvironment(text: string): { name: string; vars: EnvV
     return out;
   });
   return { name: json.name, vars, secrets };
+}
+
+// ---------- Environment aktif ----------
+/** teks status bar; nama berisi "prod" diberi warna peringatan supaya tidak salah kirim */
+export function statusText(active: string | undefined): { text: string; warn: boolean } {
+  return { text: `◉ Environment: ${active ?? 'none'}`, warn: !!active && /prod/i.test(active) };
+}
+
+/** Next / Previous Environment: berputar di daftar */
+export function stepEnvironment(names: readonly string[], active: string | undefined, dir: 1 | -1): string | undefined {
+  if (!names.length) return undefined;
+  const i = active === undefined ? -1 : names.indexOf(active);
+  if (i < 0) return dir === 1 ? names[0] : names[names.length - 1];
+  return names[(i + dir + names.length) % names.length];
 }

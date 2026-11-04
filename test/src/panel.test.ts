@@ -7,7 +7,11 @@ type Param = { key: string; value: string; enabled: boolean };
 const panel = require(join(__dirname, '..', '..', '..', 'media', 'webview', 'panel.js')) as {
   urlToParams(url: string): Param[];
   paramsToUrl(url: string, params: Param[]): string;
+  tokenClass(name: string, vars: Vars, file: string[]): string;
+  segments(text: string, vars: Vars, file: string[]): { text: string; name?: string; cls?: string }[];
+  completionPrefix(before: string): string | undefined;
 };
+type Vars = { ok: string[]; nulls: string[]; names: string[] };
 
 test('urlToParams: query URL jadi baris Params (nilai mentah, {{var}} utuh)', () => {
   assert.deepEqual(panel.urlToParams('https://a.test/p?x=1&user={{username}}&flag&e=a%20b#top'), [
@@ -85,4 +89,29 @@ test('x-www-form-urlencoded: body ↔ baris key/value, {{var}} tidak di-encode',
     { key: '', value: '', enabled: true },
   ]), 'name=a%20b%26c%3Dd&v=x{{token}}y');
   assert.deepEqual(body.formToRows(''), []);
+});
+
+const vars: Vars = { ok: ['baseUrl'], nulls: ['apiKey'], names: ['apiKey', 'baseUrl'] };
+
+test('token panel: warna ok / NULL / tidak ada / dinamis (variabel file = ok); ikut Environment aktif', () => {
+  assert.deepEqual(['baseUrl', 'apiKey', 'nope', '$guid', '$nope', 'host'].map((n) => panel.tokenClass(n, vars, ['host'])), ['ok', 'null', 'missing', 'dyn', 'missing', 'ok']);
+  // ganti Environment: host mengirim daftar baru, warna ikut
+  assert.equal(panel.tokenClass('apiKey', { ok: ['apiKey'], nulls: [], names: [] }, []), 'ok');
+});
+
+test('token panel: segments memotong teks field jadi teks biasa + token (posisi utuh untuk mirror)', () => {
+  const segs = panel.segments('{{baseUrl}}/x?k={{ apiKey }}&r={{$randomInt 1 9}}', vars, []);
+  assert.deepEqual(segs, [
+    { text: '{{baseUrl}}', name: 'baseUrl', cls: 'ok' }, { text: '/x?k=' }, { text: '{{ apiKey }}', name: 'apiKey', cls: 'null' },
+    { text: '&r=' }, { text: '{{$randomInt 1 9}}', name: '$randomInt', cls: 'dyn' },
+  ]);
+  assert.equal(segs.map((x) => x.text).join(''), '{{baseUrl}}/x?k={{ apiKey }}&r={{$randomInt 1 9}}');
+  assert.deepEqual(panel.segments('plain', vars, []), [{ text: 'plain' }]);
+});
+
+test('autocomplete {{ di panel: awalan nama sebelum kursor', () => {
+  assert.equal(panel.completionPrefix('GET {{'), '');
+  assert.equal(panel.completionPrefix('GET {{ bas'), 'bas');
+  assert.equal(panel.completionPrefix('GET {{base}}/x'), undefined);
+  assert.equal(panel.completionPrefix('x {'), undefined);
 });

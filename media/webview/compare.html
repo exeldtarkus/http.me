@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src 'nonce-{{nonce}}';">
+<style>
+  :root {
+    --fg: var(--vscode-foreground); --muted: var(--vscode-descriptionForeground); --line: var(--vscode-panel-border, #8884);
+    --bg: var(--vscode-editor-background); --input: var(--vscode-input-background); --input-fg: var(--vscode-input-foreground);
+    --focus: var(--vscode-focusBorder); --mono: var(--vscode-editor-font-family, monospace);
+    --warn: var(--vscode-editorWarning-foreground, #e2b34a); --ok: var(--vscode-charts-green, #4ec27a);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 14px 18px 24px; color: var(--fg); background: var(--bg); font-family: var(--vscode-font-family); font-size: 13px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+  label { font-size: 12px; display: inline-flex; gap: 4px; align-items: center; margin-bottom: 8px; }
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; min-width: 100%; }
+  th, td { border: 1px solid var(--line); padding: 2px 6px; text-align: left; font: 12px var(--mono); white-space: nowrap; }
+  th { font: 600 12px var(--vscode-font-family); background: var(--bg); position: sticky; top: 0; }
+  th button { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 0; }
+  th button:hover { text-decoration: underline; }
+  th.active { color: var(--ok); }
+  td.k { font-weight: 600; }
+  tr.has-null td.k::before { content: "●"; color: var(--warn); margin-right: 4px; }
+  td.null { background: color-mix(in srgb, var(--warn) 18%, transparent); }
+  td input { width: 100%; min-width: 120px; border: 1px solid transparent; background: transparent; color: var(--input-fg); font: 12px var(--mono); padding: 1px 4px; }
+  td input:focus { border-color: var(--focus); background: var(--input); outline: none; }
+  td.null input::placeholder { color: var(--warn); font-style: italic; font-weight: 600; }
+  .sec { color: var(--muted); }
+  .empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<h1>All Environments</h1>
+<p>Rows are variables, columns are Environments. NULL cells (no value yet) are highlighted: type to fill them in.</p>
+<label><input type="checkbox" id="nullOnly"> Rows with NULL only</label>
+<div class="wrap"><table><thead id="head"></thead><tbody id="rows"></tbody></table></div>
+<p class="empty" id="empty" hidden>No Environments yet.</p>
+<script nonce="{{nonce}}" src="compare.js"></script>
+</body>
+</html>

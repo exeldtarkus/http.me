@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import {
   clearedKey, createEnvironment, deleteEnvironment, duplicateEnvironment, environmentValues, fromPostmanEnvironment, keyMismatch, listEnvironments,
   mismatchMessage, parseEnvironment, persistAll, readEnvironment, renameEnvironment, renamedKey, serializeEnvironment, syncKeys, updateAll,
-  validateVars, withKey, withoutKey, withSecret, writeEnvironment, type EnvVar,
+  statusText, stepEnvironment, validateVars, withKey, withoutKey, withSecret, writeEnvironment, type EnvVar,
 } from '../../src/environments';
 import { environmentFileName } from '../../src/store';
 import { withTempDir } from './helpers/tmp';
@@ -26,8 +26,9 @@ test('parse / serialize: httpmeFormat 1, value null tetap null, secret tanpa nil
   assert.deepEqual(parseEnvironment('{"variables":[{"key":"x","value":5}]}'), [v('x', '5')], 'angka dari edit manual jadi teks');
 });
 
-test('validateVars: nama kosong & duplikat ditandai per baris', () => {
+test('validateVars: nama kosong & duplikat ditandai per baris (semua baris yang namanya sama)', () => {
   assert.deepEqual(validateVars([v('a', '1'), v(' ', '2'), v('a', '3'), v('b', null)]), [
+    { index: 0, message: 'Duplicate variable "a"' },
     { index: 1, message: 'Variable name is required' },
     { index: 2, message: 'Duplicate variable "a"' },
   ]);
@@ -121,4 +122,13 @@ test('environmentFileName: .json otomatis, karakter ilegal / path ditolak', () =
   assert.equal(environmentFileName(' uat '), 'uat.json');
   assert.equal(environmentFileName('prod.json'), 'prod.json');
   for (const bad of ['', 'a/b', '..', 'x?']) assert.equal(typeof environmentFileName(bad), 'object', bad);
+});
+
+test('status bar & Next / Previous Environment', () => {
+  assert.deepEqual(statusText(undefined), { text: '◉ Environment: none', warn: false });
+  assert.deepEqual(statusText('uat'), { text: '◉ Environment: uat', warn: false });
+  assert.deepEqual(statusText('Prod-EU'), { text: '◉ Environment: Prod-EU', warn: true });
+  const names = ['dev', 'prod', 'uat'];
+  assert.deepEqual([stepEnvironment(names, 'dev', 1), stepEnvironment(names, 'uat', 1), stepEnvironment(names, 'dev', -1)], ['prod', 'dev', 'uat']);
+  assert.deepEqual([stepEnvironment(names, undefined, 1), stepEnvironment(names, 'gone', -1), stepEnvironment([], 'x', 1)], ['dev', 'uat', undefined]);
 });

@@ -54,7 +54,38 @@
   /** baris aktif -> body. shortcut: baris form nonaktif tidak disimpan ke .http (hilang saat file dibuka ulang) */
   const rowsToForm = (rows) => rows.filter((r) => r.enabled && r.key !== '').map((r) => `${encode(r.key)}=${encode(r.value)}`).join('&');
 
-  const api = { METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm };
+  // ---------- token variable (pola sama dengan findVarTokens di diagnostics.ts) ----------
+  const DYNAMIC = ['$timestamp', '$isoTimestamp', '$guid', '$uuid', '$randomInt', '$datetime'];
+
+  /** warna token: ok (ada nilai) / null (NULL di Environment aktif) / missing (tidak ditemukan) / dyn (variable dinamis) */
+  function tokenClass(name, vars, fileVars) {
+    if (name.startsWith('$')) return DYNAMIC.includes(name) ? 'dyn' : 'missing';
+    if (fileVars.includes(name) || vars.ok.includes(name)) return 'ok';
+    return vars.nulls.includes(name) ? 'null' : 'missing';
+  }
+
+  /** teks field -> potongan biasa + token {{…}} (untuk lapisan mirror) */
+  function segments(text, vars, fileVars) {
+    const out = [];
+    let last = 0;
+    for (const m of text.matchAll(/\{\{\s*([^{}]*?)\s*\}\}/g)) {
+      const name = m[1].split(/\s+/)[0];
+      if (!name) continue;
+      if (m.index > last) out.push({ text: text.slice(last, m.index) });
+      out.push({ text: m[0], name, cls: tokenClass(name, vars, fileVars) });
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) out.push({ text: text.slice(last) });
+    return out;
+  }
+
+  /** autocomplete {{ : awalan nama sebelum kursor, atau undefined bila kursor tidak di dalam {{ */
+  function completionPrefix(before) {
+    const m = /\{\{\s*([\w.$-]*)$/.exec(before);
+    return m ? m[1] : undefined;
+  }
+
+  const api = { METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -63,6 +94,9 @@
   /** request seperti ParsedRequest di httpFile.ts */
   let req;
   let editTimer;
+  /** dari host: nama variable yang punya nilai / NULL di Environment aktif + Globals */
+  let vars = { ok: [], nulls: [], names: [] };
+  const fileVars = () => (req ? req.vars.map((v) => v.name) : []);
 
   const post = (msg) => vscode.postMessage(msg);
   /** kirim perubahan ke extension host (ditulis ke dokumen .http), digabung tiap 250 ms */
@@ -70,6 +104,7 @@
     clearTimeout(editTimer);
     editTimer = setTimeout(() => post({ type: 'edit', req }), 250);
     counts();
+    syncMirrors();
   }
   function flush() {
     if (editTimer === undefined) return;
@@ -94,7 +129,7 @@
       const k = el('input', { type: 'text', value: row[keyName], placeholder: isNew ? 'Key' : '', spellcheck: false });
       const v = el('input', { type: 'text', value: row.value, placeholder: isNew ? 'Value' : '', spellcheck: false });
       const del = el('button', { className: 'del', type: 'button', title: 'Remove', textContent: '✕' });
-      tr.append(el('td', { className: 'c' }, [on]), el('td', {}, [k]), el('td', {}, [v]), el('td', { className: 'x' }, [del]));
+      tr.append(el('td', { className: 'c' }, [on]), el('td', {}, [mirror(k)]), el('td', {}, [mirror(v)]), el('td', { className: 'x' }, [del]));
       tbody.append(tr);
       const live = () => {
         if (isNew) { isNew = false; rows.push(row); k.placeholder = ''; v.placeholder = ''; addRow({ [keyName]: '', value: '', enabled: true }, true); }
@@ -115,6 +150,7 @@
       req.url = paramsToUrl(req.url, params);
       req.disabledParams = params.filter((p) => !p.enabled && p.key !== '').map(({ key, value }) => ({ key, value }));
       $('url').value = req.url;
+      syncMirrors();
       if (structural) renderParams();
       changed();
     });
@@ -165,6 +201,155 @@
     renderBody();
     renderSettings();
     counts();
+    syncMirrors();
+  }
+
+  // ---------- lapisan mirror: teks field transparan, token digambar di bawahnya (caret, seleksi, paste tetap normal) ----------
+  const mirrors = new Set();
+  function mirror(input) {
+    // field yang sudah di halaman diganti di tempat; field baru (tabel) dikembalikan terbungkus untuk di-append pemanggil
+    const wrap = el('span', { className: `vwrap${input.tagName === 'TEXTAREA' ? ' area' : ''}` });
+    const m = el('div', { className: 'mirror' });
+    m.setAttribute('aria-hidden', 'true');
+    if (input.parentNode) input.replaceWith(wrap);
+    wrap.append(m, input);
+    input.classList.add('mirrored');
+    input._mirror = m;
+    mirrors.add(input);
+    input.addEventListener('input', () => { paint(input, m); complete(input); });
+    input.addEventListener('scroll', () => { m.scrollTop = input.scrollTop; m.scrollLeft = input.scrollLeft; });
+    input.addEventListener('mousemove', (e) => hoverAt(e, input));
+    input.addEventListener('mouseleave', () => leaveToken());
+    input.addEventListener('mousedown', (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const t = tokenAt(e);
+      if (!t) return;
+      e.preventDefault();
+      post({ type: 'varGoto', name: t.dataset.name });
+    });
+    input.addEventListener('keydown', (e) => acKey(e, input));
+    input.addEventListener('blur', () => setTimeout(closeAc, 150));
+    requestAnimationFrame(() => paint(input, m)); // gaya terhitung baru ada setelah field masuk halaman
+    return wrap;
+  }
+  function paint(input, m) {
+    const cs = getComputedStyle(input);
+    for (const p of ['font', 'letterSpacing', 'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'textIndent', 'tabSize']) m.style[p] = cs[p];
+    const segs = segments(input.value, vars, fileVars());
+    m.replaceChildren(...segs.map((s) => {
+      if (!s.name) return document.createTextNode(s.text);
+      const t = el('span', { className: `tok t-${s.cls}`, textContent: s.text });
+      t.dataset.name = s.name;
+      return t;
+    }), document.createTextNode(' ')); // spasi: baris kosong terakhir textarea tetap punya tinggi
+    // input satu baris: teks lebih panjang dari field ikut bergeser sesuai scroll input
+    m.scrollTop = input.scrollTop;
+    m.scrollLeft = input.scrollLeft;
+    input.parentNode?.classList.toggle('tokd', segs.some((s) => s.name));
+  }
+  function syncMirrors() {
+    for (const input of mirrors) {
+      if (!input.isConnected) { mirrors.delete(input); continue; }
+      paint(input, input._mirror);
+    }
+  }
+
+  // ---------- popup hover (300 ms, tetap saat mouse di popup, Esc menutup) + mode Ctrl ----------
+  let hoverTok;
+  let hoverTimer;
+  let hideTimer;
+  const pop = () => $('varPop');
+  function tokenAt(e) {
+    return document.elementsFromPoint(e.clientX, e.clientY).find((x) => x.classList?.contains('tok'));
+  }
+  function hoverAt(e, input) {
+    const t = tokenAt(e);
+    document.querySelectorAll('.tok.link').forEach((x) => x !== t && x.classList.remove('link'));
+    input.classList.toggle('linkable', !!t && (e.ctrlKey || e.metaKey));
+    if (t && (e.ctrlKey || e.metaKey)) t.classList.add('link');
+    if (t === hoverTok) return;
+    hoverTok = t;
+    clearTimeout(hoverTimer);
+    if (!t) return leaveToken();
+    clearTimeout(hideTimer);
+    hoverTimer = setTimeout(() => post({ type: 'varHover', name: t.dataset.name }), 300);
+  }
+  function leaveToken() {
+    clearTimeout(hoverTimer);
+    hoverTok = undefined;
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => { if (!pop().matches(':hover')) pop().hidden = true; }, 250);
+  }
+  function showHover(name, info) {
+    const t = hoverTok;
+    if (!t || t.dataset.name !== name) return;
+    const p = pop();
+    const rows = [];
+    if (info.status.message) rows.push(el('div', { className: 'pmsg', textContent: info.status.message }));
+    if (name.startsWith('$') && info.status.kind === 'dynamic') rows.push(el('div', {}, ['Dynamic variable, generated at send time. Example: ', el('code', { textContent: info.example || '' })]));
+    if (info.script) rows.push(el('div', { textContent: 'Set by a script' }));
+    if (info.file !== undefined) rows.push(el('div', {}, ['File variable: ', el('code', { textContent: info.file })]));
+    const value = (env, v, secret) => {
+      if (v === null) return el('i', { className: 'pnull', textContent: 'NULL' });
+      if (!secret) return el('code', { textContent: v });
+      const code = el('code', { textContent: '••••' });
+      const show = el('button', { type: 'button', className: 'plink', textContent: 'Show', onclick: () => post({ type: 'showSecret', env, key: name }) });
+      return el('span', {}, [code, ' ', show]);
+    };
+    for (const e of info.environments) {
+      if (e.value === undefined) continue;
+      rows.push(el('div', { className: e.active ? 'pactive' : '' }, [el('span', { className: 'penv', textContent: e.active ? `${e.name} (active)` : e.name }), value(e.name, e.value, e.secret)]));
+    }
+    if (info.globals) rows.push(el('div', {}, [el('span', { className: 'penv', textContent: 'Globals' }), value('', info.globals.value, info.globals.secret)]));
+    const active = info.environments.find((e) => e.active);
+    if (active) rows.push(el('div', { className: 'pfoot' }, [el('button', { type: 'button', className: 'plink', textContent: `Open in Environment "${active.name}"`, onclick: () => post({ type: 'varGoto', name }) })]));
+    if (!rows.length) return;
+    p.replaceChildren(...rows);
+    const r = t.getBoundingClientRect();
+    p.hidden = false;
+    p.style.left = `${Math.max(4, Math.min(r.left, innerWidth - p.offsetWidth - 4))}px`;
+    p.style.top = `${r.bottom + 4 + p.offsetHeight > innerHeight ? r.top - p.offsetHeight - 4 : r.bottom + 4}px`;
+  }
+
+  // ---------- autocomplete {{ ----------
+  let ac = { input: undefined, items: [], i: 0, prefix: '' };
+  function complete(input) {
+    if (typeof input.selectionStart !== 'number') return;
+    const before = input.value.slice(0, input.selectionStart);
+    const prefix = completionPrefix(before);
+    if (prefix === undefined) return closeAc();
+    const names = [...new Set([...vars.names, ...fileVars()])].sort((a, b) => a.localeCompare(b)).concat(DYNAMIC);
+    const items = names.filter((n) => n.toLowerCase().startsWith(prefix.toLowerCase())).slice(0, 30);
+    if (!items.length) return closeAc();
+    ac = { input, items, i: 0, prefix };
+    const box = $('acList');
+    box.replaceChildren(...items.map((n, i) => el('div', { className: `aci t-${tokenClass(n, vars, fileVars())}${i === 0 ? ' on' : ''}`, textContent: n, onmousedown: (e) => { e.preventDefault(); ac.i = i; acceptAc(); } })));
+    const r = input.getBoundingClientRect();
+    box.hidden = false;
+    box.style.left = `${r.left}px`;
+    box.style.top = `${r.bottom + 2}px`;
+  }
+  function closeAc() { $('acList').hidden = true; ac.input = undefined; }
+  function acceptAc() {
+    const input = ac.input;
+    if (!input) return;
+    const pos = input.selectionStart;
+    const name = ac.items[ac.i];
+    const after = input.value.slice(pos);
+    const start = pos - ac.prefix.length;
+    input.value = input.value.slice(0, start) + name + (after.startsWith('}}') ? '' : '}}') + after;
+    const caret = start + name.length + 2;
+    input.setSelectionRange(caret, caret);
+    closeAc();
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function acKey(e, input) {
+    if (ac.input !== input || $('acList').hidden) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      ac.i = (ac.i + (e.key === 'ArrowDown' ? 1 : -1) + ac.items.length) % ac.items.length;
+      [...$('acList').children].forEach((c, i) => c.classList.toggle('on', i === ac.i));
+    } else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); acceptAc(); } else if (e.key === 'Escape') { e.stopPropagation(); closeAc(); }
   }
 
   function renderSettings() {
@@ -173,6 +358,10 @@
     $('tmo').value = req.timeoutSec === undefined ? '' : String(req.timeoutSec);
   }
 
+  mirror($('url'));
+  mirror($('bodyText'));
+  $('varPop').addEventListener('mouseleave', () => leaveToken());
+  document.addEventListener('keyup', (e) => { if (e.key === 'Control' || e.key === 'Meta') document.querySelectorAll('.tok.link, .linkable').forEach((x) => x.classList.remove('link', 'linkable')); });
   $('method').replaceChildren(...METHODS.map((m) => el('option', { value: m, textContent: m, className: `m-${m}` })));
   $('method').onchange = () => { req.method = $('method').value; renderMethod(); changed(); };
   $('url').oninput = () => { req.url = $('url').value; renderParams(); changed(); };
@@ -255,6 +444,7 @@
   $('send').onclick = () => (running ? cancel() : sendNow());
   $('ldCancel').onclick = cancel;
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('varPop').hidden) { $('varPop').hidden = true; return; }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendNow(); }
     else if (e.key === 'Escape' && running) { e.preventDefault(); cancel(); }
   });
@@ -277,6 +467,9 @@
       $('multi').hidden = !(m.multi > 1);
       $('multiCount').textContent = `This file has ${m.multi} requests.`;
     }
+    if (m.type === 'vars') { vars = { ok: m.ok, nulls: m.nulls, names: m.names }; syncMirrors(); }
+    if (m.type === 'varHover') showHover(m.name, m.info);
+    if (m.type === 'matching') $('matching').hidden = !m.on;
     if ('view' in m) renderView(m.view);
   });
   window.addEventListener('blur', flush);

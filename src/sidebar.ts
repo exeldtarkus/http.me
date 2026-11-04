@@ -11,6 +11,8 @@ import { toCurl } from './curl';
 import { newRequest, REQUEST_VIEW } from './httpEditor';
 import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
+import type { Environments } from './envState';
+import { ENV_DIR } from './environments';
 
 export const VIEW_ID = 'httpme.sidebar';
 const MODE_KEY = 'sidebar.mode';
@@ -28,7 +30,11 @@ type Empty = { kind: 'empty'; folder: Folder; what: 'label' | 'addRequest' | 'ad
 type OFolder = { kind: 'ofolder'; rel: string; dirty: boolean };
 type OUntitled = { kind: 'ountitled'; count: number; dirty: boolean };
 type OTab = { kind: 'otab'; tab: OpenTab & { pinned: boolean; viewType?: string } };
-export type Node = Folder | File | Empty | OFolder | OUntitled | OTab;
+type ENone = { kind: 'enone' };
+type Env = { kind: 'env'; name: string };
+type EGlobals = { kind: 'eglobals' };
+type EEmpty = { kind: 'eempty'; what: 'label' | 'create' };
+export type Node = Folder | File | Empty | OFolder | OUntitled | OTab | ENone | Env | EGlobals | EEmpty;
 
 const METHOD_COLOR: Record<string, string> = {
   GET: 'charts.green', POST: 'charts.yellow', PUT: 'charts.blue', PATCH: 'charts.purple', DELETE: 'charts.red',
@@ -53,7 +59,7 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
   private filter = '';
   private onlyUnsaved = false;
 
-  constructor(private state: vscode.Memento) {}
+  constructor(private state: vscode.Memento, private envs: Environments) {}
 
   get mode(): SidebarMode { return modeOf(this.state.get(MODE_KEY)); }
   private get flat(): boolean { return this.state.get<boolean>(this.mode === 'open' ? OPEN_FLAT_KEY : FLAT_KEY, false); }
@@ -205,8 +211,27 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
     ];
   }
 
+  // ---------- Environments ----------
+  private async environmentChildren(n?: Node): Promise<Node[]> {
+    if (n) return [];
+    const names = await this.envs.names();
+    const list: Node[] = names.length ? names.map((name): Env => ({ kind: 'env', name }))
+      : [{ kind: 'eempty', what: 'label' }, { kind: 'eempty', what: 'create' }];
+    return [{ kind: 'enone' }, ...list, { kind: 'eglobals' }];
+  }
+
+  /** jumlah NULL (nilai belum diisi, termasuk secret yang belum ada di SecretStorage) */
+  private async nullCount(name: string): Promise<number | undefined> {
+    try {
+      return [...(await this.envs.values(name)).values()].filter((v) => v === null).length;
+    } catch (e) {
+      log().error(errorLine(`Sidebar.nullCount ${name}`, e));
+      return undefined;
+    }
+  }
+
   async getChildren(n?: Node): Promise<Node[]> {
-    if (this.mode === 'environments') return []; // Fase 3: viewsWelcome menjelaskan
+    if (this.mode === 'environments') return this.environmentChildren(n);
     if (this.mode === 'open') return this.openChildrenOf(n);
     return this.collectionChildren(n);
   }
@@ -271,6 +296,34 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
         return Object.assign(new vscode.TreeItem('Untitled', vscode.TreeItemCollapsibleState.Expanded), {
           id: 'ountitled', iconPath: new vscode.ThemeIcon('new-file'), description: `${n.count}${n.dirty ? ' ●' : ''}`, contextValue: 'httpmeOpenFolder',
         });
+      case 'enone': {
+        const on = this.envs.active === undefined;
+        return Object.assign(new vscode.TreeItem({ label: 'No Environment', highlights: on ? [[0, 14]] : [] }), {
+          id: 'enone', iconPath: new vscode.ThemeIcon(on ? 'check' : 'circle-slash'), description: on ? 'active' : undefined,
+          tooltip: 'Send requests without an Environment', contextValue: 'httpmeNoEnvironment',
+          command: { command: 'httpme.setActiveEnvironment', title: 'Set Active', arguments: [undefined] },
+        });
+      }
+      case 'env': {
+        const on = this.envs.active === n.name;
+        const nulls = await this.nullCount(n.name);
+        return Object.assign(new vscode.TreeItem({ label: n.name, highlights: on ? [[0, n.name.length]] : [] }), {
+          id: `env:${n.name}`, iconPath: new vscode.ThemeIcon(on ? 'check' : 'symbol-namespace'),
+          description: [on ? 'active' : '', nulls ? `${nulls} NULL` : nulls === undefined ? 'invalid file' : ''].filter(Boolean).join(' · ') || undefined,
+          tooltip: `${ENV_DIR}/${n.name}.json${nulls ? `\n${nulls} variable${nulls === 1 ? '' : 's'} without a value (NULL)` : ''}`,
+          contextValue: on ? 'httpmeEnvironmentActive' : 'httpmeEnvironment',
+          command: { command: 'httpme.openEnvironment', title: 'Open', arguments: [n.name] },
+        });
+      }
+      case 'eglobals':
+        return Object.assign(new vscode.TreeItem('Globals'), {
+          id: 'eglobals', iconPath: new vscode.ThemeIcon('globe'), description: 'every Environment', tooltip: 'Variables for every Environment, stored on this computer',
+          contextValue: 'httpmeGlobals', command: { command: 'httpme.openGlobals', title: 'Open Globals' },
+        });
+      case 'eempty':
+        return n.what === 'label'
+          ? Object.assign(new vscode.TreeItem('No environments'), { iconPath: new vscode.ThemeIcon('info'), description: 'dev, uat, prod… with the same keys', contextValue: 'httpmeEmpty' })
+          : Object.assign(new vscode.TreeItem('Create Environment'), { iconPath: new vscode.ThemeIcon('add'), contextValue: 'httpmeEmpty', command: { command: 'httpme.newEnvironment', title: 'Create Environment' } });
       case 'otab': {
         const uri = vscode.Uri.parse(n.tab.uri);
         return Object.assign(new vscode.TreeItem(uri), {
@@ -368,8 +421,8 @@ export async function openRequest(uri: vscode.Uri): Promise<void> {
   else await vscode.commands.executeCommand('vscode.openWith', uri, REQUEST_VIEW);
 }
 
-export function registerSidebar(ctx: vscode.ExtensionContext): { sidebar: Sidebar; disposable: vscode.Disposable } {
-  const sidebar = new Sidebar(ctx.workspaceState);
+export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments): { sidebar: Sidebar; disposable: vscode.Disposable } {
+  const sidebar = new Sidebar(ctx.workspaceState, envs);
   const view = vscode.window.createTreeView(VIEW_ID, { treeDataProvider: sidebar, dragAndDropController: sidebar, canSelectMany: true, showCollapseAll: true });
   sidebar.view = view;
   void sidebar.applyContext();
@@ -404,6 +457,7 @@ export function registerSidebar(ctx: vscode.ExtensionContext): { sidebar: Sideba
     vscode.workspace.onDidChangeTextDocument((e) => { if (isHttpmeFile(e.document.uri)) redrawOpen(); }),
     vscode.workspace.onDidSaveTextDocument(redrawOpen),
     vscode.workspace.onDidChangeWorkspaceFolders(() => sidebar.refresh()),
+    envs.onDidChange(() => { if (sidebar.mode === 'environments') sidebar.redraw(); }),
 
     // mode: ikon berbeda untuk mode aktif (fallback `toggled` yang belum didukung kontribusi extension di VS Code 1.90)
     ...(['collections', 'environments', 'open'] as const).flatMap((m) => {

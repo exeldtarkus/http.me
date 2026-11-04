@@ -26,7 +26,7 @@ export const tests: ITests = {
   async 'mode sidebar: Show Collections / Environments / Open mengganti isi view'() {
     await vscode.commands.executeCommand('httpme.showEnvironments');
     assert.equal(api().sidebar.mode, 'environments');
-    assert.deepEqual(await children(), []);
+    assert.deepEqual((await children()).map((n) => n.kind), ['enone', 'eempty', 'eempty', 'eglobals']);
     await vscode.commands.executeCommand('httpme.showOpen');
     assert.equal(api().sidebar.mode, 'open');
     await vscode.commands.executeCommand('httpme.showCollections');
@@ -37,7 +37,7 @@ export const tests: ITests = {
     const item = await api().sidebar.getTreeItem(get);
     assert.equal(item.label, 'get');
     assert.equal(item.description, 'GET httpbin.org');
-    await vscode.commands.executeCommand('httpme.filterCollections', 'post');
+    await vscode.commands.executeCommand('httpme.filterCollections', 'post.http');
     assert.deepEqual((await children()).map(name), ['post.http']);
     await vscode.commands.executeCommand('httpme.clearFilter');
     await vscode.commands.executeCommand('httpme.toggleFlat');

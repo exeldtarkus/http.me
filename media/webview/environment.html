@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src 'nonce-{{nonce}}';">
+<style>
+  :root {
+    --fg: var(--vscode-foreground); --muted: var(--vscode-descriptionForeground); --line: var(--vscode-panel-border, #8884);
+    --bg: var(--vscode-editor-background); --input: var(--vscode-input-background); --input-fg: var(--vscode-input-foreground);
+    --hover: var(--vscode-toolbar-hoverBackground, #8882); --accent: var(--vscode-button-background); --accent-fg: var(--vscode-button-foreground);
+    --focus: var(--vscode-focusBorder); --mono: var(--vscode-editor-font-family, monospace);
+    --ok: var(--vscode-charts-green, #4ec27a); --warn: var(--vscode-editorWarning-foreground, #e2b34a); --err: var(--vscode-errorForeground, #f2676b);
+    --hl: var(--vscode-editor-findMatchHighlightBackground, #ea5c0055);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 14px 18px 24px; color: var(--fg); background: var(--bg); font-family: var(--vscode-font-family); font-size: 13px; line-height: 1.45; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
+  input[type=text], input[type=search], input[type=password] { background: var(--input); color: var(--input-fg); border: 1px solid var(--line); border-radius: 3px; padding: 3px 6px; }
+  .head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
+  .title { font-size: 18px; font-weight: 600; background: none; border: 0; padding: 0; }
+  .title:hover { text-decoration: underline dotted; }
+  .badge { font-size: 11px; border-radius: 10px; padding: 1px 8px; background: var(--ok); color: var(--bg); font-weight: 600; }
+  .badge[hidden] { display: none; }
+  .btn { border: 1px solid transparent; border-radius: 4px; padding: 3px 12px; background: var(--hover); }
+  .btn.pri { background: var(--accent); color: var(--accent-fg); }
+  .btn.ghost { background: transparent; border-color: var(--line); }
+  .btn[hidden] { display: none; }
+  .spacer { flex: 1; }
+  .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 8px; font-size: 12px; }
+  .tools input[type=search] { min-width: 200px; }
+  .tools label { display: flex; align-items: center; gap: 4px; }
+  .nulls { color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-weight: 500; color: var(--muted); padding: 4px; border-bottom: 1px solid var(--line); font-size: 12px; }
+  td { padding: 2px 4px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  td.c, td.x, td.g { width: 24px; text-align: center; } td.s { width: 56px; text-align: center; }
+  td input[type=text], td input[type=password] { width: 100%; border-color: transparent; background: transparent; font: 12px var(--mono); }
+  td input[type=text]:hover, td input[type=text]:focus, td input[type=password]:focus { border-color: var(--line); background: var(--input); }
+  tr.off input[type=text] { color: var(--muted); text-decoration: line-through; }
+  tr.bad input.key { border-color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); }
+  tr.hl td { background: var(--hl); transition: background 1.5s; }
+  tr.drop td { border-top: 2px solid var(--focus); }
+  .grip { cursor: grab; color: var(--muted); user-select: none; }
+  .null { font: italic 600 11px var(--mono); color: var(--muted); border: 1px dashed var(--muted); border-radius: 3px; padding: 0 6px; background: none; }
+  .null:hover { color: var(--warn); border-color: var(--warn); }
+  .val { display: flex; align-items: center; gap: 4px; }
+  .val .mini { border: 0; background: none; color: var(--muted); padding: 0 3px; visibility: hidden; font-size: 12px; }
+  tr:hover .val .mini, .val .mini.on { visibility: visible; }
+  .dots { font: 12px var(--mono); color: var(--muted); padding: 0 5px; }
+  .del { border: 0; background: none; color: var(--muted); visibility: hidden; }
+  tr:hover .del { visibility: visible; }
+  .err { color: var(--err); font-size: 12px; margin: 6px 0 0; }
+  .err[hidden], .msg[hidden] { display: none; }
+  .msg { color: var(--err); padding: 12px; border: 1px solid var(--err); border-radius: 4px; }
+  .add input { font-style: italic; }
+  .na { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="head">
+  <button class="title" id="title" type="button" title="Rename Environment"></button>
+  <span class="badge" id="activeBadge" hidden>Active</span>
+  <button class="btn pri" id="setActive" type="button" hidden>Set Active</button>
+  <span class="spacer"></span>
+  <button class="btn ghost" id="compare" type="button">All Environments</button>
+  <button class="btn ghost" id="openAsText" type="button">Open as Text</button>
+</div>
+<div class="msg" id="fileError" hidden></div>
+<div id="editor">
+  <div class="tools">
+    <input type="search" id="search" placeholder="Search variables" aria-label="Search variables">
+    <label><input type="checkbox" id="nullOnly"> NULL only</label>
+    <span class="nulls" id="nullCount"></span>
+    <span class="spacer"></span>
+    <button class="btn ghost" id="reset" type="button" title="Forget local current values; the initial values are used again">Reset current values</button>
+    <button class="btn ghost" id="persist" type="button" title="Copy current values into the initial values (secrets are not copied)">Persist all</button>
+  </div>
+  <table>
+    <thead><tr><th></th><th></th><th>Variable</th><th>Initial value</th><th>Current value</th><th>Secret</th><th></th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <p class="err" id="errors" hidden></p>
+  <p class="na">Initial values are saved in the file (commit them). Current values stay on this computer. Secret values are kept in VS Code SecretStorage, never in the file.</p>
+</div>
+<script nonce="{{nonce}}" src="environment.js"></script>
+</body>
+</html>

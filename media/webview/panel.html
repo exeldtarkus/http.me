@@ -102,6 +102,40 @@
   @keyframes slide { from { left: -30%; } to { left: 100%; } }
   @keyframes blink { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .spin i, .loading .bar2::after, .ld-label b { animation: none; } }
+  /* token variable (kurung kurawal ganda): lapisan mirror di bawah field yang teksnya dibuat transparan */
+  .urlbox { position: relative; }
+  .vwrap { position: relative; display: block; min-width: 0; border-radius: 3px; }
+  .urlbox .vwrap { flex: 1; display: flex; }
+  .vwrap.area { flex: 1; display: flex; min-height: 90px; }
+  .vwrap > .mirror { position: absolute; inset: 0; overflow: hidden; white-space: pre; color: var(--input-fg); border-style: solid; border-color: transparent; pointer-events: none; }
+  .vwrap.area > .mirror { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .vwrap:not(.tokd) > .mirror { display: none; }
+  .vwrap > .mirror .tok { pointer-events: auto; text-underline-offset: 3px; text-decoration-skip-ink: none; }
+  .vwrap > .mirrored { position: relative; z-index: 1; width: 100%; }
+  .vwrap.tokd > .mirrored { color: transparent; caret-color: var(--input-fg); background: transparent; }
+  .vwrap.tokd > .mirrored::placeholder { color: transparent; }
+  .vwrap.area.tokd, .kv .vwrap.tokd:hover, .kv .vwrap.tokd:focus-within { background: var(--input); }
+  .t-ok { color: var(--vscode-textLink-foreground, #3794ff); }
+  .t-null { color: var(--warn); text-decoration: underline wavy var(--warn); }
+  .t-missing { color: var(--err); text-decoration: underline wavy var(--err); }
+  .t-dyn { color: var(--vscode-charts-purple, #b180d7); }
+  .tok.link { text-decoration: underline solid; }
+  .mirrored.linkable { cursor: pointer; }
+  .varpop { position: fixed; z-index: 20; max-width: 440px; padding: 6px 10px; border-radius: 3px; font-size: 12px;
+    background: var(--vscode-editorHoverWidget-background, var(--bg)); color: var(--vscode-editorHoverWidget-foreground, var(--fg));
+    border: 1px solid var(--vscode-editorHoverWidget-border, var(--line)); box-shadow: 0 2px 8px var(--vscode-widget-shadow, #0005); }
+  .varpop[hidden], .aclist[hidden], .matching[hidden] { display: none; }
+  .varpop > div { display: flex; gap: 8px; align-items: baseline; padding: 1px 0; overflow-wrap: anywhere; }
+  .varpop code { font: 12px var(--mono); }
+  .penv { min-width: 80px; color: var(--muted); } .pactive .penv { color: var(--fg); font-weight: 600; }
+  .pmsg { color: var(--err); } .pnull { color: var(--warn); }
+  .plink { background: none; border: 0; padding: 0; color: var(--vscode-textLink-foreground, #3794ff); cursor: pointer; }
+  .pfoot { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px !important; }
+  .aclist { position: fixed; z-index: 21; min-width: 180px; max-height: 200px; overflow-y: auto; font: 12px var(--mono);
+    background: var(--vscode-editorSuggestWidget-background, var(--bg)); border: 1px solid var(--vscode-editorSuggestWidget-border, var(--line)); }
+  .aci { padding: 2px 8px; cursor: pointer; text-decoration: none !important; } .aci.on { background: var(--vscode-editorSuggestWidget-selectedBackground, var(--hover)); }
+  .matching { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 2; font-size: 11px; color: var(--muted); background: var(--input); padding: 0 4px; }
+  .matching::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
 </style>
 </head>
 <body>
@@ -113,10 +147,13 @@
   <div class="urlbox">
     <select id="method" aria-label="Method"></select>
     <input id="url" aria-label="URL" spellcheck="false" placeholder="https://api.example.com/path">
+    <span class="matching" id="matching" hidden>Matching values with Environment variables…</span>
   </div>
   <button class="btn pri" id="send" type="button" title="Send (Ctrl+Enter)">Send</button>
 </div>
-<p class="hint">Paste a <kbd>curl …</kbd> command into the URL field to import it · <kbd>Ctrl+Enter</kbd> Send</p>
+<p class="hint">Paste a <kbd>curl …</kbd> command into the URL field to import it · <kbd>Ctrl+Enter</kbd> Send · <kbd>{{</kbd> variables (<kbd>Ctrl</kbd>+Click opens the Environment)</p>
+<div class="varpop" id="varPop" hidden role="tooltip"></div>
+<div class="aclist" id="acList" hidden role="listbox"></div>
 <div class="subtabs" role="tablist" aria-label="Request" id="reqTabs">
   <button type="button" data-p="params" class="on">Params<span class="n" id="nParams"></span></button>
   <button type="button" data-p="headers">Headers<span class="n" id="nHeaders"></span></button>

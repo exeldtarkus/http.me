@@ -256,6 +256,168 @@
         "title": "Import from Clipboard",
         "category": "http.me",
         "icon": "$(clippy)"
+      },
+      {
+        "command": "httpme.selectEnvironment",
+        "title": "Select Environment",
+        "category": "http.me",
+        "icon": "$(server-environment)"
+      },
+      {
+        "command": "httpme.nextEnvironment",
+        "title": "Next Environment",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.previousEnvironment",
+        "title": "Previous Environment",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.editActiveEnvironment",
+        "title": "Edit Active Environment",
+        "category": "http.me",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "httpme.manageEnvironments",
+        "title": "Manage Environments",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.newEnvironment",
+        "title": "New Environment",
+        "category": "http.me",
+        "icon": "$(add)"
+      },
+      {
+        "command": "httpme.importEnvironment",
+        "title": "Import Postman Environment…",
+        "category": "http.me",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "httpme.compareEnvironments",
+        "title": "Compare Environments",
+        "category": "http.me",
+        "icon": "$(table)"
+      },
+      {
+        "command": "httpme.openGlobals",
+        "title": "Open Globals",
+        "category": "http.me",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "httpme.syncEnvironments",
+        "title": "Sync Environment Keys",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.setActiveEnvironment",
+        "title": "Set Active",
+        "category": "http.me",
+        "icon": "$(check)"
+      },
+      {
+        "command": "httpme.openEnvironment",
+        "title": "Open Environment",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.openEnvironmentAsText",
+        "title": "Open as Text",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.revealEnvironment",
+        "title": "Reveal in Explorer View",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.renameEnvironment",
+        "title": "Rename…",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.duplicateEnvironment",
+        "title": "Duplicate…",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.deleteEnvironment",
+        "title": "Delete",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.gotoVariable",
+        "title": "Go to Variable",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.showSecret",
+        "title": "Show Secret Value",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.setVariableValue",
+        "title": "Set Variable Value…",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.addVariableToAll",
+        "title": "Add Variable to Every Environment",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.replaceValuesWithVariables",
+        "title": "Replace Values with Variables",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.sendBlock",
+        "title": "Send Request in Block",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.sendAll",
+        "title": "Send All Requests in File",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.cancelBlock",
+        "title": "Cancel Request in Block",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.cancelFile",
+        "title": "Cancel All Requests in File",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.showResponse",
+        "title": "Show Response",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.showLog",
+        "title": "Show Log",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.focusTab",
+        "title": "Focus Tab",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.moveTo",
+        "title": "Move to Folder",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.openRequest",
+        "title": "Open Request",
+        "category": "http.me"
       }
     ],
     "customEditors": [
@@ -268,6 +430,19 @@
           }
         ],
         "priority": "option"
+      },
+      {
+        "viewType": "httpme.environment",
+        "displayName": "http.me Environment",
+        "selector": [
+          {
+            "filenamePattern": "**/.httpme/environments/*.json"
+          },
+          {
+            "filenamePattern": "**/httpme-globals.json"
+          }
+        ],
+        "priority": "default"
       }
     ],
     "languages": [
@@ -292,6 +467,11 @@
         {
           "command": "httpme.openAsText",
           "when": "activeCustomEditorId == httpme.request",
+          "group": "navigation"
+        },
+        {
+          "command": "httpme.openAsText",
+          "when": "activeCustomEditorId == httpme.environment",
           "group": "navigation"
         }
       ],
@@ -370,6 +550,86 @@
         },
         {
           "command": "httpme.openShowAll",
+          "when": "false"
+        },
+        {
+          "command": "httpme.setActiveEnvironment",
+          "when": "false"
+        },
+        {
+          "command": "httpme.openEnvironment",
+          "when": "false"
+        },
+        {
+          "command": "httpme.openEnvironmentAsText",
+          "when": "false"
+        },
+        {
+          "command": "httpme.revealEnvironment",
+          "when": "false"
+        },
+        {
+          "command": "httpme.renameEnvironment",
+          "when": "false"
+        },
+        {
+          "command": "httpme.duplicateEnvironment",
+          "when": "false"
+        },
+        {
+          "command": "httpme.deleteEnvironment",
+          "when": "false"
+        },
+        {
+          "command": "httpme.gotoVariable",
+          "when": "false"
+        },
+        {
+          "command": "httpme.showSecret",
+          "when": "false"
+        },
+        {
+          "command": "httpme.setVariableValue",
+          "when": "false"
+        },
+        {
+          "command": "httpme.addVariableToAll",
+          "when": "false"
+        },
+        {
+          "command": "httpme.replaceValuesWithVariables",
+          "when": "resourceExtname == .http"
+        },
+        {
+          "command": "httpme.sendBlock",
+          "when": "false"
+        },
+        {
+          "command": "httpme.sendAll",
+          "when": "false"
+        },
+        {
+          "command": "httpme.cancelBlock",
+          "when": "false"
+        },
+        {
+          "command": "httpme.cancelFile",
+          "when": "false"
+        },
+        {
+          "command": "httpme.showResponse",
+          "when": "false"
+        },
+        {
+          "command": "httpme.focusTab",
+          "when": "false"
+        },
+        {
+          "command": "httpme.moveTo",
+          "when": "false"
+        },
+        {
+          "command": "httpme.openRequest",
           "when": "false"
         }
       ],
@@ -463,6 +723,21 @@
           "command": "httpme.importFromClipboard",
           "when": "view == httpme.sidebar && (httpme.sidebarMode == collections || !httpme.sidebarMode)",
           "group": "more"
+        },
+        {
+          "command": "httpme.newEnvironment",
+          "when": "view == httpme.sidebar && httpme.sidebarMode == environments",
+          "group": "navigation@10"
+        },
+        {
+          "command": "httpme.importEnvironment",
+          "when": "view == httpme.sidebar && httpme.sidebarMode == environments",
+          "group": "navigation@11"
+        },
+        {
+          "command": "httpme.compareEnvironments",
+          "when": "view == httpme.sidebar && httpme.sidebarMode == environments",
+          "group": "navigation@12"
         }
       ],
       "view/item/context": [
@@ -550,6 +825,41 @@
           "command": "httpme.revealInCollections",
           "when": "view == httpme.sidebar && viewItem =~ /^httpmeOpenTab(Pinned)?$/",
           "group": "3_reveal@1"
+        },
+        {
+          "command": "httpme.setActiveEnvironment",
+          "when": "view == httpme.sidebar && viewItem == httpmeEnvironment",
+          "group": "inline"
+        },
+        {
+          "command": "httpme.setActiveEnvironment",
+          "when": "view == httpme.sidebar && viewItem == httpmeEnvironment",
+          "group": "1_env@1"
+        },
+        {
+          "command": "httpme.renameEnvironment",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpmeEnvironment/",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "httpme.duplicateEnvironment",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpmeEnvironment/",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "httpme.deleteEnvironment",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpmeEnvironment/",
+          "group": "2_edit@3"
+        },
+        {
+          "command": "httpme.revealEnvironment",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpmeEnvironment/",
+          "group": "3_open@1"
+        },
+        {
+          "command": "httpme.openEnvironmentAsText",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpmeEnvironment/ || view == httpme.sidebar && viewItem == httpmeGlobals",
+          "group": "3_open@2"
         }
       ]
     },
@@ -576,6 +886,26 @@
         "key": "ctrl+s",
         "mac": "cmd+s",
         "when": "resourceScheme == untitled && resourceExtname == .http"
+      },
+      {
+        "command": "httpme.selectEnvironment",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e"
+      },
+      {
+        "command": "httpme.nextEnvironment",
+        "key": "ctrl+alt+]",
+        "mac": "cmd+alt+]"
+      },
+      {
+        "command": "httpme.previousEnvironment",
+        "key": "ctrl+alt+[",
+        "mac": "cmd+alt+["
+      },
+      {
+        "command": "httpme.editActiveEnvironment",
+        "key": "ctrl+alt+shift+e",
+        "mac": "cmd+alt+shift+e"
       }
     ],
     "viewsWelcome": [
@@ -583,11 +913,6 @@
         "view": "httpme.sidebar",
         "contents": "Open a folder to store your collections.\n[Open Folder](command:vscode.openFolder)\n[New Request](command:httpme.newRequest)",
         "when": "workbenchState == empty"
-      },
-      {
-        "view": "httpme.sidebar",
-        "contents": "Environments arrive in the next version of http.me.",
-        "when": "workbenchState != empty && httpme.sidebarMode == environments"
       },
       {
         "view": "httpme.sidebar",
@@ -618,6 +943,21 @@
           "default": "",
           "scope": "resource",
           "markdownDescription": "Folder (relative to the workspace folder) where **New Collection** creates collections, for example `api`. Empty = the workspace folder."
+        },
+        "httpme.import.matchEnvironment": {
+          "type": "string",
+          "enum": [
+            "always",
+            "ask",
+            "never"
+          ],
+          "default": "always",
+          "enumDescriptions": [
+            "Replace matching values with {{VARIABLE}} automatically (Undo in the notification).",
+            "Ask before replacing.",
+            "Never replace values."
+          ],
+          "markdownDescription": "When a cURL command is pasted or imported, replace values that equal an Environment or Globals value (URL prefix, query, headers, Bearer token, cookies, JSON / form body) with `{{VARIABLE}}`."
         }
       }
     }

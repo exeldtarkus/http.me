@@ -1,12 +1,20 @@
 import * as vscode from 'vscode';
 import { isNewerMinor, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
-import { errMsg } from './log';
+import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
 import { applyPanelEdit, importCurlText, saveUntitled, type SaveInput, cancelActive, cancelBlock, cancelFile, newRequest, openAsText, openInPanel, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
 import { registerSidebar, type Sidebar } from './sidebar';
 import { registerActivity } from './activity';
+import { Environments } from './envState';
+import { compareView, focusOf, envOp, registerEnvironmentEditor } from './environmentEditor';
+import { registerEnvironmentCommands } from './environmentCommands';
+import { registerVariables } from './variables';
+import { replaceValuesWithVariables, setNullPrompt, setVarHooks } from './httpEditor';
+import { hoverInfo } from './diagnostics';
+import { resolveRequest } from './vars';
+import { varize, varizeCandidates } from './varize';
 
 // versi terakhir yang pernah aktif, untuk What's New sekali per minor
 const VERSION_KEY = 'httpme.version';
@@ -39,7 +47,35 @@ async function clearCacheCommand(ctx: vscode.ExtensionContext): Promise<void> {
 }
 
 /** API extension: hanya untuk itest (membaca state request di extension host) */
-export type HttpmeApi = { viewOf: typeof viewOf; runningCount: () => number; applyPanelEdit: typeof applyPanelEdit; sidebar: Sidebar };
+export type HttpmeApi = {
+  viewOf: typeof viewOf; runningCount: () => number; applyPanelEdit: typeof applyPanelEdit; sidebar: Sidebar;
+  envs: Environments; envOp: typeof envOp; focusOf: typeof focusOf; compareView: typeof compareView; setNullPrompt: typeof setNullPrompt;
+};
+
+/** Environment → hook variable panel request / Send / paste */
+function variableHooks(envs: Environments): vscode.Disposable {
+  return setVarHooks({
+    onChange: envs.onDidChange,
+    async resolve(r) {
+      const res = resolveRequest(r, await envs.scopes(r.vars));
+      return { ...res, env: envs.active, secrets: await envs.secretValues() };
+    },
+    async panelVars() {
+      const c = await envs.context();
+      const active = c.environments.find((e) => e.name === c.active);
+      const ok = new Set<string>();
+      const nulls = new Set<string>();
+      for (const values of [c.globals, active?.values ?? new Map()]) for (const [k, v] of values) (v === null ? nulls : ok).add(k);
+      ok.forEach((k) => nulls.delete(k));
+      return { ok: [...ok], nulls: [...nulls], names: [...new Set([...ok, ...nulls])].sort((a, b) => a.localeCompare(b)) };
+    },
+    async hover(name, file) { return hoverInfo(name, await envs.context(), file); },
+    async varize(r) {
+      const c = await envs.context();
+      return { ...varize(r, varizeCandidates(c.active, c.environments, c.globals)), active: c.active };
+    },
+  });
+}
 
 export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   ctx.subscriptions.push(log());
@@ -53,8 +89,11 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.cancelRequest', () =>
     cancelActive().catch((e) => reportError('cancelRequest', e, `Cancel failed: ${errMsg(e)}`))));
   ctx.subscriptions.push(registerActivity());
-  const { sidebar, disposable: sidebarDisposable } = registerSidebar(ctx);
-  ctx.subscriptions.push(sidebarDisposable);
+  const envs = new Environments(ctx);
+  ctx.subscriptions.push(envs.watch(), registerEnvironmentEditor(envs));
+  const { sidebar, disposable: sidebarDisposable } = registerSidebar(ctx, envs);
+  ctx.subscriptions.push(sidebarDisposable, registerEnvironmentCommands(envs, () => sidebar.redraw()), registerVariables(envs), variableHooks(envs));
+  void envs.checkKeys().catch((e) => log().error(errorLine('checkKeys', e)));
   const run = (name: string, fn: () => Promise<unknown> | unknown) => Promise.resolve().then(fn).catch((e) => reportError(name, e, `http.me: ${errMsg(e)}`));
   const docOf = (uri: vscode.Uri) => vscode.workspace.openTextDocument(uri);
   // uri tab aktif: editor teks maupun custom editor
@@ -76,6 +115,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
       const target = uri ?? activeUri();
       if (target) await openAsText(target);
     })),
+    vscode.commands.registerCommand('httpme.replaceValuesWithVariables', (uri?: vscode.Uri) => run('replaceValuesWithVariables', () => replaceValuesWithVariables(uri))),
     vscode.commands.registerCommand('httpme.openInPanel', (uri?: vscode.Uri) => run('openInPanel', async () => {
       const target = uri ?? activeUri();
       if (target) await openInPanel(target);
@@ -87,7 +127,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   const previous = ctx.globalState.get<string>(VERSION_KEY);
   void ctx.globalState.update(VERSION_KEY, version);
   if (isNewerMinor(version, previous)) openWhatsNew(ctx);
-  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar };
+  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, envOp, focusOf, compareView, setNullPrompt };
 }
 
 export function deactivate(): void {}
