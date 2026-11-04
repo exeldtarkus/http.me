@@ -24,6 +24,12 @@
   },
   "activationEvents": [],
   "main": "./out/src/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Pre-request and post-response scripts do not run in Restricted Mode."
+    }
+  },
   "contributes": {
     "commands": [
       {
@@ -365,6 +371,16 @@
         "category": "http.me"
       },
       {
+        "command": "httpme.addScriptTypings",
+        "title": "Add Script Typings",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.showScriptRequests",
+        "title": "Show Requests Using This Script",
+        "category": "http.me"
+      },
+      {
         "command": "httpme.createScriptFile",
         "title": "Create Script File",
         "category": "http.me"
@@ -667,6 +683,10 @@
         },
         {
           "command": "httpme.createScriptFile",
+          "when": "false"
+        },
+        {
+          "command": "httpme.showScriptRequests",
           "when": "false"
         },
         {

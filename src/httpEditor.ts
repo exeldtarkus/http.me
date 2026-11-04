@@ -24,14 +24,17 @@ import { cookieFlags } from './httpFile';
 import { sendWithRelogin, sessionExpired } from './login';
 import { singleFlight } from './runner';
 import type { HttpResponse, SendOptions } from './http';
+import { applyScriptRequest, overlayKV, runChain, scriptChain, toScriptRequest, type ChainResult, type ScriptContext } from './scripts';
 
 export const REQUEST_VIEW = 'httpme.request';
 
+/** hasil script pre / post satu Send: tab Tests & Console (console sudah di-mask) */
+export type ScriptsView = { tests: ChainResult['tests']; console: ChainResult['console']; error?: string; skippedNote?: string };
 type View =
   | { kind: 'queued'; label: string; position: string }
   | { kind: 'running'; label: string }
-  | ({ kind: 'response' } & ResponseView)
-  | { kind: 'error'; message: string }
+  | ({ kind: 'response'; scripts?: ScriptsView } & ResponseView)
+  | { kind: 'error'; message: string; scripts?: ScriptsView }
   | { kind: 'cancelled' };
 type DocState = {
   /** panel http.me yang menampilkan state ini (hanya untuk key = uri file 1 request) */ panels: Set<vscode.WebviewPanel>; view?: View;
@@ -87,7 +90,10 @@ export const onRunnerChange = (l: () => void): vscode.Disposable => (listeners.a
 
 /** variable {{…}}: diisi extension.ts (Environment, Globals); tanpa hook request dikirim apa adanya */
 export type VarHooks = {
-  resolve(r: ParsedRequest): Promise<{ request: ParsedRequest; nulls: string[]; env?: string; secrets: string[] }>;
+  /** scriptVars: httpme.vars dari script pre (prioritas tertinggi) */
+  resolve(r: ParsedRequest, scriptVars?: ReadonlyMap<string, string>): Promise<{ request: ParsedRequest; nulls: string[]; env?: string; secrets: string[] }>;
+  /** httpme.environment untuk script: nilai Environment aktif + simpan current value; undefined = tidak ada Environment aktif */
+  scriptEnv(): Promise<{ values: ReadonlyMap<string, string | null>; save(changes: ReadonlyMap<string, string | undefined>): Promise<void> } | undefined>;
   /** warna token di panel: nama yang punya nilai / NULL (sisanya = tidak ditemukan) */
   panelVars(): Promise<{ ok: string[]; nulls: string[]; names: string[] }>;
   hover(name: string, file: ReadonlyMap<string, string>): Promise<HoverInfo>;
@@ -214,6 +220,22 @@ function responseText(res: Awaited<ReturnType<typeof send>>): string {
   return `${head}\n\n${prettyJson(body) ?? body}${res.truncated ? '\n\n(truncated: showing the first 1 MB)' : ''}\n`;
 }
 
+/** pre-request gagal / skip: request tidak dikirim */
+class ScriptFailure extends Error {}
+
+/** isi script: dokumen terbuka (termasuk yang belum disimpan) atau file */
+const readScript = async (file: string) =>
+  vscode.workspace.textDocuments.find((d) => d.uri.scheme === 'file' && d.uri.fsPath === file)?.getText() ?? fs.readFile(file, 'utf8');
+
+let restrictedWarned = false;
+/** Restricted Mode: script tidak dijalankan, peringatan sekali per sesi */
+function warnRestricted(): void {
+  if (restrictedWarned) return;
+  restrictedWarned = true;
+  void vscode.window.showWarningMessage('Pre-request and post-response scripts are skipped in Restricted Mode. Trust this workspace to run them.', 'Manage Workspace Trust')
+    .then((pick) => pick && vscode.commands.executeCommand('workbench.trust.manage'));
+}
+
 /** Send lewat runner (key = uri atau uri#blok): Send lama dengan key yang sama dibatalkan; hasil disimpan di state key */
 async function sendRequest(doc: vscode.TextDocument, key: string, original: ParsedRequest): Promise<void> {
   // {{variable}} diselesaikan sebelum masuk antrean; label & log memakai teks asli (tanpa nilai)
@@ -229,8 +251,14 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
     parsed = r.request;
     secrets = r.secrets;
   }
+  // script: rantai dicari sebelum antre (path tidak ada = error, request tidak dikirim)
+  const scriptsOn = doc.uri.scheme === 'file' && vscode.workspace.isTrusted;
+  if (doc.uri.scheme === 'file' && !vscode.workspace.isTrusted) warnRestricted();
+  const root = vscode.workspace.getWorkspaceFolder(doc.uri)?.uri.fsPath ?? dirname(doc.uri.fsPath);
   const s = stateFor(key);
   let relogged = false;
+  const scripts: ScriptsView = { tests: [], console: [] };
+  const hasScripts = () => scripts.tests.length > 0 || scripts.console.length > 0 || !!scripts.error || !!scripts.skippedNote;
   secrets = [...secrets, ...((await session?.values()) ?? [])]; // nilai cookie ikut di-mask di log
   const label = `${original.method} ${original.url}`;
   const token = Symbol(label);
@@ -240,6 +268,46 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
   try {
     const res = await runner.run(key, label, async (signal) => {
       if (s.token === token) { s.view = { kind: 'running', label }; postView(s); }
+      const [pre, post] = scriptsOn
+        ? await Promise.all([scriptChain(root, doc.uri.fsPath, original, 'pre'), scriptChain(root, doc.uri.fsPath, original, 'post')])
+        : [[], []];
+      let ctx: ScriptContext | undefined;
+      let env: Awaited<ReturnType<VarHooks['scriptEnv']>>;
+      let overlay: ReturnType<typeof overlayKV> | undefined;
+      const chainOpts = { root, httpFile: doc.uri.fsPath, read: readScript, signal };
+      /** satu tahap: hasil digabung ke tab Tests / Console, perubahan Environment disimpan; error = log ERROR */
+      const stage = async (chain: Awaited<ReturnType<typeof scriptChain>>, what: string): Promise<ChainResult> => {
+        const out = await runChain(chain, chainOpts, ctx!);
+        scripts.tests.push(...out.tests);
+        scripts.console.push(...out.console.map((x) => ({ ...x, text: maskValues(x.text, secrets) })));
+        const changes = overlay!.take();
+        if (changes.size) await env!.save(changes);
+        if (out.error === 'Cancelled') throw new RequestError('Cancelled', 'cancelled');
+        if (out.error) {
+          scripts.error = maskValues(`${what} script failed: ${out.error}`, secrets);
+          log().error(maskValues(errorLine(`sendRequest ${label} ${what} script`, new Error(out.error)), secrets));
+        }
+        return out;
+      };
+      if (pre.length || post.length) {
+        env = await hooks?.scriptEnv();
+        overlay = overlayKV(env?.values ?? new Map(), !!env);
+        const jar = (await session?.forUrl(parsed.url)) ?? [];
+        ctx = {
+          request: toScriptRequest(original), environment: overlay.kv, vars: new Map(),
+          cookies: { get: (n) => jar.find((c) => c.name === n)?.value, all: () => jar.map((c) => ({ name: c.name, value: c.value })) },
+        };
+      }
+      if (pre.length) {
+        const out = await stage(pre, 'Pre-request');
+        if (out.error) throw new ScriptFailure(scripts.error!);
+        if (out.skipped) { scripts.skippedNote = 'Request skipped by a pre-request script.'; throw new ScriptFailure(scripts.skippedNote); }
+        // variable diselesaikan ulang: nilai dari httpme.vars / httpme.environment.set ikut terpakai
+        const changed = applyScriptRequest(original, ctx!.request);
+        const again = await hooks?.resolve(changed, ctx!.vars);
+        parsed = again?.request ?? changed;
+        secrets = [...secrets, ...(again?.secrets ?? [])]; // secret baru dari script ikut di-mask
+      }
       await dropBodyFile(s);
       await fs.mkdir(bodyDir, { recursive: true, mode: 0o700 });
       const r = await toHttpRequestWithFile(parsed, (p) => readBodyFile(doc, p));
@@ -253,18 +321,23 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
       const rl = session?.relogin(doc.uri.toString());
       const out = await sendWithRelogin(once, (x) => sessionExpired(x, rl!.pattern), rl && (() => loginOnce(rl.login)));
       relogged = out.relogged;
+      if (post.length) {
+        ctx!.response = { status: out.res.status, headers: out.res.headers, body: out.res.binary ? '' : out.res.body.toString('utf8'), time: out.res.timeMs };
+        await stage(post, 'Post-response');
+      }
       return out.res;
     });
     if (s.token !== token) { if (res.bodyFile) await fs.rm(res.bodyFile, { force: true }); return; } // hasil Send lama: dibuang
     Object.assign(s, { bodyFile: res.bodyFile, contentType: res.headers.find(([k]) => k === 'content-type')?.[1], url: res.url, responseText: responseText(res) });
     responseChanged.fire(responseUri(key));
     const rv = responseView(res, parsed.method);
-    view = { kind: 'response', ...rv, note: relogged ? `Session expired: logged in again and resent.${rv.note ? ` ${rv.note}` : ''}` : rv.note };
+    view = { kind: 'response', ...rv, note: relogged ? `Session expired: logged in again and resent.${rv.note ? ` ${rv.note}` : ''}` : rv.note, ...(hasScripts() ? { scripts } : {}) };
   } catch (e) {
     if (e instanceof RequestError && e.kind === 'cancelled') view = { kind: 'cancelled' };
+    else if (e instanceof ScriptFailure) view = { kind: 'error', message: e.message, scripts }; // sudah dicatat ERROR di stage()
     else {
       log().error(maskValues(errorLine(`sendRequest ${label}`, e), secrets)); // gagal kirim tampil di panel, detail + stack di output channel
-      view = { kind: 'error', message: maskValues(errMsg(e), secrets) };
+      view = { kind: 'error', message: maskValues(errMsg(e), secrets), ...(hasScripts() ? { scripts } : {}) };
     }
   }
   if (s.token !== token) return; // sudah diganti Send yang lebih baru

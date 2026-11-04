@@ -78,4 +78,29 @@ export const tests: ITests = {
       await vscode.workspace.fs.delete(dir, { recursive: true });
     }
   },
+  async 'CodeLens "applies to N requests" di pre-request.js; Add Script Typings menulis httpme.d.ts + jsconfig.json'() {
+    await vscode.commands.executeCommand('httpme.whatsNew');
+    const dir = vscode.Uri.joinPath(ws(), 'tmp-lens-it');
+    const dts = vscode.Uri.joinPath(ws(), 'httpme.d.ts');
+    const jsconfig = vscode.Uri.joinPath(ws(), 'jsconfig.json');
+    try {
+      await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(dir, 'pre-request.js'), Buffer.from('// x\n'));
+      await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(dir, 'a.http'), Buffer.from('### a\nGET http://x\n\n### b\nGET http://y\n'));
+      await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(dir, 'sub/b.http'), Buffer.from('GET http://z\n'));
+      await vscode.workspace.openTextDocument(vscode.Uri.joinPath(dir, 'pre-request.js')); // provider butuh dokumen terbuka
+      const lenses = await until('lens', async () => {
+        const l = await vscode.commands.executeCommand<vscode.CodeLens[]>('vscode.executeCodeLensProvider', vscode.Uri.joinPath(dir, 'pre-request.js'));
+        return l?.length ? l : undefined;
+      });
+      assert.deepEqual(lenses.map((l) => l.command?.title), ['applies to 3 requests']);
+
+      await vscode.commands.executeCommand('httpme.addScriptTypings');
+      const text = Buffer.from(await vscode.workspace.fs.readFile(dts)).toString('utf8');
+      assert.match(text, /declare const httpme: Httpme;/);
+      assert.deepEqual(JSON.parse(Buffer.from(await vscode.workspace.fs.readFile(jsconfig)).toString('utf8')).compilerOptions.lib, ['es2022']);
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      for (const u of [dir, dts, jsconfig]) await vscode.workspace.fs.delete(u, { recursive: true }).then(undefined, () => undefined);
+    }
+  },
 };

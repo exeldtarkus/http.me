@@ -9,7 +9,9 @@ export async function run(): Promise<void> {
   const dir = join(__dirname, '..');
   const failed: string[] = [];
   let passed = 0;
-  for (const f of readdirSync(dir).filter((x) => x.endsWith('.itest.js')).sort()) {
+  // ITEST=scriptLinks,scriptsFlow: hanya file itest itu (debug cepat)
+  const only = process.env.ITEST?.split(',').filter(Boolean);
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.itest.js') && (!only || only.some((o) => x.startsWith(o)))).sort()) {
     const { tests } = require(join(dir, f)) as { tests: ITests };
     for (const [name, fn] of Object.entries(tests)) {
       try {

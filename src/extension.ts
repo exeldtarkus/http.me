@@ -60,9 +60,22 @@ export type HttpmeApi = {
 function variableHooks(envs: Environments): vscode.Disposable {
   return setVarHooks({
     onChange: envs.onDidChange,
-    async resolve(r) {
-      const res = resolveRequest(r, await envs.scopes(r.vars));
+    async resolve(r, scriptVars) {
+      const scopes = await envs.scopes(r.vars);
+      const res = resolveRequest(r, scriptVars?.size ? [{ source: 'script', values: scriptVars }, ...scopes] : scopes);
       return { ...res, env: envs.active, secrets: await envs.secretValues() };
+    },
+    async scriptEnv() {
+      const name = envs.active;
+      if (!name) return undefined;
+      const secret = new Set((await envs.vars(name)).filter((x) => x.secret).map((x) => x.key));
+      return {
+        values: await envs.values(name),
+        // current value lokal / SecretStorage, file Environment tidak diubah
+        async save(changes) {
+          for (const [k, v] of changes) await (secret.has(k) ? envs.setSecret(name, k, v) : envs.setCurrent(name, k, v));
+        },
+      };
     },
     async panelVars() {
       const c = await envs.context();

@@ -108,3 +108,54 @@ test('runScript: require hanya crypto/buffer/url/querystring/util + .js lokal di
     }
   });
 });
+
+test('runChain: script jalan berurutan berbagi konteks, test & console digabung, error menghentikan rantai (nama script di pesan)', async () => {
+  const { runChain } = await import('../../src/scripts');
+  const files: Record<string, string> = {
+    '/w/a/pre-request.js': 'httpme.vars.set("n", "1"); console.log("a")',
+    '/w/a/b/sign.js': 'httpme.vars.set("n", httpme.vars.get("n") + "2"); httpme.test("t", () => {})',
+    '/w/a/b/bad.js': 'throw new Error("no token")',
+  };
+  const o = { root: '/w', httpFile: '/w/a/b/r.http', read: async (f: string) => files[f] };
+  const c = ctx();
+  const ok = await runChain([{ file: '/w/a/pre-request.js' }, { file: '/w/a/b/sign.js' }, { inline: 'console.log(httpme.vars.get("n"))' }], o, c);
+  assert.deepEqual(ok, { tests: [{ name: 't', passed: true }], console: [{ level: 'log', text: 'a' }, { level: 'log', text: '12' }], skipped: false });
+  const bad = await runChain([{ file: '/w/a/b/bad.js' }, { inline: 'console.log("never")' }], o, ctx());
+  assert.match(bad.error!, /^\.\/bad\.js: Error: no token/);
+  assert.deepEqual(bad.console, []);
+  const skip = await runChain([{ inline: 'httpme.skip()' }, { inline: 'console.log("x")' }], o, ctx());
+  assert.equal(skip.skipped, true);
+  assert.equal(skip.console.length, 1, 'skip tidak menghentikan rantai');
+});
+
+test('toScriptRequest / applyScriptRequest: header aktif ke script, header nonaktif tetap, body diganti = bodyFile dilepas', async () => {
+  const { toScriptRequest, applyScriptRequest } = await import('../../src/scripts');
+  const { parseRequest } = await import('../../src/httpFile');
+  const r = parseRequest('# @disabled X-Off: 1\nPOST http://x\nA: 1\n\n< ./body.json\n');
+  const s: import("../../src/scripts").ScriptRequest = toScriptRequest(r);
+  assert.deepEqual({ ...s }, { method: 'POST', url: 'http://x', headers: [['A', '1']], body: undefined });
+  assert.equal(applyScriptRequest(r, s).bodyFile, './body.json', 'body tidak disentuh');
+  s.headers.push(['B', '{{sig}}']);
+  s.body = '{}';
+  s.method = 'PUT';
+  const out = applyScriptRequest(r, s);
+  assert.deepEqual(out.headers, [{ name: 'A', value: '1', enabled: true }, { name: 'B', value: '{{sig}}', enabled: true }, { name: 'X-Off', value: '1', enabled: false }]);
+  assert.equal(out.method, 'PUT');
+  assert.equal(out.body, '{}');
+  assert.equal(out.bodyFile, undefined);
+});
+
+test('overlayKV: set / unset terlihat langsung di script, perubahan dikumpulkan untuk disimpan (bukan ke file); tanpa Environment aktif = error', async () => {
+  const { overlayKV } = await import('../../src/scripts');
+  const base = new Map<string, string | null>([['a', '1'], ['n', null]]);
+  const o = overlayKV(base, true);
+  o.kv.set('a', '2'); o.kv.set('b', 'x'); o.kv.unset('n');
+  assert.deepEqual([o.kv.get('a'), o.kv.get('b'), o.kv.has('n'), o.kv.get('n')], ['2', 'x', false, undefined]);
+  assert.deepEqual([...o.take()], [['a', '2'], ['b', 'x'], ['n', undefined]]);
+  assert.deepEqual([...o.take()], [], 'take mengosongkan perubahan');
+  assert.equal(o.kv.get('a'), '2', 'nilai tetap terlihat setelah take');
+  assert.deepEqual([...base], [['a', '1'], ['n', null]], 'map asal tidak diubah');
+  const none = overlayKV(new Map(), false);
+  assert.throws(() => none.kv.set('a', '1'), /No active Environment/);
+  assert.equal(none.kv.get('a'), undefined);
+});

@@ -10,6 +10,7 @@ runTests({
   version: process.env.VSCODE_VERSION ?? 'stable',
   extensionDevelopmentPath: root,
   extensionTestsPath: join(__dirname, 'index.js'),
+  extensionTestsEnv: process.env.ITEST ? { ITEST: process.env.ITEST } : undefined,
   launchArgs: [join(root, 'test-extension'), '--disable-extensions', '--disable-workspace-trust'],
 }).catch((e) => {
   console.error(`test:it - EXCEPTION CAUGHT | ${e instanceof Error ? e.stack : String(e)}`);

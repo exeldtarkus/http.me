@@ -74,3 +74,8 @@ test('release.yml memakai kanal dari deploy-v2.sh --channel', () => {
   assert.match(yml, /--pre-release/);
   assert.match(yml, /--prerelease/);
 });
+
+test('Workspace Trust: tetap jalan di Restricted Mode (limited), script dilewati', () => {
+  assert.equal(pkg.capabilities?.untrustedWorkspaces?.supported, 'limited');
+  assert.match(pkg.capabilities.untrustedWorkspaces.description, /scripts/i);
+});

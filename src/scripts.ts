@@ -1,7 +1,7 @@
 // script pre-request / post-request (tanpa vscode): cari rantai script untuk satu request .http
 import { promises as fs } from 'node:fs';
 import { basename, dirname, join, relative, resolve, isAbsolute, sep } from 'node:path';
-import type { ParsedRequest } from './httpFile';
+import { parseRequest, splitBlocks, type ParsedRequest } from './httpFile';
 
 export type ScriptKind = 'pre' | 'post';
 /** file .js (path absolut) atau script inline `{% … %}` (isi tanpa pembatas) */
@@ -249,3 +249,80 @@ export async function runScript(code: string, opts: RunOptions, c: ScriptContext
   }
   return result;
 }
+
+// ---- rantai script satu tahap (pre / post) ----
+export type ChainResult = { tests: TestResult[]; console: ConsoleLine[]; error?: string; skipped: boolean };
+export type ChainOptions = { root: string; httpFile: string; read(file: string): Promise<string>; signal?: AbortSignal; limits?: RunOptions['limits'] };
+
+/** jalankan rantai berurutan dengan konteks yang sama; script yang gagal menghentikan rantai */
+export async function runChain(chain: readonly ScriptRef[], o: ChainOptions, c: ScriptContext): Promise<ChainResult> {
+  const out: ChainResult = { tests: [], console: [], skipped: false };
+  for (const ref of chain) {
+    const name = 'file' in ref ? relScriptPath(dirname(o.httpFile), ref.file) : 'inline script';
+    let code: string;
+    try {
+      code = 'file' in ref ? await o.read(ref.file) : ref.inline;
+    } catch (e) {
+      // file tidak terbaca = error rantai (pemanggil mencatat log ERROR)
+      out.error = `${name}: ${message(e)}`;
+      return out;
+    }
+    const r = await runScript(code, { file: 'file' in ref ? ref.file : o.httpFile, root: o.root, signal: o.signal, limits: o.limits }, c);
+    out.tests.push(...r.tests);
+    out.console.push(...r.console);
+    out.skipped ||= r.skipped;
+    if (r.error) { out.error = r.error === 'Cancelled' ? r.error : `${name}: ${r.error}`; return out; }
+  }
+  return out;
+}
+
+/** request untuk script pre: header aktif, body teks (body `< ./file` = undefined) */
+export const toScriptRequest = (r: ParsedRequest): ScriptRequest => ({
+  method: r.method, url: r.url, headers: r.headers.filter((h) => h.enabled).map((h): [string, string] => [h.name, h.value]), body: r.bodyFile ? undefined : r.body || undefined,
+});
+
+/** perubahan script pre kembali ke ParsedRequest (header nonaktif tetap; body diganti = body file dilepas) */
+export function applyScriptRequest(r: ParsedRequest, s: ScriptRequest): ParsedRequest {
+  const before = toScriptRequest(r).body;
+  const body = Buffer.isBuffer(s.body) ? s.body.toString('utf8') : s.body;
+  const changed = body !== before;
+  return {
+    ...r, method: s.method, url: s.url,
+    headers: [...s.headers.map(([name, value]) => ({ name, value, enabled: true })), ...r.headers.filter((h) => !h.enabled)],
+    ...(changed ? { body: body ?? '', bodyFile: undefined } : {}),
+  };
+}
+
+/**
+ * httpme.environment untuk script: set / unset langsung terlihat, perubahan dikumpulkan (take) lalu disimpan pemanggil
+ * sebagai current value (workspace state / SecretStorage), file Environment di repo tidak diubah
+ */
+export function overlayKV(base: ReadonlyMap<string, string | null>, writable: boolean): { kv: KV; take(): Map<string, string | undefined> } {
+  const view = new Map(base);
+  let changes = new Map<string, string | undefined>();
+  const write = (k: string, v: string | undefined) => {
+    if (!writable) throw new Error('No active Environment: select an Environment to use httpme.environment.set / unset');
+    changes.set(k, v);
+    if (v === undefined) view.delete(k); else view.set(k, v);
+  };
+  return {
+    kv: { get: (k) => view.get(k), has: (k) => view.has(k) && view.get(k) !== null, set: (k, v) => write(k, v), unset: (k) => write(k, undefined) },
+    take() { const out = changes; changes = new Map(); return out; },
+  };
+}
+
+/** CodeLens folder script: jumlah request (blok) di .http folder itu & subfoldernya yang menjalankannya */
+export function appliesTo(scriptFile: string, files: readonly { path: string; text: string }[]): number {
+  const dir = dirname(scriptFile);
+  const kind: ScriptKind = /post-request\.js$/i.test(scriptFile) ? 'post' : 'pre';
+  let n = 0;
+  for (const f of files) {
+    if (!f.path.startsWith(dir + sep)) continue;
+    for (const b of splitBlocks(f.text)) {
+      const r = parseRequest(b.text);
+      if (!r.noScripts && !(kind === 'pre' ? r.noPre : r.noPost)) n++;
+    }
+  }
+  return n;
+}
+

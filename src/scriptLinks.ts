@@ -2,8 +2,9 @@
 // path tidak ada = diagnostics + Quick Fix Create file, autocomplete path .js, rename script = tawaran update .http
 import * as vscode from 'vscode';
 import { dirname } from 'node:path';
-import { relScriptPath, renameEdits, scriptPaths, scriptTemplate, sidecarMoves, type PathRef } from './scripts';
+import { appliesTo, relScriptPath, renameEdits, scriptPaths, scriptTemplate, sidecarMoves, type PathRef } from './scripts';
 import { HTTP_FILES } from './codelens';
+import { SCRIPT_TYPINGS, jsconfigText } from './scriptTypings';
 import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
 
@@ -57,6 +58,39 @@ async function renameParticipant(e: vscode.FileWillRenameEvent): Promise<vscode.
   const pick = await vscode.window.showInformationMessage(`Update ${count} .http file${count === 1 ? '' : 's'} that reference ${name}?`, { modal: true }, 'Update');
   return pick === 'Update' ? edit : new vscode.WorkspaceEdit();
 }
+
+/** httpme.d.ts (selalu versi terbaru) + jsconfig.json (bila belum ada) di folder workspace */
+async function addScriptTypings(): Promise<void> {
+  try {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const folder = folders.length > 1 ? await vscode.window.showWorkspaceFolderPick({ placeHolder: 'Add script typings to which folder?' }) : folders[0];
+    if (!folder) return void (folders.length ? undefined : vscode.window.showWarningMessage('Open a folder first to add script typings.'));
+    const dts = vscode.Uri.joinPath(folder.uri, 'httpme.d.ts');
+    const jsconfig = vscode.Uri.joinPath(folder.uri, 'jsconfig.json');
+    await vscode.workspace.fs.writeFile(dts, Buffer.from(SCRIPT_TYPINGS));
+    const old = await Promise.resolve(vscode.workspace.fs.readFile(jsconfig)).then((b) => Buffer.from(b).toString('utf8'), () => undefined); // belum ada = dibuat
+    const text = jsconfigText(old);
+    if (text) await vscode.workspace.fs.writeFile(jsconfig, Buffer.from(text));
+    void vscode.window.showInformationMessage(`Added httpme.d.ts${text ? ' and jsconfig.json' : ''}: IntelliSense for httpme. in scripts.`);
+  } catch (e) {
+    reportError('addScriptTypings', e, `Add Script Typings failed: ${errMsg(e)}`);
+  }
+}
+
+/** CodeLens di folder script: "applies to N requests" (.http di folder itu & subfolder) */
+const scriptLens: vscode.CodeLensProvider = {
+  async provideCodeLenses(doc) {
+    if (doc.uri.scheme !== 'file') return [];
+    const dir = dirname(doc.uri.fsPath);
+    const uris = await vscode.workspace.findFiles(new vscode.RelativePattern(dir, '**/*.http'), '**/node_modules/**', 5000);
+    const files = await Promise.all(uris.map(async (u) => ({
+      path: u.fsPath,
+      text: vscode.workspace.textDocuments.find((d) => d.uri.toString() === u.toString())?.getText() ?? Buffer.from(await vscode.workspace.fs.readFile(u)).toString('utf8'),
+    })));
+    const n = appliesTo(doc.uri.fsPath, files);
+    return [new vscode.CodeLens(new vscode.Range(0, 0, 0, 0), { title: `applies to ${n} request${n === 1 ? '' : 's'}`, command: 'httpme.showScriptRequests', arguments: [uris] })];
+  },
+};
 
 export function registerScriptLinks(): vscode.Disposable {
   const collection = vscode.languages.createDiagnosticCollection('http.me scripts');
@@ -166,6 +200,12 @@ export function registerScriptLinks(): vscode.Disposable {
       log().error(errorLine('scriptLinks.rename', err));
       return new vscode.WorkspaceEdit();
     }))),
+    vscode.commands.registerCommand('httpme.addScriptTypings', addScriptTypings),
+    // klik CodeLens folder script: pilih .http yang memakainya lalu buka
+    vscode.commands.registerCommand('httpme.showScriptRequests', async (uris: vscode.Uri[]) => {
+      const pick = await vscode.window.showQuickPick(uris.map((u) => ({ label: vscode.workspace.asRelativePath(u), uri: u })), { placeHolder: 'Requests that run this script' });
+      if (pick) await vscode.window.showTextDocument(pick.uri);
+    }),
     vscode.commands.registerCommand('httpme.createScriptFile', async (target: vscode.Uri, kind: PathRef['kind']) => {
       try {
         await vscode.workspace.fs.writeFile(target, Buffer.from(kind === 'body' ? '' : scriptTemplate(kind)));
@@ -178,6 +218,7 @@ export function registerScriptLinks(): vscode.Disposable {
     vscode.languages.registerCompletionItemProvider(HTTP_FILES, completion, ' ', '/', '.'),
     new vscode.Disposable(() => timers.forEach((t) => clearTimeout(t))),
     vscode.languages.registerDocumentLinkProvider(HTTP_FILES, links),
+    vscode.languages.registerCodeLensProvider({ pattern: '**/{pre,post}-request.js' }, scriptLens),
     vscode.languages.registerDefinitionProvider(HTTP_FILES, definition),
     vscode.languages.registerHoverProvider(HTTP_FILES, hover),
   );

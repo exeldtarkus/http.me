@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ownScript, relScriptPath, renameEdits, scriptChain, scriptPaths, scriptTemplate, sidecarMoves } from '../../src/scripts';
+import { appliesTo, ownScript, relScriptPath, renameEdits, scriptChain, scriptPaths, scriptTemplate, sidecarMoves } from '../../src/scripts';
 import { parseRequest } from '../../src/httpFile';
 import { withTempDir } from './helpers/tmp';
 
@@ -108,3 +108,17 @@ test('sidecarMoves: rename / pindah .http ikut memindahkan script miliknya', () 
   ]);
   assert.deepEqual(sidecarMoves('/w/a/r.txt', '/w/a/r.http'), []);
 });
+
+test('appliesTo: jumlah request (blok) .http di folder script & subfolder, kecuali @no-scripts / @no-pre / @no-post', () => {
+  const files = [
+    { path: '/w/a/r1.http', text: 'GET http://x\n' },
+    { path: '/w/a/b/r2.http', text: '### one\nGET http://x\n\n### two\n# @no-pre\nGET http://y\n' },
+    { path: '/w/a/r3.http', text: '# @no-scripts\nGET http://x\n' },
+    { path: '/w/ab/r4.http', text: 'GET http://x\n' },
+    { path: '/w/r5.http', text: 'GET http://x\n' },
+  ];
+  assert.equal(appliesTo('/w/a/pre-request.js', files), 2);
+  assert.equal(appliesTo('/w/a/post-request.js', files), 3);
+  assert.equal(appliesTo('/w/pre-request.js', files), 4);
+});
+
