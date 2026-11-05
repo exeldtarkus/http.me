@@ -129,3 +129,11 @@ test('review R33: output response di panel bawah (samping Terminal): view contai
   assert.ok(panel.some((c) => c.id === 'httpme-output' && c.title === 'http.me'), 'container panel http.me');
   assert.deepEqual(pkg.contributes.views['httpme-output'], [{ type: 'webview', id: 'httpme.response', name: 'Response' }]);
 });
+
+test('review R47: Open / Environments / Cookies menampilkan "Loading http.me…" selama extension aktif (tidak kosong); "No open requests" setelah dimuat', () => {
+  const welcome = pkg.contributes.viewsWelcome as { view: string; contents: string; when: string }[];
+  for (const view of ['httpme.open', 'httpme.environments', 'httpme.cookies']) {
+    assert.ok(welcome.some((w) => w.view === view && w.contents === 'Loading http.me…' && w.when === 'workbenchState != empty && !httpme.loaded'), view);
+  }
+  assert.equal(welcome.find((w) => w.view === 'httpme.open' && w.contents.startsWith('No open requests'))?.when, 'workbenchState != empty && httpme.loaded');
+});

@@ -1166,8 +1166,23 @@
       },
       {
         "view": "httpme.open",
+        "contents": "Loading http.me…",
+        "when": "workbenchState != empty && !httpme.loaded"
+      },
+      {
+        "view": "httpme.environments",
+        "contents": "Loading http.me…",
+        "when": "workbenchState != empty && !httpme.loaded"
+      },
+      {
+        "view": "httpme.cookies",
+        "contents": "Loading http.me…",
+        "when": "workbenchState != empty && !httpme.loaded"
+      },
+      {
+        "view": "httpme.open",
         "contents": "No open requests.\n[New Request](command:httpme.newRequest)",
-        "when": "workbenchState != empty"
+        "when": "workbenchState != empty && httpme.loaded"
       }
     ],
     "configuration": {
