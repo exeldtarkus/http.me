@@ -573,6 +573,13 @@
           "meta.embedded.block.xml": "xml",
           "meta.embedded.block.javascript": "javascript"
         }
+      },
+      {
+        "scopeName": "source.http.variables",
+        "path": "./syntaxes/http.variables.tmLanguage.json",
+        "injectTo": [
+          "source.http"
+        ]
       }
     ],
     "menus": {

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "scopeName": "source.http.variables",
+  "injectionSelector": "L:meta.embedded.block.json, L:meta.embedded.block.xml",
+  "patterns": [
+    {
+      "include": "source.http#variable"
+    }
+  ]
+}

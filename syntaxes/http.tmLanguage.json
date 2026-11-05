@@ -97,8 +97,25 @@
       }
     },
     "variable": {
-      "match": "\\{\\{\\s*[^}]*\\}\\}",
-      "name": "variable.other.http"
+      "match": "(\\{\\{)\\s*(?:(\\$[\\w.-]+)([^}]*?)|([^}]*?))\\s*(\\}\\})",
+      "name": "meta.template.expression.http",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.template-expression.begin.http"
+        },
+        "2": {
+          "name": "support.function.dynamic.http"
+        },
+        "3": {
+          "name": "variable.parameter.http"
+        },
+        "4": {
+          "name": "variable.other.constant.http"
+        },
+        "5": {
+          "name": "punctuation.definition.template-expression.end.http"
+        }
+      }
     },
     "json-body": {
       "begin": "^\\s*(?=[\\{\\[])",
