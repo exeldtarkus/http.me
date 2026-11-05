@@ -1279,24 +1279,27 @@
   $('expandAll').onclick = () => { resRows().forEach((r) => r.classList.remove('shut')); refreshRows(); };
   $('collapseAll').onclick = () => { resRows().slice(1).forEach((r) => r.classList.toggle('shut', r.classList.contains('fo'))); refreshRows(); }; // akar tetap terbuka
   // Code snippet (panel kanan): host membuat teksnya (variable, secret, cookie), webview hanya meminta dan menampilkan
-  const snippetOpts = () => ({ language: $('cpLang').value, ...Object.fromEntries([...document.querySelectorAll('#cpOpts input')].map((i) => [i.dataset.o, i.checked])) });
+  const snippetOpts = () => ({ language: $('cpLang').value, ...Object.fromEntries([...document.querySelectorAll('#cpOpts input[data-o]')].map((i) => [i.dataset.o, i.checked])) });
   let snippetTimer;
   function askSnippet() {
     if ($('codePanel').hidden) return;
     clearTimeout(snippetTimer);
     snippetTimer = setTimeout(() => post({ type: 'snippet', req, opts: snippetOpts() }), 150);
   }
-  const toggleCode = (on = $('codePanel').hidden) => {
+  const toggleCode = (on = $('codePanel').hidden, focusBtn = true) => {
     $('codePanel').hidden = !on;
     $('codeBtn').setAttribute('aria-expanded', String(on));
-    if (on) askSnippet(); else $('codeBtn').focus();
+    if (on) askSnippet(); else if (focusBtn) $('codeBtn').focus(); // klik di luar: fokus tetap di tempat yang diklik
   };
   $('codeBtn').onclick = () => toggleCode();
   $('cpClose').onclick = () => toggleCode(false);
   $('cpLang').onchange = askSnippet;
   $('cpOpts').onchange = askSnippet;
+  $('cpWrap').onchange = () => $('cpText').classList.toggle('wrap', $('cpWrap').checked);
   $('cpCopy').onclick = () => post({ type: 'copySnippet', req, opts: snippetOpts() });
   $('codePanel').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); toggleCode(false); } });
+  // klik di luar panel (dan di luar tombolnya) menutup panel; tombol </> sendiri yang mengatur buka / tutup
+  document.addEventListener('mousedown', (e) => { if (!$('codePanel').hidden && !e.target.closest('#codePanel, #codeBtn')) toggleCode(false, false); }, true);
   document.addEventListener('keydown', (e) => { if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'c') { e.preventDefault(); toggleCode(); } });
   // cari di body: sorot lewat CSS Custom Highlight (DOM body tidak diubah, lipatan JSON tetap utuh)
   let found = [], foundAt = 0;
@@ -1676,6 +1679,7 @@
     if (m.type === 'authError' && typeof m.message === 'string') $('authNotice').textContent = m.message;
     if (m.blocks) renderBlocks(m.blocks, m.active);
     if (m.type === 'vars') { vars = { ok: m.ok, nulls: m.nulls, names: m.names }; syncMirrors(); askSnippet(); }
+    if (m.type === 'snippetCopied') { $('cpCopy').classList.add('done'); $('cpCopy').title = 'Copied'; setTimeout(() => { $('cpCopy').classList.remove('done'); $('cpCopy').title = 'Copy snippet'; }, 1500); }
     if (m.type === 'snippet') { $('cpText').textContent = m.text; $('cpNote').textContent = m.secrets ? 'Secret values are shown as ********.' : ''; }
     if (m.type === 'varHover') showHover(m.name, m.info);
     if (m.type === 'matching') $('matching').hidden = !m.on;

@@ -533,7 +533,7 @@ async function handleOAuth(doc: vscode.TextDocument, kind: 'oauth2Token' | 'oaut
 const isSnippetOptions = (v: unknown): v is SnippetOptions => {
   const o = v as SnippetOptions;
   return !!o && typeof o === 'object' && ['curl', 'cmd', 'powershell'].includes(o.language)
-    && ['longForm', 'resolve', 'followRedirects', 'cookies', 'disabledHeaders', 'multiLine'].every((k) => typeof o[k as keyof SnippetOptions] === 'boolean');
+    && ['longForm', 'resolve', 'followRedirects', 'cookies', 'disabledHeaders', 'multiLine', 'compactBody'].every((k) => typeof o[k as keyof SnippetOptions] === 'boolean');
 };
 
 /** panel Code snippet: variable / auth / cookie diselesaikan di sini; secret tampil ******** dan Copy meminta konfirmasi bila isinya memuat secret */
@@ -569,7 +569,7 @@ async function handleSnippet(doc: vscode.TextDocument, kind: 'snippet' | 'copySn
     if (pick === 'Copy with secret values') text = raw;
   }
   await vscode.env.clipboard.writeText(text);
-  void vscode.window.showInformationMessage('Code snippet copied.');
+  post({ type: 'snippetCopied' });
 }
 
 /** teks response untuk dokumen "Show Response": status, header, baris kosong, body (JSON dirapikan) */
