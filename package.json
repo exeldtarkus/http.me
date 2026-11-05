@@ -563,6 +563,17 @@
         ]
       }
     ],
+    "grammars": [
+      {
+        "language": "http",
+        "scopeName": "source.http",
+        "path": "./syntaxes/http.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.json": "json",
+          "meta.embedded.block.xml": "xml"
+        }
+      }
+    ],
     "menus": {
       "editor/title": [
         {
