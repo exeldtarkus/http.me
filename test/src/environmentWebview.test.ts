@@ -87,7 +87,7 @@ test('review R14: tombol Save di editor Environment & panel request', () => {
 });
 test('review R15: Save (tombol & Ctrl+S) memicu sync key ke semua Environment, Globals tidak', () => {
   const src = (require('node:fs') as typeof import('node:fs')).readFileSync(join(__dirname, '..', '..', '..', 'src', 'envState.ts'), 'utf8');
-  assert.match(src, /vscode\.workspace\.onDidSaveTextDocument\(\(d\) => \{ const name = this\.nameOf\(d\.uri\); if \(name === undefined \|\| name === GLOBALS\) return; void this\.sync\(\)/);
+  assert.match(src, /vscode\.workspace\.onDidSaveTextDocument\(\(d\) => \{\s*const name = this\.nameOf\(d\.uri\);\s*if \(name === undefined \|\| name === GLOBALS\) return;[\s\S]*?this\.sync\(\)/);
 });
 test('review R20: tombol Save di bawah editor Environment (setelah tabel & catatan)', () => {
   const html = require('node:fs').readFileSync(join(media, 'environment.html'), 'utf8') as string;

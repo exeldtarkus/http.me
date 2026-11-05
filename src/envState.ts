@@ -248,7 +248,13 @@ export class Environments {
       }),
       new vscode.Disposable(() => { clearTimeout(timer); clearTimeout(docTimer); }),
       // Save (tombol editor atau Ctrl+S): key disinkronkan ke semua Environment; Globals tidak ikut
-      vscode.workspace.onDidSaveTextDocument((d) => { const name = this.nameOf(d.uri); if (name === undefined || name === GLOBALS) return; void this.sync().catch((e) => log().error(errorLine('Environments.save', e))); }),
+      vscode.workspace.onDidSaveTextDocument((d) => {
+        const name = this.nameOf(d.uri);
+        if (name === undefined || name === GLOBALS) return;
+        // editor teks tidak punya tombol / pesan: beri tahu hasil sync, dan kegagalan (JSON Environment lain rusak) tampil, bukan hanya di log
+        this.sync().then((changed) => { if (changed.length) void vscode.window.showInformationMessage(`Synced keys in ${changed.join(', ')}.`); })
+          .catch((e) => reportError('Environments.save', e, `Sync after save failed: ${errMsg(e)}`));
+      }),
     );
   }
 }
