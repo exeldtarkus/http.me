@@ -90,3 +90,13 @@ export function defaultFileName(url: string): string {
   const parts = path.split('/').map((p) => p.replace(/\{\{|\}\}/g, '').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '')).filter(Boolean);
   return `${parts.slice(-2).join('-') || 'request'}.http`;
 }
+
+/** indikator loading section sidebar: start() dipanggil saat muatan pertama mulai, fungsi kembaliannya saat semua muatan selesai */
+export function busyTracker(start: () => () => void): <T>(p: Promise<T>) => Promise<T> {
+  let running = 0;
+  let end: (() => void) | undefined;
+  return (p) => {
+    if (running++ === 0) end = start();
+    return p.finally(() => { if (--running === 0) end?.(); });
+  };
+}

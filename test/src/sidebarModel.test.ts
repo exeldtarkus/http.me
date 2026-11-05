@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { arrangeOpen, defaultFileName, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED } from '../../src/sidebarModel';
+import { arrangeOpen, defaultFileName, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED, busyTracker } from '../../src/sidebarModel';
 
 test('folderChildren: folder dulu lalu file, urut nama; folder kosong (.httpmekeep) ikut; tampilan rata', () => {
   const files = ['api/auth/login.http', 'api/users.http', 'b.http', 'a.http'];
@@ -62,4 +62,19 @@ test('defaultFileName: dua segmen path terakhir digabung "-", query & {{var}} ho
   assert.equal(defaultFileName('https://api.test/'), 'request.http');
   assert.equal(defaultFileName(''), 'request.http');
   assert.equal(defaultFileName('https://a/x:y*z'), 'x-y-z.http');
+});
+
+test('review R46: busyTracker: satu indikator loading selama ada muatan berjalan (tumpang tindih = satu), selesai setelah semua selesai / gagal', async () => {
+  const log: string[] = [];
+  const busy = busyTracker(() => { log.push('start'); return () => log.push('end'); });
+  let a!: () => void;
+  const pa = busy(new Promise<void>((ok) => { a = ok; }));
+  const pb = busy(Promise.reject(new Error('x')));
+  await pb.catch(() => undefined);
+  assert.deepEqual(log, ['start'], 'masih ada yang berjalan');
+  a();
+  await pa;
+  assert.deepEqual(log, ['start', 'end']);
+  await busy(Promise.resolve(1));
+  assert.deepEqual(log, ['start', 'end', 'start', 'end'], 'muatan berikutnya = indikator baru');
 });
