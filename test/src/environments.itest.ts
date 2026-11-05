@@ -178,6 +178,7 @@ export const tests: ITests = {
       // file Environment: "value": null
       const envDoc = await vscode.workspace.openTextDocument(envUri('dev'));
       await until(() => vscode.languages.getDiagnostics(envDoc.uri).some((d) => d.message === 'apiKey has no value (NULL) in Environment "dev"'), 'diagnostics JSON');
+      assert.ok(vscode.languages.getDiagnostics(envDoc.uri).every((d) => d.severity === vscode.DiagnosticSeverity.Information), 'NULL di file Environment bukan error');
 
       const fixes = await vscode.commands.executeCommand<vscode.CodeAction[]>('vscode.executeCodeActionProvider', uri, diags[1].range);
       const ours = (list: vscode.CodeAction[]) => list.filter((f) => f.command?.command.startsWith('httpme.')).map((f) => f.title); // aksi bawaan VS Code (chat) diabaikan
