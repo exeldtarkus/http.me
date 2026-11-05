@@ -589,3 +589,11 @@ test('bodyNotice: cancelled, error, 4xx/5xx singkat & body kosong tampil kartu d
   assert.equal(n(r('400', 'st-4', '<span>{}</span>', { format: 'JSON' })), undefined);
   assert.equal(n(undefined), undefined);
 });
+
+test('findMatches: tanpa beda huruf besar/kecil, tidak tumpang tindih, kueri kosong = tidak ada', () => {
+  const f = (panel as unknown as { findMatches(t: string, q: string): { start: number; end: number }[] }).findMatches;
+  assert.deepEqual(f('Foo foo FOO', 'foo'), [{ start: 0, end: 3 }, { start: 4, end: 7 }, { start: 8, end: 11 }]);
+  assert.deepEqual(f('aaaa', 'aa'), [{ start: 0, end: 2 }, { start: 2, end: 4 }]);
+  assert.deepEqual(f('abc', ''), []);
+  assert.deepEqual(f('a.b a+b', 'a.b'), [{ start: 0, end: 3 }]);
+});

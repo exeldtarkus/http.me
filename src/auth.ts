@@ -1,5 +1,8 @@
 import { createHash, createHmac, createPrivateKey, randomBytes, sign as cryptoSign, type KeyObject } from 'node:crypto';
-import type { HttpRequest } from './http';
+import type { BodyStream, HttpRequest } from './http';
+
+/** teks body untuk hash / tanda tangan; body stream dari disk tidak ikut dihitung (shortcut: file besar tidak di-hash, upgrade bila perlu SigV4 / Hawk payload untuk upload) */
+const bodyText = (b: string | Buffer | BodyStream | undefined): string | Buffer => (typeof b === 'string' || Buffer.isBuffer(b) ? b : '');
 import type { Header } from './httpFile';
 
 export type AuthType = 'inherit' | 'none' | 'apiKey' | 'basic' | 'bearer' | 'digest' | 'hawk' | 'jwt' | 'oauth1' | 'oauth2' | 'aws';
@@ -266,7 +269,7 @@ function applyAws(copy: HttpRequest, config: AuthConfig, values: ReadonlyMap<str
     .map(([k, v]) => `${k}=${v}`).join('&');
   const path = service === 's3' ? url.pathname : url.pathname.split('/').map((seg) => rfc3986(seg)).join('/'); // non-S3: segmen di-encode dua kali
   const signed = headers.map(([n]) => n).join(';');
-  const body = copy.body ?? '';
+  const body = bodyText(copy.body);
   const canonicalRequest = `${copy.method.toUpperCase()}\n${path || '/'}\n${query}\n${headers.map(([n, v]) => `${n}:${v.trim()}\n`).join('')}\n${signed}\n${sha256(body)}`;
   const scope = `${day}/${region}/${service}/aws4_request`;
   const toSign = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n${sha256(canonicalRequest)}`;
@@ -310,7 +313,7 @@ export function digestAuthorization(config: AuthConfig, request: HttpRequest, ch
   const uri = `${url.pathname}${url.search}`;
   let ha1 = H(`${f.username}:${realm}:${f.password}`);
   if (m[2]) ha1 = H(`${ha1}:${nonce}:${cnonce}`);
-  const ha2 = H(qop === 'auth-int' ? `${request.method.toUpperCase()}:${uri}:${H(request.body ?? '')}` : `${request.method.toUpperCase()}:${uri}`);
+  const ha2 = H(qop === 'auth-int' ? `${request.method.toUpperCase()}:${uri}:${H(bodyText(request.body))}` : `${request.method.toUpperCase()}:${uri}`);
   const response = qop ? H(`${ha1}:${nonce}:${nc}:${cnonce}:${qop}:${ha2}`) : H(`${ha1}:${nonce}:${ha2}`);
   const q = (v: string) => `"${v.replace(/["\\]/g, '\\$&')}"`;
   const parts = [`username=${q(f.username)}`, `realm=${q(realm)}`, `nonce=${q(nonce)}`, `uri=${q(uri)}`,
@@ -346,7 +349,7 @@ function applyHawk(copy: HttpRequest, config: AuthConfig, values: ReadonlyMap<st
   const ext = f.ext ? resolve(f.ext, values) : '';
   const url = new URL(copy.url);
   const port = url.port || (url.protocol === 'https:' ? '443' : '80');
-  const body = copy.body === undefined ? '' : String(copy.body);
+  const body = String(bodyText(copy.body));
   const type = copy.headers.find(([n]) => n.toLowerCase() === 'content-type')?.[1].split(';')[0].trim().toLowerCase() ?? '';
   const payload = body ? createHash(hash).update(`hawk.1.payload\n${type}\n${body}\n`).digest('base64') : '';
   const lines = ['hawk.1.header', ts, nonce, copy.method.toUpperCase(), `${url.pathname}${url.search}`, url.hostname.toLowerCase(), port, payload, ext.replace(/\\/g, '\\\\').replace(/\n/g, '\\n')];
@@ -367,7 +370,7 @@ export function oauth1BaseString(request: HttpRequest, oauth: Readonly<Record<st
   const url = new URL(request.url);
   const params: [string, string][] = [...url.searchParams].map(([k, v]) => [pct(k), pct(v)]);
   const form = request.headers.some(([n, v]) => n.toLowerCase() === 'content-type' && /x-www-form-urlencoded/i.test(v));
-  if (form && request.body !== undefined) for (const [k, v] of new URLSearchParams(String(request.body))) params.push([pct(k), pct(v)]);
+  if (form) for (const [k, v] of new URLSearchParams(String(bodyText(request.body)))) params.push([pct(k), pct(v)]);
   for (const [k, v] of Object.entries(oauth)) params.push([pct(k), pct(v)]);
   params.sort((a, b) => (a[0] === b[0] ? (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0) : a[0] < b[0] ? -1 : 1));
   const defaultPort = (url.protocol === 'https:' && url.port === '443') || (url.protocol === 'http:' && url.port === '80');
