@@ -1,5 +1,6 @@
 // baca/tulis satu request file .http (format REST Client / JetBrains), tanpa vscode.
 // Satu file = satu request (Save selalu 1 request); file multi-request dipecah splitBlocks lalu tiap blok di-parse.
+import type { BodyStream } from './http';
 export type BodyType = 'none' | 'json' | 'text' | 'xml' | 'form';
 export type Header = { name: string; value: string; enabled: boolean };
 export type Param = { key: string; value: string };
@@ -163,7 +164,7 @@ export function serializeRequest(r: ParsedRequest): string {
   return `${out.join('\n')}\n`;
 }
 
-export type SendableRequest = { method: string; url: string; headers: [string, string][]; body: string | Buffer | undefined };
+export type SendableRequest = { method: string; url: string; headers: [string, string][]; body: string | Buffer | BodyStream | undefined };
 
 /** request siap kirim: header nonaktif dibuang, body kosong = tanpa body */
 /** opsi cookie jar request: kirim cookie tersimpan / simpan Set-Cookie (default keduanya) */

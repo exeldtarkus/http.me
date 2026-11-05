@@ -7,10 +7,11 @@ import { existsSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import { dirname, join, relative, resolve as resolvePath } from 'node:path';
 import { homedir } from 'node:os';
+import { fileBody, multipartBody } from './bodyStream';
 import { applyAuth, headerAuth, parseAuth, sendWithDigest, type AuthConfig, type AuthType } from './auth';
 import { webviewPage } from './webviewPage';
 import { NEW_REQUEST_TEXT, newRequestName } from './newRequest';
-import { blockLabel, parseRequest, replaceBlock, serializeRequest, splitBlocks, toHttpRequestWithFile, type ParsedRequest } from './httpFile';
+import { blockLabel, parseRequest, replaceBlock, serializeRequest, splitBlocks, toHttpRequestWithFile, toHttpRequest, type SendableRequest, type ParsedRequest } from './httpFile';
 import { prettyJson } from './response';
 import { beautifyBody } from './beautify';
 import { importCurl, quickRequest } from './curl';
@@ -296,10 +297,12 @@ async function writeDocument(doc: vscode.TextDocument, text: string): Promise<vo
 }
 
 /** body `< ./file`: relatif ke folder file .http; untitled belum punya folder */
-async function readBodyFile(doc: vscode.TextDocument, path: string): Promise<Buffer> {
+function bodyFilePath(doc: vscode.TextDocument, path: string): string {
   if (doc.uri.scheme !== 'file') throw new Error(`Save the request first: the body is read from ${path}, relative to the .http file.`);
-  return fs.readFile(resolvePath(dirname(doc.uri.fsPath), path));
+  return resolvePath(dirname(doc.uri.fsPath), path);
 }
+const readBodyFile = (doc: vscode.TextDocument, path: string): Promise<Buffer> => fs.readFile(bodyFilePath(doc, path));
+const isMultipart = (headers: [string, string][]): boolean => headers.some(([n, v]) => n.toLowerCase() === 'content-type' && /^multipart\/form-data/i.test(v));
 
 /** Request-level auth wins; otherwise inherit the first non-inherit config walking up from the request folder. */
 export async function resolveRequestAuth(uri: vscode.Uri, request: ParsedRequest, resolveParent: (r: ParsedRequest) => Promise<ParsedRequest> = async (r) => r): Promise<AuthConfig> {
@@ -582,11 +585,16 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
       if (pre.length) setStage({ kind: 'send' });
       await dropBodyFile(s);
       await fs.mkdir(bodyDir, { recursive: true, mode: 0o700 });
-      let r = await toHttpRequestWithFile(parsed, (p) => readBodyFile(doc, p));
+      let r: SendableRequest = toHttpRequest(parsed);
       // Authorization di header (tanpa # @auth) dikirim apa adanya; selain itu auth request / _auth.http terdekat
       const ownHeader = parsed.auth === undefined && parsed.headers.some((h) => h.enabled && h.name.toLowerCase() === 'authorization');
       const auth = ownHeader ? headerAuth(parsed.headers) : await resolveRequestAuth(doc.uri, parsed, async (x) => (await hooks?.resolve(x))?.request ?? x);
       if (auth) r = { ...r, ...applyAuth({ ...r }, auth, new Map()).request };
+      // body besar di-stream dari disk: `< ./file` utuh, atau bagian file di body multipart (tanda tangan auth tidak mencakup isi file)
+      if (parsed.bodyFile) r = { ...r, body: await fileBody(bodyFilePath(doc, parsed.bodyFile)) };
+      else if (typeof r.body === 'string' && isMultipart(r.headers) && /^<\s+\S/m.test(r.body)) {
+        r = { ...r, body: await multipartBody(r.body, r.headers.find(([n]) => n.toLowerCase() === 'content-type')![1], (p) => bodyFilePath(doc, p)) };
+      }
       const cookies = await session?.cookies(parsed);
       const sendOnce = (req: typeof r) => send(req, {
         signal, bodyFile: bodyPath(key), followRedirects: parsed.followRedirects, insecure: parsed.insecure, cookies,

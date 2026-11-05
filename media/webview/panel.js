@@ -554,11 +554,21 @@
     return { code: m[1], title, sub: text && !known ? CLASS_HINT[code >= 500 ? 5 : 4] : sub, cls: view.statusClass, ...(text ? { body: text } : { empty: 'Response body not found' }) };
   }
 
-  const api = { bodyNotice, fitTabs, xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers, authForms: AUTH_FORMS, authForm, switchAuthType, isRawAuthSecret, authVariableName, parseAuthForm };
+  /** posisi kecocokan teks biasa (bukan regex), tanpa beda huruf besar / kecil */
+  function findMatches(text, query) {
+    const out = [];
+    if (!query) return out;
+    const hay = text.toLowerCase(), needle = query.toLowerCase();
+    for (let i = hay.indexOf(needle); i >= 0; i = hay.indexOf(needle, i + needle.length)) out.push({ start: i, end: i + needle.length });
+    return out;
+  }
+
+  const api = { findMatches, bodyNotice, fitTabs, xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers, authForms: AUTH_FORMS, authForm, switchAuthType, isRawAuthSecret, authVariableName, parseAuthForm };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
   const vscode = acquireVsCodeApi();
+  let findHook; // diisi setelah bar cari siap: render ulang response menjalankan pencarian lagi
   /** ikon tempat sampah untuk tombol hapus / lepas (bukan ✕) */
   const TRASH = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.8 9.5h6.4l.8-9.5M6.6 7v4.5M9.4 7v4.5"/></svg>';
   const $ = (id) => document.getElementById(id);
@@ -1187,7 +1197,8 @@
     $('bodyNote').hidden = !res?.note;
     $('bodyNoteText').textContent = res?.note ?? '';
     $('openBody').hidden = !res?.canOpen;
-    $('copyBody').hidden = !res || res.head || res.format === 'Binary';
+    $('copyBody').hidden = $('findBody').hidden = !res || res.head || res.format === 'Binary';
+    findHook?.();
     $('saveBody').hidden = !res?.canSave;
     $('resBodyTab').disabled = !!res?.head;
     renderTests(view);
@@ -1249,6 +1260,42 @@
   };
   $('expandAll').onclick = () => { resRows().forEach((r) => r.classList.remove('shut')); refreshRows(); };
   $('collapseAll').onclick = () => { resRows().slice(1).forEach((r) => r.classList.toggle('shut', r.classList.contains('fo'))); refreshRows(); }; // akar tetap terbuka
+  // cari di body: sorot lewat CSS Custom Highlight (DOM body tidak diubah, lipatan JSON tetap utuh)
+  let found = [], foundAt = 0;
+  const paintFind = (jump) => {
+    $('findCount').textContent = found.length ? `${foundAt + 1} / ${found.length}` : ($('findInput').value ? 'No results' : '');
+    if (typeof CSS === 'undefined' || !CSS.highlights) return;
+    CSS.highlights.set('httpme-find', new Highlight(...found));
+    CSS.highlights.set('httpme-find-current', new Highlight(...(found[foundAt] ? [found[foundAt]] : [])));
+    if (jump && found[foundAt]) found[foundAt].startContainer.parentElement?.scrollIntoView({ block: 'center' });
+  };
+  const runFind = () => {
+    found = []; foundAt = 0;
+    const q = $('findInput').value;
+    const nodes = [];
+    const walk = document.createTreeWalker($('resBody'), NodeFilter.SHOW_TEXT);
+    let full = '';
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!n.parentElement.closest('.ln[hidden], .fz, .gn, .gf')) { nodes.push([full.length, n]); full += n.data; }
+    for (const m of findMatches(full, q)) {
+      const a = [...nodes].reverse().find(([o]) => o <= m.start), z = [...nodes].reverse().find(([o]) => o < m.end);
+      if (!a || !z) continue;
+      const r = document.createRange();
+      r.setStart(a[1], m.start - a[0]); r.setEnd(z[1], m.end - z[0]);
+      found.push(r);
+    }
+    paintFind(true);
+  };
+  const stepFind = (d) => { if (found.length) { foundAt = (foundAt + d + found.length) % found.length; paintFind(true); } };
+  findHook = () => { if (!$('findBar').hidden) runFind(); };
+  const openFind = () => { $('findBar').hidden = false; $('findInput').focus(); $('findInput').select(); runFind(); };
+  const closeFind = () => { $('findBar').hidden = true; found = []; paintFind(false); };
+  $('findBody').onclick = () => ($('findBar').hidden ? openFind() : closeFind());
+  $('findInput').oninput = runFind;
+  $('findInput').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); } else if (e.key === 'Escape') { e.stopPropagation(); closeFind(); } };
+  $('findPrev').onclick = () => stepFind(-1);
+  $('findNext').onclick = () => stepFind(1);
+  $('findClose').onclick = closeFind;
+  $('r-rbody').addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !$('resBody').hidden) { e.preventDefault(); openFind(); } });
   $('copyBody').onclick = () => post({ type: 'copyBody', text: resText ?? $('resBody').textContent });
   $('openBody').onclick = () => post({ type: 'openBody' });
   // Save aktif bila .http atau script rantainya belum disimpan

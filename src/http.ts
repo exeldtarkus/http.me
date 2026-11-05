@@ -1,10 +1,14 @@
 // kirim request HTTP (tanpa vscode). Pakai node:http/https, bukan fetch: fetch Node tidak bisa "abaikan SSL" per request
 // tanpa undici, dan redirect perlu diikuti sendiri (cookie tiap hop, Fase 3b).
+import { Readable } from 'node:stream';
 import * as http from 'node:http';
 import * as https from 'node:https';
 import { createWriteStream, rm, type WriteStream } from 'node:fs';
 
-export type HttpRequest = { method: string; url: string; headers: [string, string][]; body?: string | Buffer };
+/** body besar dari disk: `stream()` dipanggil tiap pengiriman (juga hop redirect 307/308); length = Content-Length */
+export type BodyStream = { length: number; stream(): AsyncIterable<Buffer | Uint8Array> };
+export type HttpRequest = { method: string; url: string; headers: [string, string][]; body?: string | Buffer | BodyStream };
+const isBodyStream = (b: unknown): b is BodyStream => typeof b === 'object' && b !== null && typeof (b as BodyStream).stream === 'function';
 export type SendOptions = {
   signal?: AbortSignal; timeoutMs?: number;
   /** default true; false = response 3xx dikembalikan apa adanya (# @no-redirect) */ followRedirects?: boolean;
@@ -83,15 +87,19 @@ export const MAX_REDIRECTS = 10;
 const REDIRECT = new Set([301, 302, 303, 307, 308]);
 
 /** satu hop: kirim request, tunggu header response (body belum dibaca) */
-function request(url: URL, method: string, headers: [string, string][], body: string | Buffer | undefined, signal: AbortSignal, insecure: boolean): Promise<http.IncomingMessage> {
+function request(url: URL, method: string, headers: [string, string][], body: string | Buffer | BodyStream | undefined, signal: AbortSignal, insecure: boolean): Promise<http.IncomingMessage> {
   return new Promise((resolve, reject) => {
     const h = headerObject(headers);
     // Node tidak memakai chunked untuk DELETE/OPTIONS: tanpa Content-Length body merusak koneksi
-    if (body !== undefined && !Object.keys(h).some((k) => /^(content-length|transfer-encoding)$/i.test(k))) h['Content-Length'] = Buffer.byteLength(body);
+    if (body !== undefined && !Object.keys(h).some((k) => /^(content-length|transfer-encoding)$/i.test(k))) h['Content-Length'] = isBodyStream(body) ? body.length : Buffer.byteLength(body);
     const lib = url.protocol === 'https:' ? https : http;
     const r = lib.request(url, { method, headers: h, signal, rejectUnauthorized: !insecure }, resolve);
     r.on('error', reject);
-    r.end(body);
+    if (isBodyStream(body)) {
+      const src = Readable.from(body.stream(), { objectMode: false });
+      src.on('error', (e) => r.destroy(e)); // file hilang / tak terbaca di tengah kirim: request gagal dengan pesan aslinya
+      src.pipe(r);
+    } else r.end(body);
   });
 }
 
