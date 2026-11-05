@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import {
-  arrangeOpen, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED,
+  arrangeOpen, busyTracker, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED,
   type OpenTab, type RequestSummary, type SidebarMode,
 } from './sidebarModel';
 import { createFolder, dropKeepIfUsed, duplicateFile, KEEP_FILE, siblingName } from './store';
@@ -70,6 +70,14 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
   private onlyUnsaved = false;
 
   constructor(private state: vscode.Memento, private envs: Environments, private cookies: Cookies, readonly mode: SidebarMode = 'collections') {}
+
+  /** bar progress di atas section selama isi / item sedang dimuat (tidak tampil kosong tanpa tanda) */
+  private busy = busyTracker(() => {
+    let done!: () => void;
+    const gate = new Promise<void>((ok) => { done = ok; });
+    void vscode.window.withProgress({ location: { viewId: VIEW_IDS[this.mode] } }, () => gate);
+    return done;
+  });
 
   private get flat(): boolean { return this.state.get<boolean>(this.mode === 'open' ? OPEN_FLAT_KEY : FLAT_KEY, false); }
 
@@ -255,13 +263,13 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
     return [];
   }
 
-  async getChildren(n?: Node): Promise<Node[]> {
+  getChildren(n?: Node): Promise<Node[]> {
     // mode selain Collections tidak scan: "Loading http.me…" diganti isi view
     if (this.mode !== 'collections') void vscode.commands.executeCommand('setContext', 'httpme.loaded', true);
-    if (this.mode === 'cookies') return this.cookieChildren(n);
-    if (this.mode === 'environments') return this.environmentChildren(n);
-    if (this.mode === 'open') return this.openChildrenOf(n);
-    return this.collectionChildren(n);
+    if (this.mode === 'cookies') return this.busy(this.cookieChildren(n));
+    if (this.mode === 'environments') return this.busy(this.environmentChildren(n));
+    if (this.mode === 'open') return Promise.resolve(this.openChildrenOf(n)); // dari tab terbuka, tanpa I/O
+    return this.busy(this.collectionChildren(n));
   }
 
   /** induk node untuk TreeView.reveal (Open and Reveal) */
@@ -278,7 +286,11 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
     return { kind: 'folder', root, rel: up };
   }
 
-  async getTreeItem(n: Node): Promise<vscode.TreeItem> {
+  getTreeItem(n: Node): Promise<vscode.TreeItem> {
+    return this.busy(this.treeItem(n)); // file: ringkasan method / host dibaca dari disk
+  }
+
+  private async treeItem(n: Node): Promise<vscode.TreeItem> {
     switch (n.kind) {
       case 'folder': {
         const uri = folderUri(n);
