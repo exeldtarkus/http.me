@@ -468,11 +468,9 @@ async function askName(title: string, dir: vscode.Uri, isFile: boolean, value = 
   return name;
 }
 
-/** buka file dari Collections: 1 request -> panel, multi-request -> editor teks (CodeLens per blok) */
+/** buka file dari Collections di panel http.me (file multi-request = tab per request + Send All) */
 export async function openRequest(uri: vscode.Uri): Promise<void> {
-  const text = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
-  if (splitBlocks(text).length > 1) await vscode.window.showTextDocument(uri, { preview: true });
-  else await vscode.commands.executeCommand('vscode.openWith', uri, REQUEST_VIEW);
+  await vscode.commands.executeCommand('vscode.openWith', uri, REQUEST_VIEW);
 }
 
 /**
