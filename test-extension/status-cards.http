@@ -1,0 +1,79 @@
+# Jalankan dulu: node test-extension/status-server.js   (server lokal, port 8099)
+
+### 404 body kosong
+GET http://localhost:8099/status/404
+
+###
+
+### 401 body kosong
+GET http://localhost:8099/status/401
+
+###
+
+### 403 body kosong
+GET http://localhost:8099/status/403
+
+###
+
+### 429 body kosong
+GET http://localhost:8099/status/429
+
+###
+
+### 500 body kosong
+GET http://localhost:8099/status/500
+
+###
+
+### 503 body kosong
+GET http://localhost:8099/status/503
+
+###
+
+### 599 kode tak dikenal, body kosong
+GET http://localhost:8099/status/599
+
+###
+
+### 204 sukses tanpa body
+GET http://localhost:8099/status/204
+
+###
+
+### 304 not modified
+GET http://localhost:8099/status/304
+
+###
+
+### 418 teks singkat (kartu + kutipan body)
+GET http://localhost:8099/text/418
+
+###
+
+### 500 teks singkat (kartu + kutipan body)
+GET http://localhost:8099/text/500
+
+###
+
+### 404 teks multi-baris (body biasa, bukan kartu)
+GET http://localhost:8099/multi/404
+
+###
+
+### 400 JSON (body biasa, bukan kartu)
+GET http://localhost:8099/json/400
+
+###
+
+### 200 JSON (body biasa)
+GET http://localhost:8099/json/200
+
+###
+
+### Error jaringan (Request failed)
+GET https://tidak-ada-host.invalid
+
+###
+
+### Cancelled: kirim lalu tekan Cancel / Escape
+GET http://localhost:8099/delay/10

@@ -238,6 +238,13 @@
   pre.code { margin: 0; font: 12px/1.55 var(--vscode-editor-font-family, monospace); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
   .code .k { color: var(--code-key); } .code .s { color: var(--code-str); } .code .n { color: var(--code-num); }
   .code.error { color: var(--err); }
+  .notice { min-height: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 20px 14px; text-align: center; }
+  .notice[hidden], pre.code[hidden], .nbody[hidden], .ncode:empty { display: none; }
+  .ncode { font: 700 64px/1 var(--mono); letter-spacing: .04em; padding: 4px 22px 8px; border-radius: 14px; background: color-mix(in srgb, currentColor 10%, transparent); }
+  .notice b { margin-top: 10px; font-size: 22px; font-weight: 600; overflow-wrap: anywhere; }
+  .notice span { max-width: 520px; font-size: 13px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; user-select: text; }
+  .nbody { margin: 12px 0 0; max-width: min(560px, 90%); padding: 8px 14px; border: 1px solid var(--line); border-left: 3px solid currentColor; border-radius: 4px; background: var(--soft); color: var(--fg); font: 13px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+  .nbody.none { border: 1px dashed var(--line); border-left-width: 1px; background: transparent; color: var(--muted); font-style: italic; }
   .code .c { color: var(--muted); font-style: italic; }
   /* JSON response ala editor VS Code: gutter nomor baris + panah lipat di kiri (panah tampil saat hover, selalu saat dilipat) */
   pre.code.json { white-space: normal; }
@@ -488,7 +495,7 @@
       <button class="btn ghost sm" id="openBody" type="button">Open in editor ↗</button>
       <button class="btn ghost sm" id="saveBody" type="button">Save to file</button></p>
     <div class="empty" id="resEmpty"><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M8 30 56 10 46 54 32 40z"/><path d="M56 10 32 40v12l6-7"/><path d="M8 30l24 10"/></svg><p>Enter the URL and click Send to get a response</p></div>
-    <div class="pane" id="r-rbody"><pre class="code" id="resBody"></pre></div>
+    <div class="pane" id="r-rbody"><div class="notice" id="resNotice" hidden><div class="ncode" id="noticeCode"></div><b id="noticeTitle"></b><span id="noticeSub"></span><pre class="nbody" id="noticeBody" hidden></pre></div><pre class="code" id="resBody"></pre></div>
     <div class="pane" id="r-rheaders" hidden><table class="kv"><tbody id="resHeaders"></tbody></table></div>
     <div class="pane" id="r-rcookies" hidden>
       <table class="kv"><thead><tr><th>Name</th><th>Value</th><th>Domain</th><th>Path</th><th>Expires</th><th>Flags</th></tr></thead><tbody id="resCookies"></tbody></table>

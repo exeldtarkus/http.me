@@ -564,3 +564,28 @@ test('review R48: ikon Open as Text di bar URL panel membuka file .http sebagai 
   assert.match(js, /\$\('openText'\)\.onclick = \(\) => \{ flush\(\); post\(\{ type: 'openAsText' \}\); \};/);
   assert.match(host, /m\.type === 'openAsText'\) await openAsText\(doc\.uri, blockCount\(\) > 1 \? splitBlocks\(doc\.getText\(\)\)\[active\]\?\.start : undefined\)/);
 });
+
+test('bodyNotice: cancelled, error, 4xx/5xx singkat & body kosong tampil kartu di tengah; body panjang / HEAD / Binary tidak', () => {
+  type N = { code?: string; title: string; sub: string; cls: string; body?: string };
+  const n = (panel as unknown as { bodyNotice(v: unknown): N | undefined }).bodyNotice;
+  assert.deepEqual(n({ kind: 'cancelled' }), { title: 'The request was cancelled.', sub: 'Click Send to run it again.', cls: 'st-1' });
+  assert.deepEqual(n({ kind: 'error', message: 'fetch failed' }), { title: 'Request failed', sub: 'fetch failed', cls: 'st-5' });
+  const r = (status: string, statusClass: string, bodyHtml: string, extra = {}) => ({ kind: 'response', status, statusClass, bodyHtml, format: 'Text', ...extra });
+  // kosong: kode besar + penjelasan kode
+  assert.deepEqual(n(r('404 Not Found', 'st-4', ' \n')), { code: '404', title: 'Not Found', sub: 'The server cannot find the requested resource. Check the URL.', cls: 'st-4', empty: 'Response body not found' });
+  // body teks singkat di 4xx/5xx: tampil sebagai kutipan, entity di-decode
+  assert.deepEqual(n(r("418 I'm a teapot", 'st-4', 'I&#39;m &lt;a&gt; Teapot'.replace('&#39;', "'"))), { code: '418', title: "I'm a teapot", sub: 'The server refuses to brew coffee because it is a teapot.', cls: 'st-4', body: "I'm <a> Teapot" });
+  // kode tak dikenal: penjelasan per kelas; tanpa reason phrase (HTTP/2): judul dari tabel
+  assert.equal(n(r('599', 'st-5', ''))?.sub, 'The server failed to fulfil a valid request.');
+  assert.equal(n(r('503', 'st-5', ''))?.title, 'Service Unavailable');
+  // 2xx / 3xx kosong: kartu tanpa penjelasan error
+  assert.deepEqual(n(r('204 No Content', 'st-2', '')), { code: '204', title: 'No Content', sub: 'The request succeeded and there is nothing to return.', cls: 'st-2', empty: 'Response body not found' });
+  // tidak ditampilkan: body berisi di 2xx, body panjang di 4xx, Binary, HEAD, bukan Text
+  assert.equal(n(r('200 OK', 'st-2', 'hi')), undefined);
+  assert.equal(n(r('500 Error', 'st-5', 'x'.repeat(300))), undefined);
+  assert.equal(n(r('500 Error', 'st-5', 'a\nb\nc\nd')), undefined);
+  assert.equal(n(r('200', 'st-2', '', { format: 'Binary' })), undefined);
+  assert.equal(n(r('200', 'st-2', '', { head: true })), undefined);
+  assert.equal(n(r('400', 'st-4', '<span>{}</span>', { format: 'JSON' })), undefined);
+  assert.equal(n(undefined), undefined);
+});
