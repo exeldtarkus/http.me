@@ -495,3 +495,9 @@ test('review R38: body: foldRanges dari kurung pembuka di akhir baris, unfold me
   assert.deepEqual(panel.realLines(shown1, hidden), [1, 2, 5, 6]);
   assert.equal(panel.unfold('x\uE0FF', hidden), 'x\uE0FF', 'karakter tanpa lipatan dibiarkan');
 });
+
+test('review R40: CSS webview tanpa gambar data: (CSP default-src none memblokirnya, ikon lipatan tidak tampil)', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  for (const f of fs.readdirSync(dir).filter((x: string) => x.endsWith('.html'))) assert.doesNotMatch(fs.readFileSync(join(dir, f), 'utf8'), /url\(["']?data:/, f);
+});
