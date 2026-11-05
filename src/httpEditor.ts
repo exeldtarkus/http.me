@@ -11,7 +11,7 @@ import { NEW_REQUEST_TEXT, newRequestName } from './newRequest';
 import { blockLabel, parseRequest, replaceBlock, serializeRequest, splitBlocks, toHttpRequestWithFile, type ParsedRequest } from './httpFile';
 import { prettyJson } from './response';
 import { beautifyBody } from './beautify';
-import { importCurl } from './curl';
+import { importCurl, quickRequest } from './curl';
 import { defaultFileName } from './sidebarModel';
 import { dropKeepIfUsed, requestFileName } from './store';
 import { DEFAULT_TIMEOUT_MS, RequestError, send } from './http';
@@ -901,6 +901,21 @@ export async function sendActive(): Promise<void> {
   await sendBlock(doc, index);
   // editor teks tidak punya panel response: tampilkan hasil di samping (fokus tetap di .http)
   if (fromText && viewOf(key)?.kind === 'response' && getLayout() !== 'panel') await showResponse(key);
+}
+
+/** Quick Run: curl / URL dari input box -> tab .http untitled (belum disimpan) lalu langsung dikirim */
+export async function quickRun(): Promise<void> {
+  const clip = (await vscode.env.clipboard.readText()).trim();
+  const text = await vscode.window.showInputBox({
+    title: 'Quick Run', prompt: 'Paste a curl command, or enter a URL (GET) or "METHOD URL"',
+    placeHolder: 'https://example.com', value: /^(curl\s|https?:\/\/)/i.test(clip) ? clip : '', ignoreFocusOut: true,
+    validateInput: (v) => {
+      if (!v.trim()) return undefined;
+      try { quickRequest(v); return undefined; } catch (e) { return errMsg(e); } // pesan tampil di input box, bukan error sistem
+    },
+  });
+  if (!text?.trim()) return;
+  await sendUri(await newRequest(undefined, serializeRequest(quickRequest(text))));
 }
 
 /** Send file tertentu (status bar Login): tampil di panel / CodeLens file itu */

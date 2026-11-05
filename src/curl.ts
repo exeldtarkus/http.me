@@ -176,3 +176,12 @@ export function importCurl(command: string): CurlResult & { summary: string; /**
   const cookies = res.request.headers.find((h) => h.name.toLowerCase() === 'cookie')?.value;
   return { ...res, summary, ...(cookies ? { cookies } : {}) };
 }
+
+/** Quick Run: perintah curl, atau URL polos (GET), atau `METHOD URL` -> request siap kirim */
+export function quickRequest(text: string): ParsedRequest {
+  const t = text.trim();
+  if (/^curl(\.exe)?\s/i.test(t)) return importCurl(t).request;
+  const m = /^(?:([A-Za-z]+)\s+)?(https?:\/\/\S+)$/.exec(t);
+  if (!m) throw new Error('Enter a curl command or a URL starting with http:// or https://');
+  return { ...emptyRequest(), method: (m[1] ?? 'GET').toUpperCase(), url: m[2] };
+}

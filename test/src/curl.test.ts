@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { importCurl, parseCurl, tokenize, toCurl } from '../../src/curl';
+import { importCurl, parseCurl, quickRequest, tokenize, toCurl } from '../../src/curl';
 import { parseRequest } from '../../src/httpFile';
 
 test('tokenize: kutip tunggal, ganda (escape), $\'…\' ANSI-C, backslash, sambungan baris', () => {
@@ -94,4 +94,17 @@ test('toCurl: header Cookie tidak ikut kecuali dicentang (withCookies); cookie j
   assert.equal(importCurl(`curl https://a -b 'sid=1; t=2'`).cookies, 'sid=1; t=2');
   assert.equal(importCurl(`curl https://a -H 'Cookie: a=b'`).cookies, 'a=b');
   assert.equal(importCurl(`curl https://a`).cookies, undefined);
+});
+
+test('quickRequest: URL polos = GET, "METHOD URL", curl, tanpa skema ditolak', () => {
+  const u = quickRequest('  https://auth.dev.karedoc.net  ');
+  assert.equal(u.method, 'GET');
+  assert.equal(u.url, 'https://auth.dev.karedoc.net');
+  const m = quickRequest('post http://a.test/x');
+  assert.equal(m.method, 'POST');
+  assert.equal(m.url, 'http://a.test/x');
+  assert.equal(quickRequest(`curl -X PUT https://a.test -d 'x=1'`).method, 'PUT');
+  assert.equal(quickRequest('https://a.test/{{path}}').url, 'https://a.test/{{path}}');
+  assert.throws(() => quickRequest('auth.dev.karedoc.net'), /curl command or a URL/);
+  assert.throws(() => quickRequest('   '), /curl command or a URL/);
 });
