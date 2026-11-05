@@ -69,7 +69,8 @@ test('URL ↔ Params bolak-balik tanpa perubahan', () => {
 type Header = { name: string; value: string; enabled: boolean };
 type Req = { headers: Header[]; body: string; bodyType: string };
 const body = panel as unknown as {
-  setBodyType(req: Req, type: string): void;
+  setBodyType(req: Req, type: string, stash?: string): string;
+  xmlRanges(text: string): { start: number; end: number; val: string }[];
   formToRows(body: string): Param[];
   rowsToForm(rows: Param[]): string;
 };
@@ -441,4 +442,34 @@ test('review R36: tombol Expand all / Collapse all di response, CSS lipatan + hi
   assert.match(html, /\.jx-bm \{/);
   assert.match(js, /res\.format === 'JSON' \? foldJson\(res\.bodyHtml\)/);
   assert.match(js, /bracketMatch\(input\.value, input\.selectionStart\)/);
+});
+
+test('review R37: body none lalu kembali ke JSON = body lama kembali (disimpan sementara), Content-Type ikut', () => {
+  const r: Req = { headers: [{ name: 'Content-Type', value: 'application/json', enabled: true }], body: '{"a":1}', bodyType: 'json' };
+  const kept = body.setBodyType(r, 'none');
+  assert.equal(kept, '{"a":1}', 'none mengembalikan body yang dibuang');
+  assert.equal(r.body, '');
+  body.setBodyType(r, 'json', kept);
+  assert.equal(r.body, '{"a":1}');
+  assert.deepEqual(ct(r), ['application/json']);
+  const t: Req = { headers: [], body: 'baru', bodyType: 'text' };
+  body.setBodyType(t, 'json', 'lama');
+  assert.equal(t.body, 'baru', 'body yang sudah ada tidak ditimpa');
+});
+
+test('review R37: XML: teks bukan XML = error, warna XML di body (tanda, tag, atribut, nilai, komentar), warning saat pilih XML', () => {
+  assert.match(panel.bodyError('{"a":1}', 'xml')!.message, /^Line 1, column 1: The body is not XML/);
+  assert.equal(panel.bodyError('  <a/>', 'xml'), undefined);
+  assert.deepEqual(body.xmlRanges('<a x="1">t<!-- c --></a>').map((r) => [r.val, '<a x="1">t<!-- c --></a>'.slice(r.start, r.end)]), [
+    ['p', '<'], ['t', 'a'], ['a', 'x'], ['s', '"1"'], ['p', '>'], ['c', '<!-- c -->'], ['p', '</'], ['t', 'a'], ['p', '>'],
+  ]);
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const js = fs.readFileSync(join(dir, 'panel.js'), 'utf8');
+  const html = fs.readFileSync(join(dir, 'panel.html'), 'utf8');
+  assert.match(js, /post\(\{ type: 'warn', message: `The body is not valid XML/);
+  assert.match(js, /req\.bodyType === 'xml' \? xmlRanges/);
+  assert.match(html, /\.jx-t, \.code \.t \{ color: var\(--j-k\); \}/);
+  const host = fs.readFileSync(join(__dirname, '..', '..', '..', 'src', 'httpEditor.ts'), 'utf8');
+  assert.match(host, /m\.type === 'warn' && typeof m\.message === 'string'\) void vscode\.window\.showWarningMessage\(m\.message\)/);
 });

@@ -74,8 +74,9 @@ test('prettyXml: indent 2 spasi, elemen teks pendek satu baris; bukan XML = unde
 });
 
 test('highlightMarkup: nama tag, nilai atribut, komentar diberi warna; teks di-escape', () => {
+  assert.equal(highlightMarkup('<?xml version="1.0"?>'), '<span class="c">&lt;?xml version=&quot;1.0&quot;?&gt;</span>');
   const html = highlightMarkup('<p class="x">a & b</p><!-- c --><br/>');
-  assert.equal(html, '&lt;<span class="k">p</span> class=<span class="s">&quot;x&quot;</span>&gt;a &amp; b&lt;/<span class="k">p</span>&gt;<span class="c">&lt;!-- c --&gt;</span>&lt;<span class="k">br</span>/&gt;');
+  assert.equal(html, '<span class="p">&lt;</span><span class="t">p</span> <span class="a">class</span>=<span class="s">&quot;x&quot;</span><span class="p">&gt;</span>a &amp; b<span class="p">&lt;/</span><span class="t">p</span><span class="p">&gt;</span><span class="c">&lt;!-- c --&gt;</span><span class="p">&lt;</span><span class="t">br</span><span class="p">/&gt;</span>');
 });
 
 test('parseCsv: kutip, koma & baris baru di dalam kutip, "" = kutip, pemisah ; terdeteksi', () => {
@@ -89,11 +90,12 @@ test('responseView: format sesuai Content-Type (JSON, XML, HTML, CSV, text, bina
   assert.equal(v('application/json', '{}').format, 'JSON');
   const xml = v('application/xml; charset=utf-8', '<a><b>1</b></a>');
   assert.equal(xml.format, 'XML');
-  assert.equal(xml.bodyHtml, '&lt;<span class="k">a</span>&gt;\n  &lt;<span class="k">b</span>&gt;1&lt;/<span class="k">b</span>&gt;\n&lt;/<span class="k">a</span>&gt;');
+  const tag = (t: string, close = '') => `<span class="p">&lt;${close}</span><span class="t">${t}</span><span class="p">&gt;</span>`;
+  assert.equal(xml.bodyHtml, `${tag('a')}\n  ${tag('b')}1${tag('b', '/')}\n${tag('a', '/')}`);
   assert.equal(v('image/svg+xml', '<svg/>').format, 'XML');
   const html = v('text/html', '<p>hi</p>');
   assert.equal(html.format, 'HTML');
-  assert.match(html.bodyHtml, /&lt;<span class="k">p<\/span>&gt;hi/);
+  assert.match(html.bodyHtml, /<span class="t">p<\/span><span class="p">&gt;<\/span>hi/);
   const csv = v('text/csv', 'name,qty\n<b>,2\n');
   assert.equal(csv.format, 'CSV');
   assert.equal(csv.bodyHtml, '<table class="csv"><thead><tr><th>name</th><th>qty</th></tr></thead><tbody><tr><td>&lt;b&gt;</td><td>2</td></tr></tbody></table>');

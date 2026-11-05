@@ -179,6 +179,11 @@
   .bodyed .vwrap.area { min-height: 0; }
   .bodyed .vwrap.area > .mirror { white-space: pre; overflow-wrap: normal; }
   .jx-bm { outline: 1px solid var(--vscode-editorBracketMatch-border, var(--muted)); background: var(--vscode-editorBracketMatch-background, transparent); border-radius: 2px; }
+  /* XML ala VS Code: tanda abu, tag biru, atribut biru muda, nilai oranye, komentar redup */
+  .jx-p, .code .p { color: var(--vscode-editorBracketHighlight-unexpectedBracket\.foreground, #808080); }
+  .jx-t, .code .t { color: var(--j-k); }
+  .jx-a, .code .a { color: var(--code-key); }
+  .jx-c { color: var(--muted); font-style: italic; }
   .jx-k { color: var(--code-key); } .jx-s { color: var(--code-str); } .jx-n { color: var(--code-num); } .jx-l { color: var(--j-k); }
   #bodyText:focus { outline: none; }
   .sc-editor:focus-within { border-color: var(--focus); outline: none; }
