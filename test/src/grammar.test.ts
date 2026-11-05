@@ -12,7 +12,8 @@ const re = (name: string, key: 'match' | 'begin' | 'end' = 'match') => new RegEx
 test('review R39: grammar .http terdaftar untuk bahasa http, body JSON / XML memakai grammar bawaan', () => {
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   assert.deepEqual(pkg.contributes.grammars, [{ language: 'http', scopeName: 'source.http', path: './syntaxes/http.tmLanguage.json',
-    embeddedLanguages: { 'meta.embedded.block.json': 'json', 'meta.embedded.block.xml': 'xml', 'meta.embedded.block.javascript': 'javascript' } }]);
+    embeddedLanguages: { 'meta.embedded.block.json': 'json', 'meta.embedded.block.xml': 'xml', 'meta.embedded.block.javascript': 'javascript' } },
+  { scopeName: 'source.http.variables', path: './syntaxes/http.variables.tmLanguage.json', injectTo: ['source.http'] }]);
   assert.equal(g.scopeName, 'source.http');
   assert.deepEqual(g.patterns.map((p) => p.include), ['#separator', '#comment', '#script-inline', '#script-file', '#file-variable', '#request-line', '#json-body', '#xml-body', '#header', '#variable']);
   assert.ok(g.repository['json-body'].patterns!.some((p) => p.include === 'source.json'));
@@ -51,4 +52,19 @@ test('review R49: grammar .http: baris script < / > bukan body XML, body berhent
   }
   assert.deepEqual(re('request-line').exec('GET {{HTTPBIN_URL}}/cookies/set?session=demo-{{$randomInt 1 999}}')!.slice(1, 3), ['GET', '{{HTTPBIN_URL}}/cookies/set?session=demo-{{$randomInt 1 999}}']);
   assert.deepEqual(re('file-variable').exec('@host = https://a.test')!.slice(1, 5), ['@', 'host', '=', 'https://a.test']);
+});
+
+test('review R50: {{variabel}} berwarna sendiri: kurung, variabel Environment, variabel dinamis + argumen; juga di dalam string body', () => {
+  const v = g.repository.variable;
+  const m = new RegExp(v.match!).exec('a {{$randomInt 1 999}} b')!;
+  assert.equal(m[0], '{{$randomInt 1 999}}');
+  assert.deepEqual([m[1], m[2], m[3].trim(), m[5]], ['{{', '$randomInt', '1 999', '}}']);
+  const e = new RegExp(v.match!).exec('{{ JSONPLACEHOLDER_URL }}/posts')!;
+  assert.deepEqual([e[1], e[4], e[5]], ['{{', 'JSONPLACEHOLDER_URL', '}}']);
+  assert.equal(v.captures!['2'].name, 'support.function.dynamic.http');
+  assert.equal(v.captures!['4'].name, 'variable.other.constant.http');
+  assert.equal(v.captures!['1'].name, 'punctuation.definition.template-expression.begin.http');
+  const inj = JSON.parse(readFileSync(join(root, 'syntaxes', 'http.variables.tmLanguage.json'), 'utf8'));
+  assert.equal(inj.injectionSelector, 'L:meta.embedded.block.json, L:meta.embedded.block.xml');
+  assert.deepEqual(inj.patterns, [{ include: 'source.http#variable' }]);
 });
