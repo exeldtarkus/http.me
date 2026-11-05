@@ -60,6 +60,10 @@ const isHttpmeFile = (u: vscode.Uri) =>
   /\.http$/i.test(u.path) || /(^|\/)(pre|post)-request\.js$/i.test(u.path) || /\/\.httpme\/environments\/[^/]+\.json$/i.test(u.path);
 
 const SUMMARY_FRESH_MS = 30_000;
+/** batas aman "Loading…" bila VS Code tidak pernah meminta data section (lihat Sidebar.showLoading) */
+const LOADING_MAX_MS = 5000;
+/** "Loading…" tampil minimal segini bila data sudah terkirim sebelum section terlihat (supaya tidak berkedip) */
+const LOADING_MIN_MS = 250;
 
 /** Environment di tree: ikon sama untuk semua baris; aktif = lingkaran terisi hijau (+ warna label lewat FileDecoration), tidak aktif = lingkaran kosong */
 const envIcon = (active: boolean, idle: string): vscode.ThemeIcon =>
@@ -139,8 +143,7 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
   list(): Promise<{ files: vscode.Uri[]; keep: vscode.Uri[] }> {
     if (!this.scan) {
       // selama scan: progress di view + pesan "Scanning…" (viewsWelcome)
-      // urutan penting: scanning dulu, baru loaded (tidak sempat tampil "No .http files" sebelum scan)
-      void vscode.commands.executeCommand('setContext', 'httpme.scanning', true).then(() => vscode.commands.executeCommand('setContext', 'httpme.loaded.collections', true));
+      void vscode.commands.executeCommand('setContext', 'httpme.scanning', true);
       const run = Promise.all([vscode.workspace.findFiles('**/*.http', undefined, MAX_FILES), vscode.workspace.findFiles(`**/${KEEP_FILE}`, undefined, MAX_FILES)])
         .then(([files, keep]) => ({
           files: files.filter((u) => !u.path.includes('/node_modules/')).sort((a, b) => a.path.localeCompare(b.path)),
@@ -296,12 +299,37 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
   }
   private loadedSet = false;
 
-  getChildren(n?: Node): Promise<Node[]> {
-    // mode selain Collections tidak scan: "Loading http.me…" diganti isi view
-    if (this.mode === 'open') { this.markLoaded(); return Promise.resolve(this.openChildrenOf(n)); } // dari tab terbuka, tanpa I/O
-    if (this.mode === 'cookies') return this.busy(this.cookieChildren(n)).finally(() => this.markLoaded());
-    if (this.mode === 'environments') return this.busy(this.environmentChildren(n)).finally(() => this.markLoaded());
+  /** isi section (tanpa menandai "loaded"): dipakai getChildren dan pemanasan cache saat aktif */
+  private fetch(n?: Node): Promise<Node[]> {
+    if (this.mode === 'open') return Promise.resolve(this.openChildrenOf(n)); // dari tab terbuka, tanpa I/O
+    if (this.mode === 'cookies') return this.busy(this.cookieChildren(n));
+    if (this.mode === 'environments') return this.busy(this.environmentChildren(n));
     return this.busy(this.collectionChildren(n));
+  }
+
+  getChildren(n?: Node): Promise<Node[]> {
+    return this.fetch(n).finally(() => { this.markLoaded(); if (!n) { this.rootDelivered = true; this.loadingDone?.(); } }); // "Loading…" hilang setelah DATA section ini siap
+  }
+
+  /** pemanasan cache saat aktif: section belum ditampilkan, jadi tidak boleh menandai "loaded" (kalau ditandai, pesan Loading hilang sebelum ada isi) */
+  prefetch(): Promise<unknown> { return this.fetch(); }
+
+  private loadingShown = false;
+  private loadingDone?: () => void;
+  private rootDelivered = false; // VS Code sudah menerima isi root (permintaan data datang sebelum event visibility)
+  /**
+   * Pertama kali section dibuka, VS Code menahan baris view extension ~2 dtk tanpa tanda apa pun (blank), sampai ada `message`.
+   * Maka "Loading…" + bar progress dipasang segera saat section terlihat dan ditutup begitu data pertama dikirim ke VS Code.
+   */
+  showLoading(): void {
+    if (this.loadingShown) return;
+    this.loadingShown = true;
+    this.view.message = 'Loading…';
+    const done = new Promise<void>((ok) => { this.loadingDone = ok; });
+    const safety = setTimeout(() => this.loadingDone?.(), LOADING_MAX_MS); // jangan pernah tertinggal
+    if (this.rootDelivered) setTimeout(() => this.loadingDone?.(), LOADING_MIN_MS); // data sudah di tangan VS Code: cukup tampil sebentar
+    void vscode.window.withProgress({ location: { viewId: VIEW_IDS[this.mode] } }, () => done);
+    void done.then(() => { clearTimeout(safety); this.loadingDone = undefined; setTimeout(() => { this.view.message = undefined; }, 0); });
   }
 
   /** induk node untuk TreeView.reveal (Open and Reveal) */
@@ -543,6 +571,8 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
       treeDataProvider: s, ...(dnd ? { dragAndDropController: s } : {}), canSelectMany: mode === 'collections', showCollapseAll: mode !== 'environments',
     });
     void s.applyContext();
+    s.view.onDidChangeVisibility((e) => { if (e.visible) s.showLoading(); });
+    if (s.view.visible) s.showLoading();
     return s;
   };
   const sections = { collections: make('collections', true), environments: make('environments', false), open: make('open', true), cookies: make('cookies', false) };
@@ -578,7 +608,7 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
 
   // isi semua cache sekarang (scan file, ringkasan, Environment, cookie): membuka / melipat section tidak lagi menunggu I/O
   setTimeout(() => {
-    for (const x of Object.values(sections)) void x.getChildren().catch((e) => log().error(errorLine(`Sidebar.warm ${x.mode}`, e)));
+    for (const x of Object.values(sections)) void x.prefetch().catch((e) => log().error(errorLine(`Sidebar.warm ${x.mode}`, e)));
     void sidebar.warm().catch((e) => log().error(errorLine('Sidebar.warm summaries', e)));
   }, 0);
 
