@@ -174,7 +174,7 @@
   .bodyed:focus-within { border-color: var(--focus); }
   #bodyGutter .gl { position: relative; }
   #bodyGutter .gl.can, #bodyGutter .gl.shut { cursor: pointer; }
-  #bodyGutter .gl.can::after, #bodyGutter .gl.shut::after { right: -18px; color: var(--fg); }
+  #bodyGutter .gl.can::after, #bodyGutter .gl.shut::after { right: -12px; color: var(--fg); }
   .bodyed:hover #bodyGutter .gl.can::after, #bodyGutter .gl.shut::after { opacity: .75; }
   /* penanda lipatan di body: karakter asli transparan (lebar sama dengan textarea), tampil sebagai ⋯ */
   .jx-fold { position: relative; color: transparent; }
@@ -219,10 +219,11 @@
   .code .gn { flex: none; min-width: calc(var(--gw, 2ch) + 10px); padding-right: 2px; text-align: right; color: var(--muted); opacity: .7; user-select: none; }
   .code .gf { flex: none; position: relative; width: 18px; user-select: none; }
   .code .fo > .gn, .code .fo > .gf { cursor: pointer; }
-  .fold-chev, .code .fo > .gf::before, .gl.can::after, .gl.shut::after { content: ''; position: absolute; top: 0; bottom: 0; width: 16px; opacity: 0; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 6l3.5 3.5L11.5 6' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 14px no-repeat; transition: opacity .1s; }
-  .code .fo > .gf::before { left: 1px; color: var(--fg); }
+  /* panah lipat = 2 garis border diputar (bukan gambar data:, diblokir CSP webview): ▾ terbuka, ▸ terlipat */
+  .code .fo > .gf::before, .gl.can::after, .gl.shut::after { content: ''; position: absolute; top: 50%; width: 5px; height: 5px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; opacity: 0; transform: translateY(-75%) rotate(45deg); transition: opacity .1s; }
+  .code .fo > .gf::before { left: 6px; color: var(--fg); }
   .code.json:hover .fo > .gf::before, .code .fo.shut > .gf::before { opacity: .75; }
-  .code .fo.shut > .gf::before, .gl.shut::after { transform: rotate(-90deg); }
+  .code .fo.shut > .gf::before, .gl.shut::after { transform: translateY(-50%) rotate(-45deg); }
   .code .lc { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .code .fz { display: none; }
   .code .shut > .lc > .fz { display: inline; }
