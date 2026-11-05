@@ -3,7 +3,7 @@ import { isNewerMinor, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
 import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
-import { applyPanelEdit, importCurlText, saveUntitled, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, activeBlock, registerRequestEditor, runner, quickRun, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
+import { applyPanelEdit, handleAuthMessage, importCurlText, saveUntitled, setAuthHooks, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, activeBlock, registerRequestEditor, runner, quickRun, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
 import { registerSidebar, type Sidebars } from './sidebar';
 import { historyAction, registerActivity, statusBar, type HistoryAction } from './activity';
@@ -58,6 +58,8 @@ export type HttpmeApi = {
   envs: Environments; cookies: Cookies; envOp: typeof envOp; focusOf: typeof focusOf; compareView: typeof compareView; setNullPrompt: typeof setNullPrompt;
   /** pesan tab Scripts seperti dari webview; kembalikan pesan balasan host */
   scriptsCall(uri: vscode.Uri, m: ScriptsMessage): Promise<unknown[]>;
+  /** pesan tab Authorization seperti dari webview; kembalikan pesan balasan host */
+  authCall(uri: vscode.Uri, m: Record<string, unknown>): Promise<unknown[]>;
   statusBar: typeof statusBar;
   /** layout response (single / two pane / panel bawah) + view Response panel bawah */
   layout: { get: typeof getLayout; set: typeof setLayout; outputKey: typeof outputKey; outputShown: typeof outputShown };
@@ -68,6 +70,26 @@ async function scriptsCall(uri: vscode.Uri, m: ScriptsMessage): Promise<unknown[
   const out: unknown[] = [];
   await handleScriptsMessage(await vscode.workspace.openTextDocument(uri), m, (x) => out.push(x));
   return out;
+}
+async function authCall(uri: vscode.Uri, m: Record<string, unknown>): Promise<unknown[]> {
+  const out: unknown[] = [];
+  await handleAuthMessage(await vscode.workspace.openTextDocument(uri), m, (x) => out.push(x));
+  return out;
+}
+
+function authEnvironmentHooks(envs: Environments): vscode.Disposable {
+  return setAuthHooks({
+    async moveToSecret(preferredName, value) {
+      const active = envs.active;
+      if (!active || !(await envs.names()).includes(active)) throw new Error('Select an active Environment before moving a secret.');
+      const vars = await envs.vars(active);
+      let name = preferredName;
+      for (let suffix = 2; vars.some((x) => x.key === name); suffix++) name = `${preferredName}_${suffix}`;
+      await envs.write(active, [...vars, { key: name, value: null, secret: true }]);
+      await envs.setSecret(active, name, value);
+      return name;
+    },
+  });
 }
 
 /** Environment → hook variable panel request / Send / paste */
@@ -124,7 +146,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   const historyDir = vscode.Uri.joinPath(ctx.globalStorageUri, 'httpme-cache', 'history').fsPath;
   ctx.subscriptions.push(registerActivity(historyDir));
   const envs = new Environments(ctx);
-  ctx.subscriptions.push(envs.watch(), registerEnvironmentEditor(envs));
+  ctx.subscriptions.push(envs.watch(), registerEnvironmentEditor(envs), authEnvironmentHooks(envs));
   const cookies = new Cookies(ctx, envs);
   const { sidebar, disposable: sidebarDisposable } = registerSidebar(ctx, envs, cookies);
   ctx.subscriptions.push(cookies, registerLoginStatus(cookies, envs), registerCookieCommands(cookies, async (uri) => {
@@ -180,7 +202,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   const previous = ctx.globalState.get<string>(VERSION_KEY);
   void ctx.globalState.update(VERSION_KEY, version);
   if (isNewerMinor(version, previous)) openWhatsNew(ctx);
-  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt, scriptsCall,
+  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt, scriptsCall, authCall,
     statusBar, layout: { get: getLayout, set: setLayout, outputKey, outputShown }, history: { list: () => listHistory(historyDir), action: (id, a) => historyAction(historyDir, id, a) }, activeBlock };
 }
 

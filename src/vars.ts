@@ -85,6 +85,7 @@ export function resolveRequest(r: ParsedRequest, scopes: readonly Scope[], d: Dy
     url: sub(r.url),
     headers: r.headers.map((h) => (h.enabled ? { ...h, name: sub(h.name), value: sub(h.value) } : { ...h })),
     body: sub(r.body),
+    auth: r.auth === undefined ? undefined : sub(r.auth),
   };
   return { request, nulls: [...nulls], missing: [...missing] };
 }
