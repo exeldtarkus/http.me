@@ -17,6 +17,8 @@ const TYPE_ALIASES: Record<string, AuthType> = {
   digest: 'digest',
   jwt: 'jwt',
   aws: 'aws',
+  hawk: 'hawk',
+  oauth1: 'oauth1',
 };
 const ALLOWED_FIELDS: Partial<Record<AuthType, readonly string[]>> = {
   inherit: [],
@@ -27,6 +29,8 @@ const ALLOWED_FIELDS: Partial<Record<AuthType, readonly string[]>> = {
   digest: ['username', 'password', 'retry', 'algorithm', 'qop', 'realm', 'nonce', 'nc', 'cnonce', 'opaque'],
   jwt: ['algorithm', 'secret', 'payload', 'header', 'add_to', 'prefix', 'secret_base64'],
   aws: ['access_key', 'secret_key', 'region', 'service', 'session_token'],
+  hawk: ['id', 'key', 'algorithm', 'user', 'nonce', 'ext', 'app', 'dlg', 'timestamp'],
+  oauth1: ['consumer_key', 'consumer_secret', 'token', 'token_secret', 'signature_method', 'add_to', 'callback', 'verifier', 'timestamp', 'nonce', 'version', 'realm'],
 };
 const REQUIRED_FIELDS: Partial<Record<AuthType, readonly string[]>> = {
   apiKey: ['key', 'value', 'in'],
@@ -35,6 +39,8 @@ const REQUIRED_FIELDS: Partial<Record<AuthType, readonly string[]>> = {
   digest: ['username', 'password'],
   jwt: ['secret'],
   aws: ['access_key', 'secret_key', 'region', 'service'],
+  hawk: ['id', 'key'],
+  oauth1: ['consumer_key'],
 };
 const VARIABLE = /\{\{\s*([^{}]+?)\s*\}\}/g;
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
@@ -108,6 +114,17 @@ export function parseAuth(value: string | undefined, headers: readonly Header[])
   if (/^Bearer(?:\s|$)/i.test(headerValue) && !/^Bearer\s+\S+$/i.test(headerValue)) {
     throw new Error('Invalid Bearer Authorization header');
   }
+  const digest = /^Digest\s+(\S+)\s+(.+)$/i.exec(headerValue);
+  if (digest) return { type: 'digest', fields: { username: digest[1], password: digest[2] } };
+  if (/^Digest(?:\s|$)/i.test(headerValue)) throw new Error('Invalid Digest Authorization header');
+  const aws = /^AWS\s+(\S+)\s+(\S+)((?:\s+\S+:\S+)*)$/i.exec(headerValue);
+  if (aws) {
+    const o = Object.fromEntries([...aws[3].matchAll(/(\S+?):(\S+)/g)].map((m) => [m[1].toLowerCase(), m[2]]));
+    const fields = { access_key: aws[1], secret_key: aws[2], region: o.region, service: o.service, ...(o.token ? { session_token: o.token } : {}) };
+    validateFields('aws', fields);
+    return { type: 'aws', fields };
+  }
+  if (/^AWS(?:\s|$)/i.test(headerValue)) throw new Error('Invalid AWS Authorization header (expected: AWS <accessId> <secret> region:<r> service:<s>)');
   const bearer = /^Bearer\s+(\S+)$/i.exec(headerValue);
   if (bearer) return { type: 'bearer', fields: { token: bearer[1] } };
   const scheme = /^(\S+)/.exec(headerValue)?.[1] ?? '';
@@ -169,7 +186,12 @@ export function applyAuth(request: HttpRequest, config: AuthConfig, values: Read
     return result;
   }
 
-  if (config.type === 'digest') return result; // header dihitung setelah 401 challenge (digestAuthorization)
+  if (config.type === 'digest') { // dihitung setelah 401 challenge (digestAuthorization); header mentah `Digest user pass` tidak ikut terkirim
+    copy.headers = copy.headers.filter(([name]) => name.toLowerCase() !== 'authorization');
+    return result;
+  }
+  if (config.type === 'hawk') return applyHawk(copy, config, values, ctx.now ?? new Date(), result);
+  if (config.type === 'oauth1') return applyOauth1(copy, config, values, ctx.now ?? new Date(), result);
   if (config.type === 'jwt') return applyJwt(copy, config, values, result);
   if (config.type === 'aws') return applyAws(copy, config, values, ctx.now ?? new Date(), result);
   throw new Error(`Auth type ${config.type} is not supported yet`);
@@ -306,4 +328,102 @@ export async function sendWithDigest<Q extends HttpRequest, R extends { status: 
   await discard(res);
   const header = digestAuthorization(config, request, parseDigestChallenge(challenge));
   return sendOnce({ ...request, headers: [...request.headers.filter(([n]) => n.toLowerCase() !== 'authorization'), ['Authorization', header]] });
+}
+
+const HAWK_HASH: Record<string, string> = { sha256: 'sha256', sha1: 'sha1' };
+
+function applyHawk(copy: HttpRequest, config: AuthConfig, values: ReadonlyMap<string, string>, now: Date, result: AuthResult): AuthResult {
+  const f = config.fields;
+  const algorithm = (f.algorithm || 'sha256').toLowerCase();
+  const hash = HAWK_HASH[algorithm];
+  if (!hash) throw new Error(`Unsupported Hawk algorithm: ${f.algorithm}`);
+  const id = resolve(f.id, values), key = resolve(f.key, values);
+  const ts = f.timestamp ? resolve(f.timestamp, values) : String(Math.floor(now.getTime() / 1000));
+  const nonce = f.nonce ? resolve(f.nonce, values) : randomBytes(6).toString('base64url');
+  const ext = f.ext ? resolve(f.ext, values) : '';
+  const url = new URL(copy.url);
+  const port = url.port || (url.protocol === 'https:' ? '443' : '80');
+  const body = copy.body === undefined ? '' : String(copy.body);
+  const type = copy.headers.find(([n]) => n.toLowerCase() === 'content-type')?.[1].split(';')[0].trim().toLowerCase() ?? '';
+  const payload = body ? createHash(hash).update(`hawk.1.payload\n${type}\n${body}\n`).digest('base64') : '';
+  const lines = ['hawk.1.header', ts, nonce, copy.method.toUpperCase(), `${url.pathname}${url.search}`, url.hostname.toLowerCase(), port, payload, ext.replace(/\\/g, '\\\\').replace(/\n/g, '\\n')];
+  if (f.app) lines.push(resolve(f.app, values), f.dlg ? resolve(f.dlg, values) : '');
+  const mac = createHmac(hash, key).update(`${lines.join('\n')}\n`).digest('base64');
+  const q = (v: string) => `"${v.replace(/["\\]/g, '\\$&')}"`;
+  const header = `Hawk id=${q(id)}, ts=${q(ts)}, nonce=${q(nonce)}${payload ? `, hash=${q(payload)}` : ''}${ext ? `, ext=${q(ext)}` : ''}, mac=${q(mac)}${f.app ? `, app=${q(resolve(f.app, values))}${f.dlg ? `, dlg=${q(resolve(f.dlg, values))}` : ''}` : ''}`;
+  copy.headers = replaceHeader(copy.headers, 'Authorization', header);
+  result.generatedHeaders.push('Authorization');
+  return result;
+}
+
+const pct = rfc3986;
+const OAUTH1_HASH: Record<string, string> = { 'HMAC-SHA1': 'sha1', 'HMAC-SHA256': 'sha256', 'HMAC-SHA512': 'sha512', 'RSA-SHA1': 'sha1', 'RSA-SHA256': 'sha256' };
+
+/** RFC 5849 §3.4.1: METHOD&url&parameter (query + body form + oauth_*), terurut */
+export function oauth1BaseString(request: HttpRequest, oauth: Readonly<Record<string, string>>): string {
+  const url = new URL(request.url);
+  const params: [string, string][] = [...url.searchParams].map(([k, v]) => [pct(k), pct(v)]);
+  const form = request.headers.some(([n, v]) => n.toLowerCase() === 'content-type' && /x-www-form-urlencoded/i.test(v));
+  if (form && request.body !== undefined) for (const [k, v] of new URLSearchParams(String(request.body))) params.push([pct(k), pct(v)]);
+  for (const [k, v] of Object.entries(oauth)) params.push([pct(k), pct(v)]);
+  params.sort((a, b) => (a[0] === b[0] ? (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0) : a[0] < b[0] ? -1 : 1));
+  const defaultPort = (url.protocol === 'https:' && url.port === '443') || (url.protocol === 'http:' && url.port === '80');
+  const base = `${url.protocol}//${url.hostname.toLowerCase()}${url.port && !defaultPort ? `:${url.port}` : ''}${url.pathname}`;
+  return [request.method.toUpperCase(), pct(base), pct(params.map(([k, v]) => `${k}=${v}`).join('&'))].join('&');
+}
+
+/** nilai oauth_signature (belum di-percent-encode); PLAINTEXT = consumer&token secret */
+export function oauth1Signature(fields: Readonly<Record<string, string>>, request: HttpRequest, oauth: Readonly<Record<string, string>>): string {
+  const method = (fields.signature_method || 'HMAC-SHA1').toUpperCase();
+  if (method === 'PLAINTEXT') return `${pct(fields.consumer_secret ?? '')}&${pct(fields.token_secret ?? '')}`;
+  const hash = OAUTH1_HASH[method];
+  if (!hash) throw new Error(`Unsupported OAuth 1.0 signature method: ${fields.signature_method}`);
+  const base = oauth1BaseString(request, oauth);
+  if (method.startsWith('RSA')) {
+    let key: KeyObject;
+    try { key = createPrivateKey(fields.consumer_secret ?? ''); } catch { throw new Error('oauth1 auth RSA needs a PEM private key as consumer_secret'); }
+    return cryptoSign(hash, Buffer.from(base), key).toString('base64');
+  }
+  return createHmac(hash, `${pct(fields.consumer_secret ?? '')}&${pct(fields.token_secret ?? '')}`).update(base).digest('base64');
+}
+
+function applyOauth1(copy: HttpRequest, config: AuthConfig, values: ReadonlyMap<string, string>, now: Date, result: AuthResult): AuthResult {
+  const f: Record<string, string> = {};
+  for (const [k, v] of Object.entries(config.fields)) f[k] = resolve(v, values);
+  const oauth: Record<string, string> = {
+    oauth_consumer_key: f.consumer_key,
+    ...(f.token ? { oauth_token: f.token } : {}),
+    oauth_signature_method: (f.signature_method || 'HMAC-SHA1').toUpperCase(),
+    oauth_timestamp: f.timestamp || String(Math.floor(now.getTime() / 1000)),
+    oauth_nonce: f.nonce || randomBytes(12).toString('hex'),
+    ...(f.version ? { oauth_version: f.version } : {}),
+    ...(f.callback ? { oauth_callback: f.callback } : {}),
+    ...(f.verifier ? { oauth_verifier: f.verifier } : {}),
+  };
+  oauth.oauth_signature = oauth1Signature(f, copy, oauth);
+  if (f.add_to === 'query') {
+    const url = new URL(copy.url);
+    for (const [k, v] of Object.entries(oauth)) url.searchParams.set(k, v);
+    copy.url = url.toString();
+  } else if (f.add_to === 'body') {
+    const extra = new URLSearchParams(oauth).toString();
+    copy.body = copy.body ? `${copy.body}&${extra}` : extra;
+    if (!copy.headers.some(([n]) => n.toLowerCase() === 'content-type')) copy.headers = [...copy.headers, ['Content-Type', 'application/x-www-form-urlencoded']];
+  } else {
+    const order = ['oauth_consumer_key', 'oauth_token', 'oauth_signature_method', 'oauth_timestamp', 'oauth_nonce', 'oauth_version', 'oauth_callback', 'oauth_verifier', 'oauth_signature'];
+    const parts = [...(f.realm ? [`realm="${f.realm}"`] : []), ...order.filter((k) => k in oauth).map((k) => `${k}="${pct(oauth[k])}"`)];
+    copy.headers = replaceHeader(copy.headers, 'Authorization', `OAuth ${parts.join(', ')}`);
+    result.generatedHeaders.push('Authorization');
+  }
+  return result;
+}
+
+/** Authorization di header tanpa # @auth: hanya bentuk yang bukan header HTTP asli (Digest user pass / AWS id secret ...) yang dihitung; selain itu dikirim apa adanya */
+export function headerAuth(headers: readonly Header[]): AuthConfig | undefined {
+  try {
+    const c = parseAuth(undefined, headers);
+    return c.type === 'digest' || c.type === 'aws' ? c : undefined;
+  } catch {
+    return undefined; // skema lain / header tidak lazim: bukan urusan auth, dikirim apa adanya
+  }
 }

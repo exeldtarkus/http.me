@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, verify as cryptoVerify, createHmac } from 'node:crypto';
-import { applyAuth, sendWithDigest, digestAuthorization, parseAuth, parseDigestChallenge } from '../../src/auth';
+import { applyAuth, headerAuth, oauth1Signature, sendWithDigest, digestAuthorization, parseAuth, parseDigestChallenge } from '../../src/auth';
 import type { HttpRequest } from '../../src/http';
 import type { Header } from '../../src/httpFile';
 
@@ -49,7 +49,8 @@ test('parseAuth: malformed auth metadata and unsupported Authorization schemes f
   assert.throws(() => parseAuth('apikey key=X-Key value=x in=cookie', []), /in must be header or query/);
   assert.throws(() => parseAuth('madeup token=x', []), /Unsupported auth type/);
   assert.throws(() => parseAuth(undefined, headers(['Authorization', 'Bearer', true])), /Invalid Bearer Authorization header/);
-  assert.throws(() => parseAuth(undefined, headers(['Authorization', 'Digest abc', true])), /Unsupported Authorization scheme/);
+  assert.throws(() => parseAuth(undefined, headers(['Authorization', 'Token abc', true])), /Unsupported Authorization scheme/);
+  assert.throws(() => parseAuth(undefined, headers(['Authorization', 'Digest abc', true])), /Invalid Digest Authorization header/);
 });
 
 test('parseAuth: malformed field error does not leak the secret', () => {
@@ -118,8 +119,8 @@ test('applyAuth: missing variables, malformed fields, and advanced algorithms fa
     /in must be header or query/,
   );
   assert.throws(
-    () => applyAuth(request, { type: 'hawk', fields: {} }, new Map()),
-    /Auth type hawk is not supported yet/,
+    () => applyAuth(request, { type: 'oauth2', fields: {} }, new Map()),
+    /Auth type oauth2 is not supported yet/,
   );
 });
 
@@ -233,4 +234,66 @@ test('sendWithDigest vs server lokal: 401 challenge -> retry sekali dengan respo
   } finally {
     server.close();
   }
+});
+
+test('digest: vektor RFC 7616 §3.9.1 (MD5 dan SHA-256)', () => {
+  const ch = { realm: 'http-auth@example.org', nonce: '7ypf/xlj9XXwfDPEoM4URrv/xwf94BcCAzFZH4GiTo0v', opaque: 'FQhe/qaU925kfnzjCev0ciny7QMkPqMAFRtzCUYo5tdS', qop: 'auth' };
+  const fields = { username: 'Mufasa', password: 'Circle of Life', nc: '00000001', cnonce: 'f2/wE4q74E6zIJEtWaHKaf5wv/H5QzzpXusqGemxURZJ' };
+  const req: HttpRequest = { method: 'GET', url: 'http://www.example.org/dir/index.html', headers: [] };
+  assert.match(digestAuthorization({ type: 'digest', fields }, req, { ...ch, algorithm: 'MD5' }), /response="8ca523f5e9506fed4657c9700eebdbec"/);
+  assert.match(digestAuthorization({ type: 'digest', fields }, req, { ...ch, algorithm: 'SHA-256' }), /response="753927fa0e85d155564e2e272a28d1802ca10daf4496794697cf8db5856cb6c1"/);
+});
+
+test('parseAuth: header gaya REST Client — Digest user pass dan AWS id secret region:r service:s', () => {
+  assert.deepEqual(parseAuth(undefined, headers(['Authorization', 'Digest Mufasa Circle of Life', true])),
+    { type: 'digest', fields: { username: 'Mufasa', password: 'Circle of Life' } });
+  assert.deepEqual(parseAuth(undefined, headers(['Authorization', 'AWS AKID SECRET region:us-east-1 service:s3 token:TOK', true])),
+    { type: 'aws', fields: { access_key: 'AKID', secret_key: 'SECRET', region: 'us-east-1', service: 's3', session_token: 'TOK' } });
+  assert.throws(() => parseAuth(undefined, headers(['Authorization', 'AWS AKID SECRET', true])), /region/);
+  // header Digest mentah tidak ikut terkirim: password-nya hanya bahan hitung
+  const r = applyAuth({ method: 'GET', url: 'http://h/', headers: [['Authorization', 'Digest u p']] }, { type: 'digest', fields: { username: 'u', password: 'p' } }, new Map());
+  assert.deepEqual(r.request.headers, []);
+});
+
+test('applyAuth: Hawk — MAC dari string spec, payload hash, app/dlg', () => {
+  const fields = { id: 'dh37fgj492je', key: 'werxhqb98rpaxn39848xrunpaw3489ruxnpa98w4rxn', algorithm: 'sha256', timestamp: '1353832234', nonce: 'j4h3g2', ext: 'some-app-data' };
+  const req: HttpRequest = { method: 'GET', url: 'http://example.com:8000/resource/1?b=1&a=2', headers: [] };
+  const h = applyAuth(req, { type: 'hawk', fields }, new Map()).request.headers.find(([n]) => n === 'Authorization')![1];
+  // string ternormalisasi disusun manual dari spec Hawk (bukan vektor resmi: tidak ada salinan vektor yang bisa diverifikasi offline)
+  const mac0 = createHmac('sha256', fields.key).update('hawk.1.header\n1353832234\nj4h3g2\nGET\n/resource/1?b=1&a=2\nexample.com\n8000\n\nsome-app-data\n').digest('base64');
+  assert.equal(h, `Hawk id="dh37fgj492je", ts="1353832234", nonce="j4h3g2", ext="some-app-data", mac="${mac0}"`);
+  const body: HttpRequest = { method: 'POST', url: 'http://example.com/x?a=1', headers: [['Content-Type', 'text/plain; charset=utf-8']], body: 'Thank you for flying Hawk' };
+  const hb = applyAuth(body, { type: 'hawk', fields: { ...fields, ext: '' } }, new Map()).request.headers.find(([n]) => n === 'Authorization')![1];
+  const hash = createHash('sha256').update('hawk.1.payload\ntext/plain\nThank you for flying Hawk\n').digest('base64');
+  assert.match(hb, new RegExp(`hash="${hash.replace(/[+/=]/g, '\\$&')}"`));
+  const norm = `hawk.1.header\n1353832234\nj4h3g2\nPOST\n/x?a=1\nexample.com\n80\n${hash}\n\n`;
+  assert.match(hb, new RegExp(`mac="${createHmac('sha256', fields.key).update(norm).digest('base64').replace(/[+/=]/g, '\\$&')}"`));
+  assert.match(applyAuth(req, { type: 'hawk', fields: { ...fields, app: 'a1', dlg: 'd1' } }, new Map()).request.headers[0][1], /app="a1", dlg="d1"/);
+});
+
+test('applyAuth: OAuth 1.0 — vektor RFC 5849 §1.2 (HMAC-SHA1), PLAINTEXT, RSA-SHA1, query & body', () => {
+  const req: HttpRequest = { method: 'GET', url: 'http://photos.example.net/photos?file=vacation.jpg&size=original', headers: [] };
+  const f = { consumer_key: 'dpf43f3p2l4k3l03', consumer_secret: 'kd94hf93k423kf44', token: 'nnch734d00sl2jdk', token_secret: 'pfkkdhi9sl3r4s00', timestamp: '137131202', nonce: 'chapoH', realm: 'Photos' };
+  const h = applyAuth(req, { type: 'oauth1', fields: f }, new Map()).request.headers.find(([n]) => n === 'Authorization')![1];
+  assert.equal(h, 'OAuth realm="Photos", oauth_consumer_key="dpf43f3p2l4k3l03", oauth_token="nnch734d00sl2jdk", oauth_signature_method="HMAC-SHA1", oauth_timestamp="137131202", oauth_nonce="chapoH", oauth_signature="MdpQcU8iPSUjWoN%2FUDMsK2sui9I%3D"');
+  assert.equal(oauth1Signature({ ...f, signature_method: 'PLAINTEXT' }, req, {}), 'kd94hf93k423kf44&pfkkdhi9sl3r4s00');
+  const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const pem = String(rsa.privateKey.export({ type: 'pkcs8', format: 'pem' }));
+  const sig = oauth1Signature({ ...f, signature_method: 'RSA-SHA1', consumer_secret: pem }, req, { oauth_consumer_key: f.consumer_key });
+  assert.ok(cryptoVerify('sha1', Buffer.from(oauth1Base(req, { oauth_consumer_key: f.consumer_key })), rsa.publicKey, Buffer.from(sig, 'base64')));
+  const q = applyAuth(req, { type: 'oauth1', fields: { ...f, add_to: 'query' } }, new Map()).request;
+  assert.equal(new URL(q.url).searchParams.get('oauth_signature'), 'MdpQcU8iPSUjWoN/UDMsK2sui9I=');
+  assert.deepEqual(q.headers, []);
+  const form: HttpRequest = { method: 'POST', url: 'http://h/p', headers: [['Content-Type', 'application/x-www-form-urlencoded']], body: 'a=1' };
+  const b = applyAuth(form, { type: 'oauth1', fields: { ...f, add_to: 'body' } }, new Map()).request;
+  assert.match(String(b.body), /^a=1&oauth_consumer_key=/);
+  assert.match(String(b.body), /oauth_signature=/);
+});
+
+import { oauth1BaseString as oauth1Base } from '../../src/auth';
+
+test('headerAuth: hanya Digest user pass / AWS yang dihitung; Basic, Bearer, skema lain dikirim apa adanya', () => {
+  assert.equal(headerAuth(headers(['Authorization', 'Digest u p', true]))?.type, 'digest');
+  assert.equal(headerAuth(headers(['Authorization', 'AWS a s region:r service:x', true]))?.type, 'aws');
+  for (const v of ['Basic dTpw', 'Bearer t', 'Token abc', 'Digest']) assert.equal(headerAuth(headers(['Authorization', v, true])), undefined, v);
 });

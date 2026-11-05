@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import { dirname, join, relative, resolve as resolvePath } from 'node:path';
 import { homedir } from 'node:os';
-import { applyAuth, parseAuth, sendWithDigest, type AuthConfig, type AuthType } from './auth';
+import { applyAuth, headerAuth, parseAuth, sendWithDigest, type AuthConfig, type AuthType } from './auth';
 import { webviewPage } from './webviewPage';
 import { NEW_REQUEST_TEXT, newRequestName } from './newRequest';
 import { blockLabel, parseRequest, replaceBlock, serializeRequest, splitBlocks, toHttpRequestWithFile, type ParsedRequest } from './httpFile';
@@ -585,7 +585,7 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
       let r = await toHttpRequestWithFile(parsed, (p) => readBodyFile(doc, p));
       // Authorization di header (tanpa # @auth) dikirim apa adanya; selain itu auth request / _auth.http terdekat
       const ownHeader = parsed.auth === undefined && parsed.headers.some((h) => h.enabled && h.name.toLowerCase() === 'authorization');
-      const auth = ownHeader ? undefined : await resolveRequestAuth(doc.uri, parsed, async (x) => (await hooks?.resolve(x))?.request ?? x);
+      const auth = ownHeader ? headerAuth(parsed.headers) : await resolveRequestAuth(doc.uri, parsed, async (x) => (await hooks?.resolve(x))?.request ?? x);
       if (auth) r = { ...r, ...applyAuth({ ...r }, auth, new Map()).request };
       const cookies = await session?.cookies(parsed);
       const sendOnce = (req: typeof r) => send(req, {
