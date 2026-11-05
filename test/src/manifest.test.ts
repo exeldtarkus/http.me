@@ -84,7 +84,7 @@ test('sidebar welcome: Loading http.me… sebelum aktif, Scanning saat scan, No 
   const w = (pkg.contributes.viewsWelcome as { view: string; contents: string; when: string }[]).filter((x) => x.view === 'httpme.sidebar');
   const find = (text: string) => w.find((x) => x.contents.startsWith(text));
   assert.match(find('Loading http.me…')?.when ?? '', /!httpme\.loaded/);
-  assert.match(find('Scanning the workspace for .http files…')?.when ?? '', /httpme\.loaded && httpme\.scanning/);
+  assert.match(find('Scanning the workspace for .http files…')?.when ?? '', /httpme\.loaded\.collections && httpme\.scanning/);
   assert.match(find('No .http files.')?.contents ?? '', /\[New Request\]\(command:httpme\.newRequest\)/);
   for (const x of w.filter((y) => y.when.includes('!= empty') && !y.contents.startsWith('Loading'))) assert.match(x.when, /httpme\.loaded/, x.contents);
 });
@@ -133,7 +133,26 @@ test('review R33: output response di panel bawah (samping Terminal): view contai
 test('review R47: Open / Environments / Cookies menampilkan "Loading http.me…" selama extension aktif (tidak kosong); "No open requests" setelah dimuat', () => {
   const welcome = pkg.contributes.viewsWelcome as { view: string; contents: string; when: string }[];
   for (const view of ['httpme.open', 'httpme.environments', 'httpme.cookies']) {
-    assert.ok(welcome.some((w) => w.view === view && w.contents === 'Loading http.me…' && w.when === 'workbenchState != empty && !httpme.loaded'), view);
+    assert.ok(welcome.some((w) => w.view === view && w.contents === 'Loading http.me…' && w.when === `workbenchState != empty && !httpme.loaded.${view.replace('httpme.', '')}`), view);
   }
-  assert.equal(welcome.find((w) => w.view === 'httpme.open' && w.contents.startsWith('No open requests'))?.when, 'workbenchState != empty && httpme.loaded');
+  assert.equal(welcome.find((w) => w.view === 'httpme.open' && w.contents.startsWith('No open requests'))?.when, 'workbenchState != empty && httpme.loaded.open');
+});
+
+test('Open: tiap tab .http punya dua pilihan buka — ikon hover dan menu klik kanan: Text Editor / http.me UI', () => {
+  const ctx = pkg.contributes.menus['view/item/context'] as { command: string; when: string; group: string }[];
+  for (const command of ['httpme.openTabAsText', 'httpme.openTabInPanel']) {
+    const items = ctx.filter((m) => m.command === command);
+    assert.deepEqual(items.map((m) => m.group.split('@')[0]).sort(), ['0_open', 'inline'], command);
+    assert.ok(items.every((m) => m.when.includes('view == httpme.open') && m.when.includes('resourceExtname == .http')), command);
+    assert.ok((pkg.contributes.commands as { command: string; title: string }[]).some((c) => c.command === command), command);
+  }
+  const inline = ctx.filter((m) => m.group.startsWith('inline@') && m.when.includes('httpme.open')).sort((a, b) => a.group.localeCompare(b.group)).map((m) => m.command);
+  assert.deepEqual(inline.slice(-3), ['httpme.openTabAsText', 'httpme.openTabInPanel', 'httpme.closeTab']);
+});
+
+test('tiap section punya flag "loaded" sendiri (flag bersama membuat section lain kosong selama datanya dimuat)', () => {
+  const welcome = pkg.contributes.viewsWelcome as { when: string }[];
+  assert.ok(welcome.every((w) => !/httpme\.loaded(?!\.)/.test(w.when)), 'tidak ada httpme.loaded global');
+  const src = (require('node:fs') as typeof import('node:fs')).readFileSync(join(__dirname, '..', '..', '..', 'src', 'sidebar.ts'), 'utf8');
+  assert.doesNotMatch(src, /'httpme\.loaded'/);
 });

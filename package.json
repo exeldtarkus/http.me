@@ -442,6 +442,18 @@
         "category": "http.me"
       },
       {
+        "command": "httpme.openTabAsText",
+        "title": "Open with Text Editor",
+        "category": "http.me",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "httpme.openTabInPanel",
+        "title": "Open with http.me UI",
+        "category": "http.me",
+        "icon": "$(preview)"
+      },
+      {
         "command": "httpme.moveTo",
         "title": "Move to Folder",
         "category": "http.me"
@@ -838,6 +850,14 @@
         {
           "command": "httpme.copyAsPowerShellWithCookies",
           "when": "false"
+        },
+        {
+          "command": "httpme.openTabAsText",
+          "when": "false"
+        },
+        {
+          "command": "httpme.openTabInPanel",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -996,7 +1016,7 @@
         {
           "command": "httpme.closeTab",
           "when": "view == httpme.open && viewItem =~ /^httpmeOpenTab/",
-          "group": "inline@1"
+          "group": "inline@2"
         },
         {
           "command": "httpme.saveTab",
@@ -1127,6 +1147,26 @@
           "command": "httpme.copyAsPowerShellWithCookies",
           "when": "view == httpme.sidebar && viewItem == httpmeFile",
           "group": "2_copy@6"
+        },
+        {
+          "command": "httpme.openTabAsText",
+          "when": "view == httpme.open && viewItem =~ /^httpmeOpenTab/ && resourceExtname == .http",
+          "group": "inline@0"
+        },
+        {
+          "command": "httpme.openTabInPanel",
+          "when": "view == httpme.open && viewItem =~ /^httpmeOpenTab/ && resourceExtname == .http",
+          "group": "inline@1"
+        },
+        {
+          "command": "httpme.openTabAsText",
+          "when": "view == httpme.open && viewItem =~ /^httpmeOpenTab/ && resourceExtname == .http",
+          "group": "0_open@1"
+        },
+        {
+          "command": "httpme.openTabInPanel",
+          "when": "view == httpme.open && viewItem =~ /^httpmeOpenTab/ && resourceExtname == .http",
+          "group": "0_open@2"
         }
       ]
     },
@@ -1217,42 +1257,42 @@
       {
         "view": "httpme.sidebar",
         "contents": "Loading http.me…",
-        "when": "workbenchState != empty && !httpme.loaded"
+        "when": "workbenchState != empty && !httpme.loaded.collections"
       },
       {
         "view": "httpme.sidebar",
         "contents": "Scanning the workspace for .http files…",
-        "when": "workbenchState != empty && httpme.loaded && httpme.scanning"
+        "when": "workbenchState != empty && httpme.loaded.collections && httpme.scanning"
       },
       {
         "view": "httpme.sidebar",
         "contents": "No request matches the filter.\n[Clear Filter](command:httpme.clearFilter)",
-        "when": "workbenchState != empty && httpme.loaded && !httpme.scanning && httpme.collectionsFiltered"
+        "when": "workbenchState != empty && httpme.loaded.collections && !httpme.scanning && httpme.collectionsFiltered"
       },
       {
         "view": "httpme.sidebar",
         "contents": "No .http files.\n[New Request](command:httpme.newRequest)\n[New Collection](command:httpme.newCollection)",
-        "when": "workbenchState != empty && httpme.loaded && !httpme.scanning && !httpme.collectionsFiltered"
+        "when": "workbenchState != empty && httpme.loaded.collections && !httpme.scanning && !httpme.collectionsFiltered"
       },
       {
         "view": "httpme.open",
         "contents": "Loading http.me…",
-        "when": "workbenchState != empty && !httpme.loaded"
+        "when": "workbenchState != empty && !httpme.loaded.open"
       },
       {
         "view": "httpme.environments",
         "contents": "Loading http.me…",
-        "when": "workbenchState != empty && !httpme.loaded"
+        "when": "workbenchState != empty && !httpme.loaded.environments"
       },
       {
         "view": "httpme.cookies",
         "contents": "Loading http.me…",
-        "when": "workbenchState != empty && !httpme.loaded"
+        "when": "workbenchState != empty && !httpme.loaded.cookies"
       },
       {
         "view": "httpme.open",
         "contents": "No open requests.\n[New Request](command:httpme.newRequest)",
-        "when": "workbenchState != empty && httpme.loaded"
+        "when": "workbenchState != empty && httpme.loaded.open"
       }
     ],
     "configuration": {

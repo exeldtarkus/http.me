@@ -131,7 +131,7 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
     if (!this.scan) {
       // selama scan: progress di view + pesan "Scanning…" (viewsWelcome)
       // urutan penting: scanning dulu, baru loaded (tidak sempat tampil "No .http files" sebelum scan)
-      void vscode.commands.executeCommand('setContext', 'httpme.scanning', true).then(() => vscode.commands.executeCommand('setContext', 'httpme.loaded', true));
+      void vscode.commands.executeCommand('setContext', 'httpme.scanning', true).then(() => vscode.commands.executeCommand('setContext', 'httpme.loaded.collections', true));
       const run = Promise.all([vscode.workspace.findFiles('**/*.http', undefined, MAX_FILES), vscode.workspace.findFiles(`**/${KEEP_FILE}`, undefined, MAX_FILES)])
         .then(([files, keep]) => ({
           files: files.filter((u) => !u.path.includes('/node_modules/')).sort((a, b) => a.path.localeCompare(b.path)),
@@ -264,12 +264,19 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
     return [];
   }
 
+  /** "Loading http.me…" tiap section hilang setelah DATA section itu sendiri siap (bukan saat section lain selesai), supaya tidak sempat kosong */
+  private markLoaded(): void {
+    if (this.loadedSet) return;
+    this.loadedSet = true;
+    void vscode.commands.executeCommand('setContext', `httpme.loaded.${this.mode}`, true);
+  }
+  private loadedSet = false;
+
   getChildren(n?: Node): Promise<Node[]> {
     // mode selain Collections tidak scan: "Loading http.me…" diganti isi view
-    if (this.mode !== 'collections') void vscode.commands.executeCommand('setContext', 'httpme.loaded', true);
-    if (this.mode === 'cookies') return this.busy(this.cookieChildren(n));
-    if (this.mode === 'environments') return this.busy(this.environmentChildren(n));
-    if (this.mode === 'open') return Promise.resolve(this.openChildrenOf(n)); // dari tab terbuka, tanpa I/O
+    if (this.mode === 'open') { this.markLoaded(); return Promise.resolve(this.openChildrenOf(n)); } // dari tab terbuka, tanpa I/O
+    if (this.mode === 'cookies') return this.busy(this.cookieChildren(n)).finally(() => this.markLoaded());
+    if (this.mode === 'environments') return this.busy(this.environmentChildren(n)).finally(() => this.markLoaded());
     return this.busy(this.collectionChildren(n));
   }
 
@@ -661,6 +668,9 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
       if (viewType) await vscode.commands.executeCommand('vscode.openWith', u, viewType);
       else await vscode.window.showTextDocument(u, { preview: false });
     }),
+    // klik item Open = buka seperti tab-nya; dua pilihan eksplisit lewat ikon hover / menu klik kanan
+    cmd('httpme.openTabAsText', async (a?: Arg) => { const u = uriOf(a); if (u) await vscode.commands.executeCommand('httpme.openAsText', u); }),
+    cmd('httpme.openTabInPanel', async (a?: Arg) => { const u = uriOf(a); if (u) await vscode.commands.executeCommand('httpme.openInPanel', u); }),
     cmd('httpme.saveTab', async (a?: Arg) => { const u = uriOf(a); if (u) await (await vscode.workspace.openTextDocument(u)).save(); }),
     cmd('httpme.revertTab', async (a?: Arg) => {
       const u = uriOf(a);
