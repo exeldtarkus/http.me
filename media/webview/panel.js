@@ -994,7 +994,32 @@
   };
   // Save: .http + script yang berubah; request untitled = dialog Save http.me
   $('save').onclick = () => { flush(); scFlush(); post({ type: 'save' }); };
-  $('openAsText').onclick = () => post({ type: 'openAsText' });
+  // ---- file multi-request: tab request / response (sama-sama memilih blok aktif) + Send All ----
+  let blocks = [];
+  let activeBlock = 0;
+  let allRunning = false;
+  function renderBlocks(list, active) {
+    if (active !== activeBlock) bodyStash = ''; // body simpanan "none" milik blok lain
+    blocks = list;
+    activeBlock = active;
+    $('reqBlocks').hidden = blocks.length < 2;
+    $('resBlocks').hidden = blocks.length < 2;
+    document.querySelector('.resp').classList.toggle('multi', blocks.length >= 2);
+    const tab = (b, i) => {
+      const t = el('button', { type: 'button', className: i === active ? 'on' : '', title: `${b.method} · ${b.label}` }, [
+        el('span', { className: `rb-m m-${b.method}`, textContent: b.method }), el('span', { className: 'rb-l', textContent: b.label }), el('span', { className: `rb-s ${b.cls}`, textContent: b.text })]);
+      t.setAttribute('role', 'tab');
+      t.setAttribute('aria-selected', String(i === active));
+      t.onclick = () => { if (i === activeBlock) return; flush(); post({ type: 'pickBlock', index: i }); };
+      return t;
+    };
+    $('rbTabs').replaceChildren(...blocks.map(tab));
+    $('resBlocks').replaceChildren(...blocks.map(tab));
+    allRunning = blocks.some((b) => b.cls === 'run');
+    $('sendAll').textContent = allRunning ? 'Cancel All' : 'Send All';
+    $('sendAll').classList.toggle('busy', allRunning);
+  }
+  $('sendAll').onclick = () => { flush(); post({ type: allRunning ? 'cancelAll' : 'sendAll' }); };
   $('saveBody').onclick = () => post({ type: 'saveBody' });
 
   // ---- tab Scripts: Runs in order + editor script (isi = dokumen VS Code di host) ----
@@ -1219,9 +1244,8 @@
       paintSave();
       req = m.req;
       renderRequest();
-      $('multi').hidden = !(m.multi > 1);
-      $('multiCount').textContent = `This file has ${m.multi} requests.`;
     }
+    if (m.blocks) renderBlocks(m.blocks, m.active);
     if (m.type === 'vars') { vars = { ok: m.ok, nulls: m.nulls, names: m.names }; syncMirrors(); }
     if (m.type === 'varHover') showHover(m.name, m.info);
     if (m.type === 'matching') $('matching').hidden = !m.on;

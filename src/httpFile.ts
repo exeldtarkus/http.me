@@ -208,3 +208,23 @@ export function splitBlocks(text: string): Block[] {
   }
   return out;
 }
+
+/** tulis ulang blok ke-index (file multi-request) dari request panel; variabel kepala file tidak ikut ditulis ke blok */
+export function replaceBlock(text: string, index: number, r: ParsedRequest): string {
+  const b = splitBlocks(text)[index];
+  if (!b) return text;
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const own = parseRequest(lines.slice(b.start, b.end + 1).join('\n')).vars.length;
+  const shared = parseRequest(b.text).vars.length - own;
+  const block = serializeRequest({ ...r, vars: r.vars.slice(shared) }).replace(/\n$/, '').split('\n');
+  return [...lines.slice(0, b.start), ...block, ...lines.slice(b.end + 1)].join(eol);
+}
+
+/** label tab request: judul ###, lalu # @name, lalu METHOD + path (tanpa host / query) */
+export function blockLabel(r: ParsedRequest): string {
+  if (r.title) return r.title;
+  if (r.name) return r.name;
+  const path = r.url.replace(/^(?:[a-z][\w+.-]*:\/\/[^/]*|\{\{[^}]*\}\})/i, '').replace(/[?#].*$/, '');
+  return `${r.method} ${path || '/'}`;
+}

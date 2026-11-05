@@ -501,3 +501,20 @@ test('review R40: CSS webview tanpa gambar data: (CSP default-src none memblokir
   const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
   for (const f of fs.readdirSync(dir).filter((x: string) => x.endsWith('.html'))) assert.doesNotMatch(fs.readFileSync(join(dir, f), 'utf8'), /url\(["']?data:/, f);
 });
+
+test('review R41: file multi-request di panel: tab request + Send All (hanya bila > 1 request), tab response per request', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const html = fs.readFileSync(join(dir, 'panel.html'), 'utf8');
+  const js = fs.readFileSync(join(dir, 'panel.js'), 'utf8');
+  const host = fs.readFileSync(join(__dirname, '..', '..', '..', 'src', 'httpEditor.ts'), 'utf8');
+  assert.match(html, /<div class="reqblocks" id="reqBlocks" hidden><div class="rb-tabs" id="rbTabs" role="tablist" aria-label="Requests"><\/div><button class="btn pri sm" id="sendAll" type="button" title="Send all requests in this file">Send All<\/button><\/div>/);
+  assert.match(html, /<div class="rb-tabs resblocks" id="resBlocks" role="tablist" aria-label="Responses" hidden><\/div>/);
+  assert.doesNotMatch(html, /id="multi"/, 'banner "Open as Text" diganti tab');
+  assert.match(js, /\$\('reqBlocks'\)\.hidden = blocks\.length < 2/);
+  assert.match(js, /post\(\{ type: 'pickBlock', index: i \}\)/);
+  assert.match(js, /post\(\{ type: allRunning \? 'cancelAll' : 'sendAll' \}\)/);
+  assert.match(host, /m\.type === 'pickBlock' && typeof m\.index === 'number'/);
+  assert.match(host, /else if \(m\.type === 'sendAll'\) await sendAll\(doc\)/);
+  assert.match(host, /replaceBlock\(doc\.getText\(\), active, m\.req\)/);
+});

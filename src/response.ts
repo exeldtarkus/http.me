@@ -178,3 +178,11 @@ export function responseView(res: HttpResponse, method: string): ResponseView {
     canSave: !!res.bodyFile,
   };
 }
+
+/** status ringkas untuk tab response per request (file multi-request) */
+export function tabStatus(v: { kind: string; status?: string; statusClass?: string } | undefined): { text: string; cls: string } {
+  if (!v) return { text: '', cls: '' };
+  if (v.kind === 'running' || v.kind === 'queued') return { text: '…', cls: 'run' };
+  if (v.kind === 'response') return { text: (v.status ?? '').split(' ')[0], cls: v.statusClass ?? '' };
+  return v.kind === 'error' ? { text: 'Error', cls: 'st-5' } : { text: 'Cancelled', cls: 'st-1' };
+}

@@ -1,0 +1,42 @@
+# Multi-request file: open it in the http.me panel (Open With… > http.me) to get one tab per request,
+# a Send All button, and one response tab per request. Select an Environment (demo-dev / demo-prod) first.
+
+### List posts
+GET {{JSONPLACEHOLDER_URL}}/posts?_limit=3
+Accept: application/json
+
+### Get one post
+GET {{JSONPLACEHOLDER_URL}}/posts/1
+Accept: application/json
+
+### Create post
+POST {{JSONPLACEHOLDER_URL}}/posts
+Content-Type: application/json
+
+{
+  "title": "Hello from http.me",
+  "body": "Created by the multi-request demo",
+  "userId": 1
+}
+
+### Update post
+PUT {{JSONPLACEHOLDER_URL}}/posts/1
+Content-Type: application/json
+
+{
+  "id": 1,
+  "title": "Updated title",
+  "body": "Updated body",
+  "userId": 1
+}
+
+### Patch title
+PATCH {{JSONPLACEHOLDER_URL}}/posts/1
+Content-Type: application/json
+
+{
+  "title": "Only the title changes"
+}
+
+### Delete post
+DELETE {{JSONPLACEHOLDER_URL}}/posts/1
