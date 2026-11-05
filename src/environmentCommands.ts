@@ -29,6 +29,7 @@ async function selectEnvironment(envs: Environments): Promise<void> {
 
 async function askEnvName(title: string, envs: Environments, value = '', input?: string): Promise<string | undefined> {
   const names = await envs.names();
+  if (typeof input !== 'string') input = undefined; // dari menu/tombol VS Code mengirim Uri/tree item
   input ??= await vscode.window.showInputBox({
     title, value, placeHolder: 'dev, uat, prod…',
     validateInput: (v) => {
