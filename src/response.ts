@@ -73,9 +73,9 @@ export function prettyXml(xml: string): string | undefined {
   return out.join('\n');
 }
 
-const MARKUP = /<!--[\s\S]*?-->|<(\/?)([A-Za-z_][\w:.-]*)([^>]*?)(\/?)>/g;
+const MARKUP = /<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<(\/?)([A-Za-z_][\w:.-]*)([^>]*?)(\/?)>/g;
 
-/** warna XML / HTML: nama tag (.k), nilai atribut (.s), komentar (.c); semua teks di-escape */
+/** warna XML / HTML: tanda < > (.p), nama tag (.t), nama atribut (.a), nilai atribut (.s), komentar (.c); semua teks di-escape */
 export function highlightMarkup(text: string): string {
   let out = '';
   let last = 0;
@@ -83,8 +83,9 @@ export function highlightMarkup(text: string): string {
     out += esc(text.slice(last, m.index));
     if (m[2] === undefined) out += `<span class="c">${esc(m[0])}</span>`;
     else {
-      const attrs = m[3].split(/("[^"]*"|'[^']*')/).map((p, i) => (i % 2 ? `<span class="s">${esc(p)}</span>` : esc(p))).join('');
-      out += `&lt;${m[1]}<span class="k">${esc(m[2])}</span>${attrs}${m[4]}&gt;`;
+      const word = (p: string) => p.split(/([\w:.-]+)/).map((q, j) => (j % 2 ? `<span class="a">${esc(q)}</span>` : esc(q))).join('');
+      const attrs = m[3].split(/("[^"]*"|'[^']*')/).map((p, i) => (i % 2 ? `<span class="s">${esc(p)}</span>` : word(p))).join('');
+      out += `<span class="p">&lt;${m[1]}</span><span class="t">${esc(m[2])}</span>${attrs}<span class="p">${m[4]}&gt;</span>`;
     }
     last = m.index + m[0].length;
   }

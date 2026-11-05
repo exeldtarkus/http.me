@@ -485,7 +485,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   };
   const subs = [
     onRunnerChange(postOthers),
-    panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown; layout?: unknown }) => {
+    panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown; layout?: unknown; message?: unknown }) => {
       try {
         if (await handleScriptsMessage(doc, m, postMsg)) return;
         if (m.type === 'ready') { postMsg({ type: 'layout', layout: getLayout() }); postOthers(); postState(); await postVars(panel); await postCookies(panel, doc.uri.toString()); } else if (m.type === 'varHover' && typeof m.name === 'string' && hooks) {
@@ -507,6 +507,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
         }
         else if (m.type === 'copyBody' && typeof m.text === 'string') await copyBody(s, m.text);
         else if (m.type === 'layout' && isLayout(m.layout)) await setLayout(m.layout);
+        else if (m.type === 'warn' && typeof m.message === 'string') void vscode.window.showWarningMessage(m.message);
         else if (m.type === 'beautify') {
           const r = parseRequest(doc.getText());
           const out = beautifyBody(r.body, r.bodyType);

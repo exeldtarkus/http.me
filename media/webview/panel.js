@@ -29,15 +29,18 @@
   const CONTENT_TYPES = { json: 'application/json', text: 'text/plain', xml: 'application/xml', form: 'application/x-www-form-urlencoded' };
   const FAMILY = { json: /[/+]json\b/i, xml: /[/+]xml\b/i, form: /x-www-form-urlencoded/i, text: /^text\/plain\b/i };
 
-  /** pilih jenis body: Content-Type diatur (nilai user dipertahankan bila jenisnya sama); none = header & body dihapus */
-  function setBodyType(req, type) {
+  /** pilih jenis body: Content-Type diatur (nilai user dipertahankan bila jenisnya sama); none = header & body dihapus.
+   *  Mengembalikan body yang dibuang (none); stash = body itu, dipasang lagi saat kembali ke tipe lain dengan body kosong */
+  function setBodyType(req, type, stash) {
     const isCt = (h) => h.name.toLowerCase() === 'content-type';
     const cur = req.headers.find((h) => h.enabled && isCt(h));
     req.headers = req.headers.filter((h) => !isCt(h) || (type !== 'none' && h === cur));
-    if (type === 'none') req.body = '';
-    else if (!cur) req.headers.push({ name: 'Content-Type', value: CONTENT_TYPES[type], enabled: true });
-    else if (!FAMILY[type].test(cur.value)) cur.value = CONTENT_TYPES[type];
     req.bodyType = type;
+    if (type === 'none') { const dropped = req.body; req.body = ''; return dropped; }
+    if (req.body === '' && stash) req.body = stash;
+    if (!cur) req.headers.push({ name: 'Content-Type', value: CONTENT_TYPES[type], enabled: true });
+    else if (!FAMILY[type].test(cur.value)) cur.value = CONTENT_TYPES[type];
+    return '';
   }
 
   const decode = (s) => { try { return decodeURIComponent(s.replace(/\+/g, ' ')); } catch { return s; } }; // %xx rusak: dibiarkan apa adanya
@@ -223,6 +226,8 @@
     }
   }
   function xmlError(s) {
+    const first = s.search(/\S/);
+    if (first >= 0 && s[first] !== '<' && !s.startsWith('{{', first)) return { start: first, end: first + 1, message: "The body is not XML: it must start with '<'" };
     const stack = [];
     for (let i = s.indexOf('<'); i >= 0; i = s.indexOf('<', i)) {
       const skip = [['<!--', '-->'], ['<![CDATA[', ']]>'], ['<?', '?>']].find(([a]) => s.startsWith(a, i));
@@ -241,6 +246,21 @@
     }
     const open = stack.pop();
     return open ? { start: open.start, end: open.end, message: `Tag <${open.name}> is not closed` } : undefined;
+  }
+  /** rentang warna XML di body: p = tanda < </ > />, t = nama tag, a = nama atribut, s = nilai atribut, c = komentar / CDATA / <?xml?> */
+  function xmlRanges(text) {
+    const out = [];
+    const re = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<(\/?)([A-Za-z_][\w:.-]*)((?:[^<>"']|"[^"]*"|'[^']*')*?)(\/?)>/g;
+    for (const m of text.matchAll(re)) {
+      const i = m.index;
+      if (m[2] === undefined) { out.push({ start: i, end: i + m[0].length, val: 'c' }); continue; }
+      const open = 1 + m[1].length;
+      const attrsAt = i + open + m[2].length;
+      out.push({ start: i, end: i + open, val: 'p' }, { start: i + open, end: attrsAt, val: 't' });
+      for (const a of m[3].matchAll(/("[^"]*"|'[^']*')|[\w:.-]+/g)) out.push({ start: attrsAt + a.index, end: attrsAt + a.index + a[0].length, val: a[1] ? 's' : 'a' });
+      out.push({ start: i + m[0].length - 1 - m[4].length, end: i + m[0].length, val: 'p' });
+    }
+    return out;
   }
   /** rentang warna JSON di body: k = key, s = string, n = angka, l = true/false/null; token variable di luar string dilewati */
   function jsonRanges(text) {
@@ -346,7 +366,7 @@
     return undefined;
   }
 
-  const api = { foldJson, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
+  const api = { xmlRanges, foldJson, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -522,8 +542,8 @@
     for (const p of ['font', 'letterSpacing', 'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'textIndent', 'tabSize']) m.style[p] = cs[p];
     let segs = segments(input.value, vars, fileVars());
     const err = input.id === 'bodyText' && !$('bodyErr').hidden && req ? bodyError(input.value, req.bodyType) : undefined;
-    // shortcut: warna JSON hanya untuk body <= 200 KB, lebih besar teks polos (mirror tiap ketikan)
-    if (input.id === 'bodyText' && req && req.bodyType === 'json' && input.value.length <= 200000) segs = applyRanges(segs, jsonRanges(input.value), 'j');
+    // shortcut: warna JSON / XML hanya untuk body <= 200 KB, lebih besar teks polos (mirror tiap ketikan)
+    if (input.id === 'bodyText' && req && ['json', 'xml'].includes(req.bodyType) && input.value.length <= 200000) segs = applyRanges(segs, req.bodyType === 'xml' ? xmlRanges(input.value) : jsonRanges(input.value), 'j');
     if (err) segs = markSegments(segs, err.start, err.end);
     // pasangan kurung di kursor (hanya saat body difokus)
     const bm = input.id === 'bodyText' && document.activeElement === input && input.value.length <= 200000 ? bracketMatch(input.value, input.selectionStart) : undefined;
@@ -709,10 +729,15 @@
       document.execCommand('insertText', false, enterIndent(v, a));
     }
   });
+  let bodyStash = '';
   for (const r of document.getElementsByName('bt')) {
     r.onchange = () => {
       // text -> form: body lama yang bukan key=value tetap utuh di .http sampai tabel form diedit
-      setBodyType(req, r.value);
+      // none -> tipe lain: body sebelum none dipasang lagi
+      const dropped = setBodyType(req, r.value, bodyStash);
+      bodyStash = r.value === 'none' ? dropped || bodyStash : '';
+      const xmlErr = r.value === 'xml' && !req.bodyFile ? bodyError(req.body, 'xml') : undefined;
+      if (xmlErr) post({ type: 'warn', message: `The body is not valid XML (${xmlErr.message}). Fix the body or choose another body type.` });
       renderHeaders();
       renderBody();
       renderMethod();
