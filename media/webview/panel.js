@@ -914,6 +914,23 @@
   function authValue(field) {
     return authModel.fields[field.name] ?? field.default ?? (field.kind === 'checkbox' ? 'false' : '');
   }
+  const authShown = new Set(); // field password yang sedang ditampilkan (bertahan saat form dirender ulang)
+  const EYE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>';
+  const EYE_OFF = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8S4 3.5 8 3.5c1 0 1.9.3 2.7.7M14.5 8S12 12.5 8 12.5c-1 0-1.9-.3-2.7-.7M2 2l12 12"/></svg>';
+  /** input password + tombol mata (Show / Hide) di dalam kotak */
+  function secretInput(field, control) {
+    const btn = el('button', { type: 'button', className: 'auth-eye' });
+    const paint = () => {
+      const shown = authShown.has(field.name);
+      control.type = shown ? 'text' : 'password';
+      btn.innerHTML = shown ? EYE_OFF : EYE;
+      btn.title = btn.ariaLabel = `${shown ? 'Hide' : 'Show'} ${field.label.toLowerCase()}`;
+      btn.setAttribute('aria-pressed', String(shown));
+    };
+    btn.onclick = () => { if (authShown.has(field.name)) authShown.delete(field.name); else authShown.add(field.name); paint(); control.focus(); };
+    paint();
+    return el('div', { className: 'auth-secret' }, [control, btn]);
+  }
   function renderAuthField(field) {
     const row = el('div', { className: 'row auth-row' });
     const id = `auth-${field.name}`;
@@ -941,7 +958,7 @@
     };
     control.oninput = update;
     control.onchange = update;
-    if (field.kind === 'checkbox') { row.classList.add('auth-check'); row.append(control, label); } else row.append(label, control); // kotak centang di depan labelnya
+    if (field.kind === 'checkbox') { row.classList.add('auth-check'); row.append(control, label); } else row.append(label, field.kind === 'password' ? secretInput(field, control) : control); // kotak centang di depan labelnya
     if (isRawAuthSecret(authModel.type, field.name, authValue(field))) row.append(authWarning(field));
     return row;
   }

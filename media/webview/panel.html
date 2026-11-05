@@ -313,6 +313,11 @@
   .auth-fields input:not([type=checkbox]), .auth-fields select, .auth-advanced input:not([type=checkbox]), .auth-advanced select { width: 100%; height: 32px; padding: 0 8px; border-radius: 4px; box-sizing: border-box; }
   .auth-fields .row + .row, .auth-advanced .row + .row { border-top: 0; }
   .auth-fields .row.auth-check, .auth-advanced .row.auth-check { flex-direction: row; align-items: center; gap: 8px; }
+  .auth-secret { position: relative; display: flex; }
+  .auth-secret input { padding-right: 34px !important; }
+  .auth-eye { position: absolute; top: 3px; right: 3px; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+  .auth-eye:hover { background: var(--soft); color: var(--fg); }
+  .auth-eye svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
   .auth-check input[type=checkbox] { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--vscode-focusBorder, #3794ff); }
   .auth-check label { font-weight: 400; cursor: pointer; }
   .auth-fields[hidden], .auth-advanced[hidden] { display: none; }
