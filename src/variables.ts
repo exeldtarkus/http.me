@@ -37,7 +37,8 @@ export function registerVariables(envs: Environments): vscode.Disposable {
     if (name !== undefined) {
       if (name === GLOBALS) return;
       return collection.set(doc.uri, diagnoseEnvironmentJson(doc.getText(), name).map((d) => {
-        const x = new vscode.Diagnostic(rangeOf(doc, d), d.message, vscode.DiagnosticSeverity.Error);
+        // "value": null di file Environment = belum diisi (keadaan normal), bukan kesalahan: biru, bukan merah
+        const x = new vscode.Diagnostic(rangeOf(doc, d), d.message, vscode.DiagnosticSeverity.Information);
         x.source = 'http.me';
         x.code = 'null-in-file';
         return x;
