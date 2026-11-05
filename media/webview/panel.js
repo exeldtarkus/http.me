@@ -941,7 +941,7 @@
     };
     control.oninput = update;
     control.onchange = update;
-    row.append(label, control);
+    if (field.kind === 'checkbox') { row.classList.add('auth-check'); row.append(control, label); } else row.append(label, control); // kotak centang di depan labelnya
     if (isRawAuthSecret(authModel.type, field.name, authValue(field))) row.append(authWarning(field));
     return row;
   }
