@@ -110,12 +110,13 @@ export const tests: ITests = {
     const text = (await vscode.workspace.openTextDocument(uri)).getText();
     assert.match(text, /^# @disabled sec-fetch-mode: cors\nPOST https:\/\/api\.test\/x\nContent-Type: application\/x-www-form-urlencoded\n\n\{"a":1\}\n$/);
   },
-  async 'klik di Collections: 1 request -> panel, multi-request -> editor teks'() {
+  async 'klik di Collections: 1 request dan multi-request -> panel http.me'() {
     const multi = join(root(), 'zz-itest-multi.http');
     writeFileSync(multi, '### A\nGET https://a/1\n\n### B\nGET https://a/2\n');
     try {
       await vscode.commands.executeCommand('httpme.openRequest', vscode.Uri.file(multi));
-      assert.ok(vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputText, 'multi-request = teks');
+      const m = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+      assert.ok(m instanceof vscode.TabInputCustom && m.viewType === 'httpme.request', 'multi-request = panel (tab per request)');
       await vscode.commands.executeCommand('httpme.openRequest', vscode.Uri.file(join(root(), 'get.http')));
       const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
       assert.ok(input instanceof vscode.TabInputCustom && input.viewType === 'httpme.request', '1 request = panel');
