@@ -59,6 +59,8 @@ const multiRoot = () => (vscode.workspace.workspaceFolders?.length ?? 0) > 1;
 const isHttpmeFile = (u: vscode.Uri) =>
   /\.http$/i.test(u.path) || /(^|\/)(pre|post)-request\.js$/i.test(u.path) || /\/\.httpme\/environments\/[^/]+\.json$/i.test(u.path);
 
+const SUMMARY_FRESH_MS = 30_000;
+
 export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAndDropController<Node> {
   private changed = new vscode.EventEmitter<Node | undefined | void>();
   readonly onDidChangeTreeData = this.changed.event;
@@ -66,7 +68,7 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
   readonly dropMimeTypes = [TREE_MIME, 'text/uri-list'];
   view!: vscode.TreeView<Node>;
   private scan: Promise<{ files: vscode.Uri[]; keep: vscode.Uri[] }> | undefined;
-  private summaries = new Map<string, { mtime: number; s: RequestSummary }>();
+  private summaries = new Map<string, { mtime: number; at: number; s: RequestSummary }>();
   private filter = '';
   private onlyUnsaved = false;
 
@@ -147,15 +149,30 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
     return this.scan;
   }
 
+  /** file berubah / dihapus: ringkasannya dibaca ulang saat dibutuhkan */
+  invalidate(uri: vscode.Uri): void { this.summaries.delete(uri.toString()); }
+
+  /** isi cache ringkasan di latar belakang (per 20 file) supaya section langsung penuh saat dibuka */
+  async warm(): Promise<void> {
+    const { files } = await this.list();
+    for (let i = 0; i < files.length && i < 500; i += 20) {
+      await Promise.all(files.slice(i, i + 20).map((u) => this.summary(u)));
+      await new Promise((ok) => setTimeout(ok, 0)); // beri jalan ke pekerjaan lain
+    }
+  }
+
   /** method / host / judul file (dibaca saat ditampilkan, di-cache per mtime) */
   async summary(uri: vscode.Uri): Promise<RequestSummary> {
     const key = uri.toString();
     try {
+      // cache segar (< 30 dtk, dibuang watcher saat file berubah): tanpa stat per file, supaya membuka section tidak menunggu puluhan I/O
+      const cached = this.summaries.get(key);
+      if (cached && Date.now() - cached.at < SUMMARY_FRESH_MS) return cached.s;
       const stat = await vscode.workspace.fs.stat(uri);
       const hit = this.summaries.get(key);
-      if (hit && hit.mtime === stat.mtime) return hit.s;
+      if (hit && hit.mtime === stat.mtime) { hit.at = Date.now(); return hit.s; }
       const s = requestSummary(Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8'));
-      this.summaries.set(key, { mtime: stat.mtime, s });
+      this.summaries.set(key, { mtime: stat.mtime, at: Date.now(), s });
       return s;
     } catch (e) {
       log().error(errorLine(`Sidebar.summary ${uri.fsPath}`, e));
@@ -536,7 +553,7 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
   let timer: ReturnType<typeof setTimeout> | undefined;
   const rescan = () => { clearTimeout(timer); timer = setTimeout(() => sidebar.refresh(), 200); };
   const watchers = [vscode.workspace.createFileSystemWatcher('**/*.http'), vscode.workspace.createFileSystemWatcher(`**/${KEEP_FILE}`)];
-  for (const w of watchers) { w.onDidCreate(rescan); w.onDidDelete(rescan); w.onDidChange(() => sidebar.redraw()); }
+  for (const w of watchers) { w.onDidCreate(rescan); w.onDidDelete((u) => { sidebar.invalidate(u); rescan(); }); w.onDidChange((u) => { sidebar.invalidate(u); sidebar.redraw(); }); }
 
   // Open: ikut tab / dirty / save tanpa polling
   let openTimer: ReturnType<typeof setTimeout> | undefined;
@@ -551,6 +568,12 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
     const { files } = await sidebar.list();
     if (files.some((u) => u.toString() === uri.toString())) await view.reveal({ kind: 'file', uri }, { select: true, focus: false, expand: true });
   };
+
+  // isi semua cache sekarang (scan file, ringkasan, Environment, cookie): membuka / melipat section tidak lagi menunggu I/O
+  setTimeout(() => {
+    for (const x of Object.values(sections)) void x.getChildren().catch((e) => log().error(errorLine(`Sidebar.warm ${x.mode}`, e)));
+    void sidebar.warm().catch((e) => log().error(errorLine('Sidebar.warm summaries', e)));
+  }, 0);
 
   const disposable = vscode.Disposable.from(
     ...Object.values(sections).map((x) => x.view), ...watchers, new vscode.Disposable(() => { clearTimeout(timer); clearTimeout(openTimer); }),
