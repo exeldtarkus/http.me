@@ -1,0 +1,87 @@
+# Contoh auth http.me. Semua ke postman-echo.com (kredensial publik dari dokumentasi Postman):
+# Basic / Digest: postman / password · Hawk: id dh37fgj492je · OAuth 1.0: consumer RKCGzna7bv9YD57c
+# Nomor 12 dan 13 tidak dikirim ke server sungguhan: lihat hasilnya di Timeline / tombol </> Code.
+
+### 1. Basic — header gaya REST Client (dikodekan base64 saat Send)
+GET https://postman-echo.com/basic-auth
+Authorization: Basic postman password
+
+###
+
+### 2. Basic — lewat # @auth (juga bisa diatur di tab Authorization)
+# @auth basic username="postman" password="password"
+GET https://postman-echo.com/basic-auth
+
+###
+
+### 3. Basic — salah password (401 diharapkan)
+# @auth basic username="postman" password="salah"
+GET https://postman-echo.com/basic-auth
+
+###
+
+### 4. Bearer — token dari variabel file
+@token = abc123
+# @auth bearer token="{{token}}"
+GET https://postman-echo.com/headers
+
+###
+
+### 5. API Key di header
+# @auth apiKey key="X-Api-Key" value="rahasia-123" in="header"
+GET https://postman-echo.com/headers
+
+###
+
+### 6. API Key di query
+# @auth apiKey key="api_key" value="rahasia-123" in="query"
+GET https://postman-echo.com/get
+
+###
+
+### 7. Digest — 401 challenge lalu dikirim ulang otomatis (header: Digest user pass)
+GET https://postman-echo.com/digest-auth
+Authorization: Digest postman password
+
+###
+
+### 8. Digest lewat # @auth (tambah retry="false" untuk mematikan kirim ulang setelah 401)
+# @auth digest username="postman" password="password"
+GET https://postman-echo.com/digest-auth
+
+###
+
+### 9. JWT HS256 (payload JSON, secret base64 bisa dipilih di tab Authorization)
+# @auth jwt algorithm="HS256" secret="rahasia-jwt" payload="{\"sub\":\"demo\",\"role\":\"admin\"}"
+GET https://postman-echo.com/headers
+
+###
+
+### 10. Hawk
+# @auth hawk id="dh37fgj492je" key="werxhqb98rpaxn39848xrunpaw3489ruxnpa98w4rxn" algorithm="sha256"
+GET https://postman-echo.com/auth/hawk
+
+###
+
+### 11. OAuth 1.0 (HMAC-SHA1)
+# @auth oauth1 consumer_key="RKCGzna7bv9YD57c" consumer_secret="D+EdQ-gs$-%@2Nu7" signature_method="HMAC-SHA1"
+GET https://postman-echo.com/oauth1
+
+###
+
+### 12. AWS Signature v4 (kredensial contoh AWS; server menolak, tapi header Authorization tampil di Timeline / Code snippet)
+# @auth aws access_key="AKIDEXAMPLE" secret_key="wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY" region="us-east-1" service="service"
+GET https://example.amazonaws.com/
+
+###
+
+### 13. OAuth 2.0 Client Credentials (ganti token_url / client_id / client_secret dengan milik Anda, lalu tab Authorization > Get New Access Token)
+# @auth oauth2 grant="client_credentials" token_url="https://idp.example.test/oauth/token" client_id="{{OAUTH_CLIENT_ID}}" client_secret="{{OAUTH_CLIENT_SECRET}}" scope="read"
+GET https://api.example.test/me
+
+###
+
+### 14. Tanpa auth (No Auth: header Authorization dibuang)
+# @auth none
+GET https://postman-echo.com/headers
+Authorization: Bearer tidak-dikirim
