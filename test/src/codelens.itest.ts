@@ -105,7 +105,8 @@ export const tests: ITests = {
     const srv = await startServer(async () => ({ headers: { 'content-type': 'text/plain' }, body: 'bottom' }));
     const dir = join(vscode.workspace.workspaceFolders![0].uri.fsPath, 'tmp-layout-it');
     try {
-      assert.equal(api.layout.get(), 'panel', 'bawaan Bottom panel, juga untuk Send dari file .http teks');
+      // state layout tersimpan di workspace state test & terbawa antar-run: set eksplisit (nilai bawaan = 'panel' di getLayout)
+      await api.layout.set('panel');
       // dokumen Response sisa test sebelumnya (closeAllEditors bisa tertahan dokumen untitled yang dirty)
       await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputText && t.input.uri.path === '/Response'));
       mkdirSync(dir, { recursive: true });
