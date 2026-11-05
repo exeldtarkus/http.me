@@ -556,7 +556,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
           picker.pick(m.index);
         } else if (m.type === 'sendAll') await sendAll(doc);
         else if (m.type === 'cancelAll') cancelFile(doc.uri.toString());
-        else if (m.type === 'openAsText') await openAsText(doc.uri);
+        else if (m.type === 'openAsText') await openAsText(doc.uri, blockCount() > 1 ? splitBlocks(doc.getText())[active]?.start : undefined);
         else if (m.type === 'pasteCurl' && typeof m.text === 'string') await importCurlText(m.text, doc);
         else if (m.type === 'cancel') runner.cancel(activeKey());
         else if (m.type === 'showRunning') await vscode.commands.executeCommand('httpme.showRunning');
@@ -669,9 +669,13 @@ export async function openInPanel(uri: vscode.Uri, index?: number): Promise<void
   await vscode.commands.executeCommand('vscode.openWith', uri, REQUEST_VIEW);
 }
 
-/** Open as Text: tutup panel, buka file yang sama di editor teks */
-export async function openAsText(uri: vscode.Uri): Promise<void> {
+/** Open as Text: tutup panel, buka file yang sama di editor teks; line = kursor di blok request itu (file multi-request) */
+export async function openAsText(uri: vscode.Uri, line?: number): Promise<void> {
   await vscode.commands.executeCommand('vscode.openWith', uri, 'default');
+  const ed = vscode.window.activeTextEditor;
+  if (line === undefined || ed?.document.uri.toString() !== uri.toString()) return;
+  ed.selection = new vscode.Selection(line, 0, line, 0);
+  ed.revealRange(new vscode.Range(line, 0, line, 0), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
 }
 
 const provider: vscode.CustomTextEditorProvider = { resolveCustomTextEditor: resolve };
