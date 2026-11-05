@@ -423,7 +423,34 @@
     return undefined;
   }
 
-  const api = { fitTabs, xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
+  const REASON = { 400: ['Bad Request', 'The server could not understand the request. Check the syntax, parameters and body.'], 401: ['Unauthorized', 'Authentication is required or has failed. Check your token or credentials.'],
+    403: ['Forbidden', 'You are authenticated but not allowed to access this resource.'], 404: ['Not Found', 'The server cannot find the requested resource. Check the URL.'],
+    405: ['Method Not Allowed', 'The resource does not support this HTTP method. See the Allow header.'], 408: ['Request Timeout', 'The server timed out waiting for the request.'],
+    409: ['Conflict', 'The request conflicts with the current state of the resource.'], 410: ['Gone', 'The resource is no longer available.'], 413: ['Payload Too Large', 'The request body is larger than the server allows.'],
+    415: ['Unsupported Media Type', 'The server does not accept this Content-Type.'], 418: ["I'm a teapot", 'The server refuses to brew coffee because it is a teapot.'], 422: ['Unprocessable Entity', 'The body is well-formed but failed validation.'],
+    429: ['Too Many Requests', 'Rate limit reached. Wait a moment, then try again.'], 500: ['Internal Server Error', 'The server hit an unexpected error.'], 501: ['Not Implemented', 'The server does not support this functionality.'],
+    502: ['Bad Gateway', 'A gateway or proxy received an invalid response from upstream.'], 503: ['Service Unavailable', 'The server is overloaded or down for maintenance.'], 504: ['Gateway Timeout', 'A gateway or proxy timed out waiting for upstream.'],
+    204: ['No Content', 'The request succeeded and there is nothing to return.'], 304: ['Not Modified', 'The cached version is still valid.'] };
+  const CLASS_HINT = { 4: 'The request was rejected by the server.', 5: 'The server failed to fulfil a valid request.' };
+  const unesc = (h) => h.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+  /** kartu di tengah tab Body: cancelled, error, response tanpa isi, atau 4xx/5xx dengan body teks singkat; selain itu undefined (body biasa) */
+  function bodyNotice(view) {
+    if (view?.kind === 'cancelled') return { title: 'The request was cancelled.', sub: 'Click Send to run it again.', cls: 'st-1' };
+    if (view?.kind === 'error') return { title: 'Request failed', sub: view.message, cls: 'st-5' };
+    if (view?.kind !== 'response' || view.head || view.format === 'Binary') return undefined;
+    const m = /^(\d{3})\s*(.*)$/.exec(view.status);
+    if (!m) return undefined;
+    const code = Number(m[1]);
+    const text = view.format === 'Text' ? unesc(view.bodyHtml).trim() : view.bodyHtml.trim();
+    const failed = code >= 400;
+    if (text && !(failed && view.format === 'Text' && text.length <= 200 && !text.includes('\n'))) return undefined;
+    const known = REASON[code];
+    const title = known?.[0] ?? (m[2] || 'Response');
+    const sub = known?.[1] ?? (failed ? CLASS_HINT[code >= 500 ? 5 : 4] : 'The request completed with this status.');
+    return { code: m[1], title, sub: text && !known ? CLASS_HINT[code >= 500 ? 5 : 4] : sub, cls: view.statusClass, ...(text ? { body: text } : { empty: 'Response body not found' }) };
+  }
+
+  const api = { bodyNotice, fitTabs, xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -910,7 +937,19 @@
     $('resEmpty').hidden = !!view && !running;
     // file multi-request: tab yang belum pernah dikirim punya pesan sendiri
     document.querySelector('#resEmpty p').textContent = blocks.length > 1 ? 'This request has not been sent yet. Click Send or Send All.' : 'Enter the URL and click Send to get a response';
-    $('resBody').className = `code${view?.kind === 'error' ? ' error' : ''}`;
+    const notice = bodyNotice(view);
+    $('resNotice').hidden = !notice;
+    $('resBody').hidden = !!notice;
+    if (notice) {
+      $('resNotice').className = `notice ${notice.cls}`;
+      $('noticeCode').textContent = notice.code ?? '';
+      $('noticeTitle').textContent = notice.title;
+      $('noticeSub').textContent = notice.sub;
+      $('noticeBody').hidden = !notice.body && !notice.empty;
+      $('noticeBody').classList.toggle('none', !notice.body);
+      $('noticeBody').textContent = notice.body ?? notice.empty ?? '';
+    }
+    $('resBody').className = 'code';
     const isJson = res?.format === 'JSON';
     resText = undefined;
     $('resBody').classList.toggle('json', isJson);
@@ -920,7 +959,7 @@
       resText = el('pre', { innerHTML: res.bodyHtml }).textContent; // Copy = JSON asli, tanpa nomor baris / ringkasan lipatan
       $('resBody').style.setProperty('--gw', `${String($('resBody').children.length).length}ch`);
     }
-    else $('resBody').textContent = view?.kind === 'error' ? view.message : view?.kind === 'cancelled' ? 'The request was cancelled.' : '';
+    else if (!res) $('resBody').textContent = ''; // bukan response: kosongkan (non-JSON jangan dihapus)
     $('resHeaders').replaceChildren(...(res ? res.headers : []).map(([k, v]) => el('tr', {}, [el('td', { textContent: k }), el('td', { textContent: v })])));
     $('nResHeaders').textContent = res ? String(res.headers.length) : '';
     const cookies = res?.cookies ?? [];
