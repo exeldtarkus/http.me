@@ -993,8 +993,9 @@
     $('authAdvanced').hidden = !advanced.length;
     $('authAdvanced').open = authAdvancedOpen;
     $('authActions').replaceChildren(...(form.actions || []).map((text) => el('button', {
-      type: 'button', className: 'btn ghost sm', textContent: text, disabled: true,
-      title: 'OAuth 2.0 token actions will be available in a later task.',
+      type: 'button', className: 'btn ghost sm', textContent: text,
+      title: text === 'Clear' ? 'Forget the stored access token' : 'Sign in (if needed) and store a new access token',
+      onclick: () => { flush(); $('authNotice').textContent = ''; post({ type: text === 'Clear' ? 'oauth2Clear' : 'oauth2Token', index: activeBlock }); },
     })));
     $('authActions').hidden = !(form.actions || []).length;
   }
@@ -1671,6 +1672,7 @@
       renderAuth();
     }
     if (m.type === 'authSecretMoved' && typeof m.name === 'string') $('authNotice').textContent = `Moved to secret variable {{${m.name}}}.`;
+    if (m.type === 'authInfo' && typeof m.text === 'string') $('authNotice').textContent = m.text;
     if (m.type === 'authError' && typeof m.message === 'string') $('authNotice').textContent = m.message;
     if (m.blocks) renderBlocks(m.blocks, m.active);
     if (m.type === 'vars') { vars = { ok: m.ok, nulls: m.nulls, names: m.names }; syncMirrors(); askSnippet(); }

@@ -22,6 +22,7 @@ const TYPE_ALIASES: Record<string, AuthType> = {
   aws: 'aws',
   hawk: 'hawk',
   oauth1: 'oauth1',
+  oauth2: 'oauth2',
 };
 const ALLOWED_FIELDS: Partial<Record<AuthType, readonly string[]>> = {
   inherit: [],
@@ -34,6 +35,7 @@ const ALLOWED_FIELDS: Partial<Record<AuthType, readonly string[]>> = {
   aws: ['access_key', 'secret_key', 'region', 'service', 'session_token'],
   hawk: ['id', 'key', 'algorithm', 'user', 'nonce', 'ext', 'app', 'dlg', 'timestamp'],
   oauth1: ['consumer_key', 'consumer_secret', 'token', 'token_secret', 'signature_method', 'add_to', 'callback', 'verifier', 'timestamp', 'nonce', 'version', 'realm'],
+  oauth2: ['grant', 'token_url', 'authorization_url', 'client_id', 'client_secret', 'username', 'password', 'scope', 'redirect_uri', 'code_verifier', 'refresh_token'],
 };
 const REQUIRED_FIELDS: Partial<Record<AuthType, readonly string[]>> = {
   apiKey: ['key', 'value', 'in'],
@@ -200,6 +202,7 @@ export function applyAuth(request: HttpRequest, config: AuthConfig, values: Read
   if (config.type === 'oauth1') return applyOauth1(copy, config, values, ctx.now ?? new Date(), result);
   if (config.type === 'jwt') return applyJwt(copy, config, values, result);
   if (config.type === 'aws') return applyAws(copy, config, values, ctx.now ?? new Date(), result);
+  // oauth2 butuh jaringan / browser: token diambil async di httpEditor (oauthToken), bukan di sini
   throw new Error(`Auth type ${config.type} is not supported yet`);
 }
 

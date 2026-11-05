@@ -306,3 +306,9 @@ test('parseAuth: Basic mentah `user:pass` / `user pass` di-encode base64 saat Se
   assert.deepEqual(sent.request.headers, [['Authorization', `Basic ${Buffer.from('us:pa:ss').toString('base64')}`]]);
   assert.equal(parseAuth(undefined, headers(['Authorization', `Basic ${Buffer.from('a:b').toString('base64')}`, true])).fields.username, 'a');
 });
+
+test('parseAuth: oauth2 mengenali field grant / token_url / secret; field asing ditolak', () => {
+  const a = parseAuth('oauth2 grant=client_credentials token_url=https://i.test/t client_id=c client_secret="s e" scope="a b"', []);
+  assert.deepEqual(a, { type: 'oauth2', fields: { grant: 'client_credentials', token_url: 'https://i.test/t', client_id: 'c', client_secret: 's e', scope: 'a b' } });
+  assert.throws(() => parseAuth('oauth2 bogus=1', []), /Unsupported oauth2 auth field: bogus/);
+});

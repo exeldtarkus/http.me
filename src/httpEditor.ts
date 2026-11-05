@@ -8,6 +8,8 @@ import { promises as fs } from 'node:fs';
 import { dirname, join, relative, resolve as resolvePath } from 'node:path';
 import { homedir } from 'node:os';
 import { fileBody, multipartBody } from './bodyStream';
+import { accessToken, tokenKey, type OAuthToken } from './oauth2';
+import { loopback, type Loopback } from './oauth2Loopback';
 import { generateSnippet, maskSecrets, usesSecrets, type SnippetOptions } from './snippet';
 import type { HttpRequest } from './http';
 import { applyAuth, headerAuth, parseAuth, sendWithDigest, type AuthConfig, type AuthType } from './auth';
@@ -472,6 +474,62 @@ export async function handleAuthMessage(
   }
 }
 
+let oauthStore: vscode.SecretStorage | undefined;
+export const setOAuthStore = (store: vscode.SecretStorage): void => { oauthStore = store; };
+const oauthFlights = new Map<string, Promise<OAuthToken>>();
+const oauthKey = (fields: Readonly<Record<string, string>>, env?: string): string => `httpme.oauth2.${env ?? '-'}.${tokenKey(fields)}`;
+
+/** token OAuth 2.0 per Environment di SecretStorage: dipakai ulang, refresh otomatis, satu alur browser per konfigurasi */
+function oauthToken(fields: Readonly<Record<string, string>>, env: string | undefined, signal?: AbortSignal, force = false): Promise<OAuthToken> {
+  const store = oauthStore;
+  if (!store) throw new Error('Secret storage is not available.');
+  const key = oauthKey(fields, env);
+  const running = oauthFlights.get(key);
+  if (running && !force) return running;
+  let lb: Loopback | undefined;
+  const flow = accessToken(fields, {
+    now: Date.now,
+    send: async (r) => { const res = await send({ ...r }, { ...(signal ? { signal } : {}), timeoutMs: DEFAULT_TIMEOUT_MS }); return { status: res.status, body: res.body.toString('utf8') }; },
+    load: async () => {
+      const raw = await store.get(key);
+      try { return raw ? (JSON.parse(raw) as OAuthToken) : undefined; } catch (e) {
+        log().error(errorLine('oauthToken.load', e)); // token tersimpan rusak: dibuang, ambil baru
+        return undefined;
+      }
+    },
+    save: async (t) => { if (t) await store.store(key, JSON.stringify(t)); else await store.delete(key); },
+    listen: async (uri) => { lb = await loopback(uri); return lb.redirectUri; },
+    authorize: async (url) => { await vscode.env.openExternal(vscode.Uri.parse(url)); return lb!.wait(signal ?? new AbortController().signal); },
+  }, force).finally(() => { lb?.close(); oauthFlights.delete(key); });
+  oauthFlights.set(key, flow);
+  return flow;
+}
+const bearerScheme = (t: OAuthToken): string => (!t.token_type || /^bearer$/i.test(t.token_type) ? 'Bearer' : t.token_type);
+
+/** tombol Get New Access Token / Clear di tab Authorization */
+async function handleOAuth(doc: vscode.TextDocument, kind: 'oauth2Token' | 'oauth2Clear', index: unknown, post: (x: unknown) => void): Promise<void> {
+  try {
+    if (!Number.isInteger(index)) throw new Error('Invalid Authorization request index.');
+    const own = authRequestAt(doc, index as number);
+    const resolved = hooks ? await hooks.resolve(own) : { request: own, env: undefined as string | undefined };
+    const auth = await resolveRequestAuth(doc.uri, resolved.request, async (x) => (await hooks?.resolve(x))?.request ?? x);
+    if (auth.type !== 'oauth2') throw new Error('Choose OAuth 2.0 in the Authorization tab first.');
+    if (kind === 'oauth2Clear') {
+      await oauthStore?.delete(oauthKey(auth.fields, resolved.env));
+      return post({ type: 'authInfo', text: 'Access token cleared.' });
+    }
+    const t = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'OAuth 2.0: getting an access token…', cancellable: true }, (_p, cancel) => {
+      const ac = new AbortController();
+      cancel.onCancellationRequested(() => ac.abort());
+      return oauthToken(auth.fields, resolved.env, ac.signal, true);
+    });
+    post({ type: 'authInfo', text: t.expires_at ? `Access token stored (expires in ${Math.max(0, Math.round((t.expires_at - Date.now()) / 1000))} s).` : 'Access token stored.' });
+  } catch (e) {
+    log().error(errorLine('handleOAuth', e));
+    post({ type: 'authError', message: errMsg(e) });
+  }
+}
+
 const isSnippetOptions = (v: unknown): v is SnippetOptions => {
   const o = v as SnippetOptions;
   return !!o && typeof o === 'object' && ['curl', 'cmd', 'powershell'].includes(o.language)
@@ -493,7 +551,7 @@ async function handleSnippet(doc: vscode.TextDocument, kind: 'snippet' | 'copySn
   // auth statis (Basic / Bearer / API Key / JWT ...) ikut tampil; Digest dan error auth dilewati (snippet tetap dibuat)
   try {
     const auth = r.auth === undefined && r.headers.some((h) => h.enabled && h.name.toLowerCase() === 'authorization') ? headerAuth(r.headers) : await resolveRequestAuth(doc.uri, r);
-    if (auth && auth.type !== 'digest') {
+    if (auth && auth.type !== 'digest' && auth.type !== 'oauth2') {
       const done = applyAuth(toHttpRequest(r) as HttpRequest, auth, new Map()).request;
       r = { ...r, url: done.url, headers: [...done.headers.map(([name, value]) => ({ name, value, enabled: true })), ...r.headers.filter((h) => !h.enabled)] };
       secrets.push(...done.headers.filter(([n]) => n.toLowerCase() === 'authorization').map(([, v]) => v.replace(/^\S+\s+/, '')));
@@ -633,7 +691,11 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
       // Authorization di header (tanpa # @auth) dikirim apa adanya; selain itu auth request / _auth.http terdekat
       const ownHeader = parsed.auth === undefined && parsed.headers.some((h) => h.enabled && h.name.toLowerCase() === 'authorization');
       const auth = ownHeader ? headerAuth(parsed.headers) : await resolveRequestAuth(doc.uri, parsed, async (x) => (await hooks?.resolve(x))?.request ?? x);
-      if (auth) r = { ...r, ...applyAuth({ ...r }, auth, new Map()).request };
+      if (auth?.type === 'oauth2') {
+        const t = await oauthToken(auth.fields, envName, signal);
+        secrets = [...secrets, t.access_token]; // token ikut di-mask di log / pesan error
+        r = { ...r, headers: [...r.headers.filter(([n]) => n.toLowerCase() !== 'authorization'), ['Authorization', `${bearerScheme(t)} ${t.access_token}`]] };
+      } else if (auth) r = { ...r, ...applyAuth({ ...r }, auth, new Map()).request };
       // body besar di-stream dari disk: `< ./file` utuh, atau bagian file di body multipart (tanda tangan auth tidak mencakup isi file)
       if (parsed.bodyFile) r = { ...r, body: await fileBody(bodyFilePath(doc, parsed.bodyFile)) };
       else if (typeof r.body === 'string' && isMultipart(r.headers) && /^<\s+\S/m.test(r.body)) {
@@ -769,6 +831,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
       try {
         if (await handleScriptsMessage(doc, m, postMsg)) return;
         if (await handleAuthMessage(doc, m, postMsg)) return;
+        if (m.type === 'oauth2Token' || m.type === 'oauth2Clear') return await handleOAuth(doc, m.type, m.index, postMsg);
         if (m.type === 'snippet' || m.type === 'copySnippet') return await handleSnippet(doc, m.type, m.opts, isRequest(m.req) ? m.req : activeReq(), postMsg);
         if (m.type === 'ready') { postMsg({ type: 'layout', layout: getLayout() }); postOthers(); postState(); await postVars(panel); await postCookies(panel, doc.uri.toString()); } else if (m.type === 'varHover' && typeof m.name === 'string' && hooks) {
           const info = await hooks.hover(m.name, new Map(activeReq().vars.map((v) => [v.name, v.value])));

@@ -3,7 +3,7 @@ import { isNewerMinor, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
 import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
-import { applyPanelEdit, handleAuthMessage, importCurlText, saveUntitled, setAuthHooks, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, activeBlock, registerRequestEditor, runner, quickRun, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
+import { applyPanelEdit, handleAuthMessage, importCurlText, saveUntitled, setAuthHooks, setOAuthStore, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, activeBlock, registerRequestEditor, runner, quickRun, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
 import { registerSidebar, type Sidebars } from './sidebar';
 import { historyAction, registerActivity, statusBar, type HistoryAction } from './activity';
@@ -146,6 +146,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   const historyDir = vscode.Uri.joinPath(ctx.globalStorageUri, 'httpme-cache', 'history').fsPath;
   ctx.subscriptions.push(registerActivity(historyDir));
   const envs = new Environments(ctx);
+  setOAuthStore(ctx.secrets);
   ctx.subscriptions.push(envs.watch(), registerEnvironmentEditor(envs), authEnvironmentHooks(envs));
   const cookies = new Cookies(ctx, envs);
   const { sidebar, disposable: sidebarDisposable } = registerSidebar(ctx, envs, cookies);
