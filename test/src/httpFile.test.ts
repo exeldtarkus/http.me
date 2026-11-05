@@ -113,6 +113,20 @@ test('metadata: urutan acak di file dibaca sama; @ tak dikenal tetap jadi koment
   assert.deepEqual(r.preamble, ['# @custom thing']);
 });
 
+test('metadata auth: nilai dan komentar lain tetap round-trip; metadata kosong tidak hilang', () => {
+  const text = '# catatan request\n# @auth bearer token={{accessToken}}\nGET https://a.test\nAuthorization: Bearer manual\n';
+  const r = parseRequest(text);
+  assert.equal(r.auth, 'bearer token={{accessToken}}');
+  assert.deepEqual(r.preamble, ['# catatan request']);
+  const serialized = '# @auth bearer token={{accessToken}}\n# catatan request\nGET https://a.test\nAuthorization: Bearer manual\n';
+  assert.equal(serializeRequest(r), serialized);
+  assert.deepEqual(parseRequest(serialized), r);
+
+  const malformed = parseRequest('# @auth\nGET https://a.test\n');
+  assert.equal(malformed.auth, '');
+  assert.equal(serializeRequest(malformed), '# @auth\nGET https://a.test\n');
+});
+
 test('variabel file @var = value: dibaca berurutan, ditulis di atas file + baris kosong', () => {
   const r = parseRequest('@baseUrl = https://api.test\n@token=abc = def\n\n### T\nGET {{baseUrl}}/x\n');
   assert.deepEqual(r.vars, [{ name: 'baseUrl', value: 'https://api.test' }, { name: 'token', value: 'abc = def' }]);

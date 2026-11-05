@@ -62,3 +62,11 @@ test('resolveRequest: URL, header aktif, body; variabel file @var; request asli 
   assert.deepEqual([out.nulls, out.missing], [['token'], []]);
   assert.equal(r.url, '{{base}}/{{path}}');
 });
+
+test('resolveRequest: # @auth ikut diselesaikan ({{var}} di field auth), NULL ikut dilaporkan', () => {
+  const r = { ...emptyRequest(), url: 'https://a.test', auth: 'bearer token={{tok}} x={{nil}}' };
+  const out = resolveRequest(r, [scope('environment', { tok: 'T', nil: null })], dyn);
+  assert.equal(out.request.auth, 'bearer token=T x={{nil}}');
+  assert.deepEqual(out.nulls, ['nil']);
+  assert.equal(resolveRequest({ ...emptyRequest(), url: 'https://a.test' }, [], dyn).request.auth, undefined);
+});

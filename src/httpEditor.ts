@@ -3,9 +3,11 @@
 // Request berjalan di extension host: state (running / response) per dokumen bertahan saat webview tersembunyi dilepas.
 import * as vscode from 'vscode';
 import { createHash, randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
-import { dirname, join, resolve as resolvePath } from 'node:path';
+import { dirname, join, relative, resolve as resolvePath } from 'node:path';
 import { homedir } from 'node:os';
+import { applyAuth, parseAuth, sendWithDigest, type AuthConfig, type AuthType } from './auth';
 import { webviewPage } from './webviewPage';
 import { NEW_REQUEST_TEXT, newRequestName } from './newRequest';
 import { blockLabel, parseRequest, replaceBlock, serializeRequest, splitBlocks, toHttpRequestWithFile, type ParsedRequest } from './httpFile';
@@ -299,6 +301,172 @@ async function readBodyFile(doc: vscode.TextDocument, path: string): Promise<Buf
   return fs.readFile(resolvePath(dirname(doc.uri.fsPath), path));
 }
 
+/** Request-level auth wins; otherwise inherit the first non-inherit config walking up from the request folder. */
+export async function resolveRequestAuth(uri: vscode.Uri, request: ParsedRequest, resolveParent: (r: ParsedRequest) => Promise<ParsedRequest> = async (r) => r): Promise<AuthConfig> {
+  const own = parseAuth(request.auth, request.headers);
+  if (own.type !== 'inherit' || uri.scheme !== 'file') return own;
+
+  let dir = dirname(uri.fsPath);
+  for (;;) {
+    const file = join(dir, '_auth.http');
+    if (existsSync(file)) {
+      const parent = await resolveParent(parseRequest(await fs.readFile(file, 'utf8')));
+      const inherited = parseAuth(parent.auth, parent.headers);
+      if (inherited.type !== 'inherit') return inherited;
+    }
+    const ancestor = dirname(dir);
+    if (ancestor === dir) return own;
+    dir = ancestor;
+  }
+}
+
+type AuthForm = { type: AuthType; fields: Record<string, string> };
+type AuthHooks = { moveToSecret(name: string, value: string): Promise<string> };
+const AUTH_FIELDS: Record<AuthType, readonly string[]> = {
+  inherit: [], none: [], apiKey: ['key', 'value', 'in'], basic: ['username', 'password'], bearer: ['token'],
+  digest: ['username', 'password', 'retry', 'algorithm', 'qop', 'realm', 'nonce', 'nc', 'cnonce', 'opaque'],
+  hawk: ['id', 'key', 'algorithm', 'user', 'nonce', 'ext', 'app', 'dlg', 'timestamp'],
+  jwt: ['algorithm', 'secret', 'payload', 'header', 'add_to', 'prefix', 'secret_base64'],
+  oauth1: ['consumer_key', 'consumer_secret', 'token', 'token_secret', 'signature_method', 'add_to', 'callback', 'verifier', 'timestamp', 'nonce', 'version', 'realm'],
+  oauth2: ['grant', 'token_url', 'authorization_url', 'client_id', 'client_secret', 'username', 'password', 'scope', 'redirect_uri', 'code_verifier', 'refresh_token'],
+  aws: ['access_key', 'secret_key', 'region', 'service', 'session_token'],
+};
+const AUTH_SECRET_FIELDS: Partial<Record<AuthType, readonly string[]>> = {
+  apiKey: ['value'], basic: ['password'], bearer: ['token'], digest: ['password'], hawk: ['key'],
+  jwt: ['secret'], oauth1: ['consumer_secret', 'token', 'token_secret'],
+  oauth2: ['client_secret', 'password', 'code_verifier', 'refresh_token'], aws: ['secret_key', 'session_token'],
+};
+const authVariable = /^\{\{\s*[^{}]+\s*\}\}$/;
+let authHooks: AuthHooks | undefined;
+const authQueues = new Map<string, Promise<void>>();
+
+export function setAuthHooks(hooks: AuthHooks): vscode.Disposable {
+  authHooks = hooks;
+  return { dispose: () => { if (authHooks === hooks) authHooks = undefined; } };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function exactKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
+  return Object.keys(value).every((key) => allowed.includes(key));
+}
+
+function validateAuthForm(value: unknown): AuthForm {
+  if (!isRecord(value) || !exactKeys(value, ['type', 'fields']) || typeof value.type !== 'string'
+    || !Object.hasOwn(AUTH_FIELDS, value.type) || !isRecord(value.fields)) {
+    throw new Error('Invalid Authorization form.');
+  }
+  const type = value.type as AuthType;
+  const fields: Record<string, string> = {};
+  for (const [name, field] of Object.entries(value.fields)) {
+    if (name === '__proto__' || name === 'constructor' || name === 'prototype' || !AUTH_FIELDS[type].includes(name)
+      || typeof field !== 'string' || field.length > 1_000_000) {
+      throw new Error('Invalid Authorization form.');
+    }
+    fields[name] = field;
+  }
+  return { type, fields };
+}
+
+function serializeAuthForm(auth: AuthForm): string {
+  const fields = Object.entries(auth.fields).filter(([, value]) => value !== '')
+    .map(([name, value]) => `${name}=${JSON.stringify(value)}`).join(' ');
+  return `${auth.type}${fields ? ` ${fields}` : ''}`;
+}
+
+function authRequestAt(doc: vscode.TextDocument, index: number): ParsedRequest {
+  const blocks = splitBlocks(doc.getText());
+  if (!Number.isInteger(index) || index < 0 || index >= blocks.length) throw new Error('Invalid Authorization request index.');
+  return blocks.length > 1 ? parseRequest(blocks[index].text) : parseRequest(doc.getText());
+}
+
+async function writeAuthRequest(doc: vscode.TextDocument, index: number, request: ParsedRequest): Promise<void> {
+  const text = splitBlocks(doc.getText()).length > 1 ? replaceBlock(doc.getText(), index, request) : serializeRequest(request);
+  await writeDocument(doc, text);
+}
+
+function requestAuthType(request: ParsedRequest): string {
+  if (request.auth?.trim()) return request.auth.trim().split(/\s+/)[0].toLowerCase();
+  return request.headers.some((h) => h.enabled && h.name.toLowerCase() === 'authorization') ? 'explicit' : 'inherit';
+}
+
+async function inheritedAuthSource(uri: vscode.Uri, request: ParsedRequest): Promise<string | undefined> {
+  if (requestAuthType(request) !== 'inherit' || uri.scheme !== 'file') return undefined;
+  const root = vscode.workspace.getWorkspaceFolder(uri)?.uri.fsPath;
+  let dir = dirname(uri.fsPath);
+  for (;;) {
+    const file = join(dir, '_auth.http');
+    if (existsSync(file) && requestAuthType(parseRequest(await fs.readFile(file, 'utf8'))) !== 'inherit') {
+      return root ? relative(root, file) : file;
+    }
+    const ancestor = dirname(dir);
+    if (ancestor === dir) return undefined;
+    dir = ancestor;
+  }
+}
+
+async function processAuthMessage(
+  doc: vscode.TextDocument,
+  message: Record<string, unknown>,
+  post: (value: unknown) => void,
+): Promise<void> {
+  const index = message.index;
+  if (!Number.isInteger(index) || (index as number) < 0) throw new Error('Invalid Authorization request index.');
+  const request = authRequestAt(doc, index as number);
+  if (message.type === 'authSourceGet') {
+    if (!exactKeys(message, ['type', 'index'])) throw new Error('Invalid Authorization message.');
+    post({ type: 'authSource', index, source: await inheritedAuthSource(doc.uri, request) ?? null });
+    return;
+  }
+  const auth = validateAuthForm(message.auth);
+  if (message.type === 'authChange') {
+    if (!exactKeys(message, ['type', 'index', 'auth'])) throw new Error('Invalid Authorization message.');
+    request.auth = serializeAuthForm(auth);
+    await writeAuthRequest(doc, index as number, request);
+    post({ type: 'authSaved' });
+    return;
+  }
+  if (!exactKeys(message, ['type', 'index', 'auth', 'field', 'name']) || typeof message.field !== 'string'
+    || typeof message.name !== 'string' || !/^[A-Za-z_][\w.-]*$/.test(message.name)) {
+    throw new Error('Invalid Authorization message.');
+  }
+  const field = message.field;
+  const value = auth.fields[field];
+  if (!AUTH_SECRET_FIELDS[auth.type]?.includes(field) || !value || authVariable.test(value.trim())) {
+    throw new Error('This field does not contain a raw secret.');
+  }
+  if (!authHooks) throw new Error('Secret storage is not available.');
+  const name = await authHooks.moveToSecret(message.name, value);
+  auth.fields[field] = `{{${name}}}`;
+  request.auth = serializeAuthForm(auth);
+  await writeAuthRequest(doc, index as number, request);
+  post({ type: 'authSecretMoved', field, name });
+  post({ type: 'authSaved' });
+}
+
+export async function handleAuthMessage(
+  doc: vscode.TextDocument,
+  value: unknown,
+  post: (value: unknown) => void = () => undefined,
+): Promise<boolean> {
+  if (!isRecord(value) || typeof value.type !== 'string' || !['authChange', 'authMoveToSecret', 'authSourceGet'].includes(value.type)) return false;
+  const key = doc.uri.toString();
+  const previous = authQueues.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  authQueues.set(key, current);
+  await previous;
+  try {
+    await processAuthMessage(doc, value, post);
+    return true;
+  } finally {
+    release();
+    if (authQueues.get(key) === current) authQueues.delete(key);
+  }
+}
+
 /** teks response untuk dokumen "Show Response": status, header, baris kosong, body (JSON dirapikan) */
 function responseText(res: Awaited<ReturnType<typeof send>>): string {
   const head = [`HTTP ${res.status} ${res.statusText}`.trimEnd(), ...res.headers.map(([k, v]) => `${k}: ${v}`)].join('\n');
@@ -414,14 +582,19 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
       if (pre.length) setStage({ kind: 'send' });
       await dropBodyFile(s);
       await fs.mkdir(bodyDir, { recursive: true, mode: 0o700 });
-      const r = await toHttpRequestWithFile(parsed, (p) => readBodyFile(doc, p));
+      let r = await toHttpRequestWithFile(parsed, (p) => readBodyFile(doc, p));
+      // Authorization di header (tanpa # @auth) dikirim apa adanya; selain itu auth request / _auth.http terdekat
+      const ownHeader = parsed.auth === undefined && parsed.headers.some((h) => h.enabled && h.name.toLowerCase() === 'authorization');
+      const auth = ownHeader ? undefined : await resolveRequestAuth(doc.uri, parsed, async (x) => (await hooks?.resolve(x))?.request ?? x);
+      if (auth) r = { ...r, ...applyAuth({ ...r }, auth, new Map()).request };
       const cookies = await session?.cookies(parsed);
-      const once = () => send(r, {
+      const sendOnce = (req: typeof r) => send(req, {
         signal, bodyFile: bodyPath(key), followRedirects: parsed.followRedirects, insecure: parsed.insecure, cookies,
         onRedirect: (n) => setStage({ kind: 'redirect', n }),
         onError: (where, e) => log().error(errorLine(where, e)),
         timeoutMs: parsed.timeoutSec !== undefined ? parsed.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS,
       });
+      const once = () => sendWithDigest(auth, r, sendOnce, async (x) => { if (x.bodyFile) await fs.rm(x.bodyFile, { force: true }); }); // body 401 dibuang: dikirim ulang
       // session habis (redirect ke /login, 401/403): login sekali lalu kirim ulang, tidak pernah loop
       const rl = session?.relogin(doc.uri.toString());
       const out = await sendWithRelogin(once, (x) => sessionExpired(x, rl!.pattern), rl && (() => loginOnce(rl.login)));
@@ -543,6 +716,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
     panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown; layout?: unknown; message?: unknown; index?: unknown }) => {
       try {
         if (await handleScriptsMessage(doc, m, postMsg)) return;
+        if (await handleAuthMessage(doc, m, postMsg)) return;
         if (m.type === 'ready') { postMsg({ type: 'layout', layout: getLayout() }); postOthers(); postState(); await postVars(panel); await postCookies(panel, doc.uri.toString()); } else if (m.type === 'varHover' && typeof m.name === 'string' && hooks) {
           const info = await hooks.hover(m.name, new Map(activeReq().vars.map((v) => [v.name, v.value])));
           void panel.webview.postMessage({ type: 'varHover', name: m.name, info });

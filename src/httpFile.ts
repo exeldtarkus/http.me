@@ -72,7 +72,7 @@ function applyMeta(r: ParsedRequest, disabled: Header[], t: string): boolean {
   if (meta?.[1] === 'insecure') { r.insecure = true; return true; }
   if (meta && meta[1] in FLAGS) { r[FLAGS[meta[1] as keyof typeof FLAGS]] = true; return true; }
   if (meta?.[1] === 'operation' && meta[2]) { r.operation = meta[2].trim(); return true; }
-  if (meta?.[1] === 'auth' && meta[2]) { r.auth = meta[2].trim(); return true; }
+  if (meta?.[1] === 'auth') { r.auth = meta[2].trim(); return true; }
   if (meta?.[1] === 'timeout' && /^\d+/.test(meta[2])) { r.timeoutSec = parseInt(meta[2], 10); return true; }
   if (meta?.[1] === 'disabled' && meta[2]) {
     const h = HEADER_LINE.exec(meta[2]);
@@ -149,7 +149,7 @@ export function serializeRequest(r: ParsedRequest): string {
   for (const h of r.headers) if (!h.enabled) out.push(`# @disabled ${h.name}: ${h.value}`);
   for (const p of r.disabledParams) out.push(`# @disabled ${p.value === '' ? p.key : `${p.key}=${p.value}`}`);
   if (r.operation) out.push(`# @operation ${r.operation}`);
-  if (r.auth) out.push(`# @auth ${r.auth}`);
+  if (r.auth !== undefined) out.push(`# @auth${r.auth ? ` ${r.auth}` : ''}`);
   if (r.noScripts) out.push('# @no-scripts');
   if (r.noPre) out.push('# @no-pre');
   if (r.noPost) out.push('# @no-post');
