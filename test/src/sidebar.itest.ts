@@ -26,7 +26,7 @@ export const tests: ITests = {
   async 'mode sidebar: Show Collections / Environments / Open mengganti isi view'() {
     await vscode.commands.executeCommand('httpme.showEnvironments');
     assert.equal(api().sidebar.mode, 'environments');
-    assert.deepEqual((await children()).map((n) => n.kind), ['enone', 'eempty', 'eempty', 'eglobals']);
+    assert.deepEqual((await children()).map((n) => n.kind), ['eglobals', 'enone', 'eempty', 'eempty']);
     await vscode.commands.executeCommand('httpme.showOpen');
     assert.equal(api().sidebar.mode, 'open');
     await vscode.commands.executeCommand('httpme.showCollections');
