@@ -387,3 +387,18 @@ test('review R12: tombol hapus / lepas memakai ikon tempat sampah, bukan ✕', (
   const pkg = JSON.parse(fs.readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
   assert.equal(pkg.contributes.commands.find((c: { command: string }) => c.command === 'httpme.clearCookies').icon, '$(trash)');
 });
+
+test('review R34: bar URL tanpa garis ganda; method = pill + menu custom berwarna', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const html = fs.readFileSync(join(dir, 'panel.html'), 'utf8');
+  const js = fs.readFileSync(join(dir, 'panel.js'), 'utf8');
+  assert.match(html, /\.urlbox input:focus-visible, \.urlbox button:focus-visible \{ outline: none; \}/, 'fokus cukup border .urlbox');
+  assert.doesNotMatch(html, /<select id="method"/, 'select native diganti');
+  assert.match(html, /<button class="mbtn" id="method" type="button" aria-label="Method" aria-haspopup="menu" aria-expanded="false"><span id="methodText"><\/span><svg[^>]*aria-hidden="true"/);
+  assert.match(html, /<div class="mmenu" id="methodMenu" role="menu" aria-label="Method" hidden><\/div>/);
+  assert.match(html, /\.mbtn \{[^}]*background: color-mix\(in srgb, currentColor 14%, transparent\);/, 'pill tint warna method');
+  assert.doesNotMatch(html, /border-right: 1px solid var\(--line\); border-radius: 5px 0 0 5px/, 'garis pemisah method dihapus');
+  assert.match(js, /role: 'menuitemradio'/);
+  assert.match(js, /ArrowDown/);
+});

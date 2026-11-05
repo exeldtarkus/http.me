@@ -399,7 +399,9 @@
   }
 
   function renderMethod() {
-    $('method').className = `m-${req.method}`;
+    $('method').className = `mbtn m-${req.method}`;
+    $('methodText').textContent = req.method;
+    for (const b of $('methodMenu').children) b.setAttribute('aria-checked', String(b.dataset.m === req.method));
     $('bodyWarn').hidden = !(['GET', 'HEAD'].includes(req.method) && req.body !== '');
   }
 
@@ -440,7 +442,6 @@
   }
 
   function renderRequest() {
-    $('method').value = req.method;
     $('url').value = req.url;
     renderMethod();
     renderParams();
@@ -616,8 +617,29 @@
   mirror($('bodyText'));
   $('varPop').addEventListener('mouseleave', () => leaveToken());
   document.addEventListener('keyup', (e) => { if (e.key === 'Control' || e.key === 'Meta') document.querySelectorAll('.tok.link, .linkable').forEach((x) => x.classList.remove('link', 'linkable')); });
-  $('method').replaceChildren(...METHODS.map((m) => el('option', { value: m, textContent: m, className: `m-${m}` })));
-  $('method').onchange = () => { req.method = $('method').value; renderMethod(); changed(); };
+  // menu method custom: klik / Enter memilih, panah atas-bawah pindah item, Escape menutup
+  const mItems = () => [...$('methodMenu').children];
+  const closeMethodMenu = (focus) => { $('methodMenu').hidden = true; $('method').setAttribute('aria-expanded', 'false'); if (focus) $('method').focus(); };
+  const openMethodMenu = () => {
+    $('methodMenu').hidden = false;
+    $('method').setAttribute('aria-expanded', 'true');
+    (mItems().find((b) => b.dataset.m === req.method) || mItems()[0]).focus();
+  };
+  $('methodMenu').replaceChildren(...METHODS.map((m) => {
+    const b = el('button', { type: 'button', role: 'menuitemradio', textContent: m, className: `m-${m}`, tabIndex: -1 });
+    b.dataset.m = m;
+    b.onclick = () => { closeMethodMenu(true); if (req.method !== m) { req.method = m; renderMethod(); changed(); } };
+    return b;
+  }));
+  $('method').onclick = (e) => { e.stopPropagation(); $('methodMenu').hidden ? openMethodMenu() : closeMethodMenu(); };
+  $('method').onkeydown = (e) => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); openMethodMenu(); } };
+  $('methodMenu').onkeydown = (e) => {
+    const items = mItems(), i = items.indexOf(document.activeElement);
+    const go = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: items.length - 1 }[e.key];
+    if (go !== undefined) { e.preventDefault(); items[(go + items.length) % items.length].focus(); }
+    else if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); closeMethodMenu(true); }
+  };
+  document.addEventListener('click', (e) => { if (!$('methodMenu').hidden && !e.target.closest('#methodMenu')) closeMethodMenu(); });
   $('url').oninput = () => { req.url = $('url').value; renderParams(); changed(); };
   // paste cURL mentah ke kolom URL: diimpor host (method, header, body, opsi)
   $('url').addEventListener('paste', (e) => {
