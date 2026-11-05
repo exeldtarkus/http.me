@@ -7,3 +7,4 @@ deployment/vsx/
 *.md
 # mockup desain hanya lokal
 design/
+.vscode/launch.json
