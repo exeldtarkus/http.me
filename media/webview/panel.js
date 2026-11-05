@@ -1026,6 +1026,7 @@
     $('sendAll').textContent = allRunning ? 'Cancel All' : 'Send All';
     $('sendAll').classList.toggle('busy', allRunning);
   }
+  $('openText').onclick = () => { flush(); post({ type: 'openAsText' }); };
   $('sendAll').onclick = () => { flush(); post({ type: allRunning ? 'cancelAll' : 'sendAll' }); };
   const pickTab = (i) => { if (i === activeBlock) return; flush(); post({ type: 'pickBlock', index: i }); };
   const tabParts = (b) => [el('span', { className: `rb-m m-${b.method}`, textContent: b.method }), el('span', { className: 'rb-l', textContent: b.label }), el('span', { className: `rb-s ${b.cls}`, textContent: b.text })];

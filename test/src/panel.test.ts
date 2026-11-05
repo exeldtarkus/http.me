@@ -553,3 +553,14 @@ test('review R45: strip tab request / response: tombol +N + dropdown (filter bil
   assert.match(js, /placeholder: 'Filter requests'/);
   assert.match(js, /new ResizeObserver\(/);
 });
+
+test('review R48: ikon Open as Text di bar URL panel membuka file .http sebagai teks (multi-request: kursor di blok aktif)', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const root = join(__dirname, '..', '..', '..');
+  const html = fs.readFileSync(join(root, 'media', 'webview', 'panel.html'), 'utf8');
+  const js = fs.readFileSync(join(root, 'media', 'webview', 'panel.js'), 'utf8');
+  const host = fs.readFileSync(join(root, 'src', 'httpEditor.ts'), 'utf8');
+  assert.match(html, /<div class="tools">\s*<button class="ibtn" id="openText" type="button" title="Open as Text \(\.http\)" aria-label="Open as Text"><svg viewBox="0 0 16 16" aria-hidden="true">/);
+  assert.match(js, /\$\('openText'\)\.onclick = \(\) => \{ flush\(\); post\(\{ type: 'openAsText' \}\); \};/);
+  assert.match(host, /m\.type === 'openAsText'\) await openAsText\(doc\.uri, blockCount\(\) > 1 \? splitBlocks\(doc\.getText\(\)\)\[active\]\?\.start : undefined\)/);
+});
