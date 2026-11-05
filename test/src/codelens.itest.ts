@@ -53,7 +53,9 @@ export const tests: ITests = {
   async 'Send Request (Ctrl+Enter) dari editor teks: blok di kursor dikirim + response tampil di samping'() {
     const srv = await startServer(async (req) => ({ headers: { 'content-type': 'text/plain' }, body: `hit ${req.url}` }));
     const dir = join(vscode.workspace.workspaceFolders![0].uri.fsPath, 'tmp-ctrl-enter-it');
+    const api = vscode.extensions.getExtension('exeltarkus.httpme')!.exports as { layout: { set(l: string): Promise<void> } };
     try {
+      await api.layout.set('single'); // dokumen Response di samping hanya untuk layout Single / Two pane
       mkdirSync(dir, { recursive: true });
       const file = join(dir, 'two.http'); // file .http di disk seperti test-extension/get.http
       writeFileSync(file, `### A\nGET ${srv.url}/a\n\n### B\nGET ${srv.url}/b\n`);
@@ -67,6 +69,7 @@ export const tests: ITests = {
       assert.match(shown.document.getText(), /hit \/b/);
       assert.equal(vscode.window.activeTextEditor?.document, doc, 'fokus tetap di editor .http');
     } finally {
+      await api.layout.set('panel');
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       rmSync(dir, { recursive: true, force: true });
       await srv.close();
@@ -77,8 +80,7 @@ export const tests: ITests = {
     const srv = await startServer(async () => ({ headers: { 'content-type': 'text/plain' }, body: 'bottom' }));
     const dir = join(vscode.workspace.workspaceFolders![0].uri.fsPath, 'tmp-layout-it');
     try {
-      assert.equal(api.layout.get(), 'single', 'bawaan Single pane');
-      await api.layout.set('panel');
+      assert.equal(api.layout.get(), 'panel', 'bawaan Bottom panel, juga untuk Send dari file .http teks');
       mkdirSync(dir, { recursive: true });
       const file = join(dir, 'one.http');
       writeFileSync(file, `GET ${srv.url}/x\n`);
@@ -89,7 +91,6 @@ export const tests: ITests = {
       assert.ok(api.layout.outputShown(), 'view httpme.response dibuka');
       assert.ok(!vscode.window.visibleTextEditors.some((e) => e.document.uri.path === '/Response'), 'tanpa dokumen Response di samping');
     } finally {
-      await api.layout.set('single');
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       rmSync(dir, { recursive: true, force: true });
       await srv.close();

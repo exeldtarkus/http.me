@@ -83,7 +83,7 @@ const LAYOUT_KEY = 'httpme.responseLayout';
 let layoutState: vscode.Memento | undefined;
 /** view Response panel bawah + key Send terakhir yang ditampilkannya */
 const output: { view?: vscode.WebviewView; key?: string } = {};
-export const getLayout = (): Layout => layoutState?.get<Layout>(LAYOUT_KEY, 'single') ?? 'single';
+export const getLayout = (): Layout => layoutState?.get<Layout>(LAYOUT_KEY, 'panel') ?? 'panel'; // bawaan Bottom panel, juga Send dari file .http teks
 export async function setLayout(l: Layout): Promise<void> {
   await layoutState?.update(LAYOUT_KEY, l);
   for (const s of docs.values()) s.panels.forEach((p) => void p.webview.postMessage({ type: 'layout', layout: l }));
