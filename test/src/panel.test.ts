@@ -611,3 +611,15 @@ test('autoAuthHeader: header yang dibuat otomatis oleh Authorization tab (nama +
   assert.equal(f(r(undefined)), undefined);
   assert.equal(f(r('aws access_key=a secret_key=b region=r service=s'))?.text, 'AWS Signature v4 (set in the Authorization tab)');
 });
+
+test('panel.html: setiap $(\'id\') di panel.js ada di HTML dan elemennya berada SEBELUM <script> (script yang jalan lebih dulu dari elemen = seluruh panel kosong)', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const root = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const html = fs.readFileSync(join(root, 'panel.html'), 'utf8');
+  const js = fs.readFileSync(join(root, 'panel.js'), 'utf8');
+  const scriptAt = html.indexOf('<script');
+  const ids = [...new Set([...js.matchAll(/\$\('([A-Za-z][\w-]*)'\)/g)].map((m) => m[1]))];
+  const missing = ids.filter((id) => !html.includes(`id="${id}"`));
+  assert.deepEqual(missing, []);
+  assert.deepEqual(ids.filter((id) => html.indexOf(`id="${id}"`) > scriptAt), []);
+});
