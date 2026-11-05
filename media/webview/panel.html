@@ -24,11 +24,12 @@
   button { cursor: pointer; }
   :focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
   input, select, textarea { background: var(--input); color: var(--input-fg); border: 1px solid var(--line); border-radius: 3px; }
-  .urlrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px 6px; }
+  .urlrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; padding: 10px 12px 6px; }
   /* file multi-request: tab per request (+ Send All) di atas bar URL dan di atas response */
   .reqblocks { flex-basis: 100%; display: flex; align-items: center; gap: 8px; min-width: 0; }
   .reqblocks[hidden], .resblocks[hidden] { display: none; }
-  .rb-tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+  .rb-tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow: hidden; }
+  .rb-tabs button[hidden] { display: none; }
   .rb-tabs button { flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 240px; padding: 4px 10px; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--muted); font-size: 12px; white-space: nowrap; }
   .rb-tabs button:hover { background: var(--hover); color: var(--fg); }
   .rb-tabs button.on { background: var(--soft); border-color: var(--line); color: var(--fg); }
@@ -37,6 +38,20 @@
   .rb-s { font: 600 10.5px var(--mono); } .rb-s:empty { display: none; }
   .rb-s.run { color: var(--muted); animation: blink 1s infinite; }
   #sendAll { flex: none; }
+  /* tab yang tidak muat: tombol +N -> dropdown (method, nama, status, centang tab aktif) */
+  .rb-tabs .rb-more { gap: 4px; color: var(--fg); font-weight: 600; border: 1px dashed var(--line); }
+  .rb-more::after { content: ''; width: 5px; height: 5px; margin: 0 2px 3px 2px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+  .rb-more[aria-expanded="true"] { background: var(--soft); }
+  .rb-menu { position: fixed; z-index: 20; display: flex; flex-direction: column; min-width: 260px; max-width: min(440px, calc(100vw - 16px)); max-height: 60vh; padding: 4px; border: 1px solid var(--vscode-menu-border, var(--line)); border-radius: 6px; background: var(--vscode-menu-background, var(--bg)); box-shadow: 0 4px 14px var(--vscode-widget-shadow, #0006); }
+  .rb-menu[hidden] { display: none; }
+  .rb-filter { flex: none; margin: 2px 2px 6px; padding: 4px 8px; }
+  .rb-list { display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow: auto; }
+  .rb-list button { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 0; border-radius: 4px; background: none; color: var(--vscode-menu-foreground, var(--fg)); font-size: 12px; text-align: left; white-space: nowrap; }
+  .rb-list button[hidden] { display: none; }
+  .rb-list button:hover, .rb-list button:focus-visible { background: var(--vscode-menu-selectionBackground, var(--hover)); outline: none; }
+  .rb-list .rb-m { min-width: 52px; }
+  .rb-list .rb-l { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .rb-list button.on::after { content: '\2713'; }
   #sendAll.busy { background: var(--err); color: var(--vscode-editor-background); }
   .resblocks { padding: 8px 12px 0; }
   .resp.multi { grid-template-rows: auto auto minmax(0, 1fr); }
@@ -210,7 +225,7 @@
   .vwrap[hidden], .vwrap.area[hidden] { display: none; } /* .vwrap.area (display: flex) ada di bawah: perlu bobot lebih */
   .subtabs .right { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
   /* konsep A: response dalam kartu; status / waktu / ukuran = chip */
-  .resp { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+  .resp { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; min-width: 0; } /* min-width 0: strip tab panjang tidak melebarkan grid */
   #resTabs { min-height: 41px; flex-wrap: wrap; }
   #st:not(:empty), #ms:not(:empty), #sz:not(:empty) { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--soft); font-size: 11.5px; font-weight: 600; }
   #st:not(:empty) { background: color-mix(in srgb, currentColor 15%, transparent); }

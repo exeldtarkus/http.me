@@ -19,6 +19,7 @@ const panel = require(join(__dirname, '..', '..', '..', 'media', 'webview', 'pan
   layoutGrid(layout: string, size: number | undefined, total: number): { rows: string; cols: string };
   markSegments(segs: { text: string; name?: string; cls?: string }[], start: number, end: number): { text: string; name?: string; cls?: string; err?: boolean }[];
   jsonRows(html: string): string;
+  fitTabs(widths: number[], avail: number, active: number, moreW: number): boolean[];
   hiddenRows(ends: number[], shut: boolean[]): boolean[];
   foldRanges(text: string): { line: number; from: number; to: number }[];
   unfold(text: string, hidden: Map<string, string>): string;
@@ -530,4 +531,25 @@ test('review R42: tab request yang belum dikirim tidak menampilkan response requ
   assert.match(host, /type: 'state', req, view: lastView \?\? null,/);
   assert.match(host, /\.\.\.\(v !== lastView \? \{ view: v \?\? null \} : \{\}\)/);
   assert.match(js, /'This request has not been sent yet\. Click Send or Send All\.'/);
+});
+
+test('review R45: fitTabs: tab yang muat tampil, sisanya ke dropdown; tab aktif selalu tampil', () => {
+  assert.deepEqual(panel.fitTabs([100, 100, 100], 300, 0, 60), [true, true, true], 'semua muat: tanpa dropdown');
+  assert.deepEqual(panel.fitTabs([100, 100, 100, 100], 300, 0, 60), [true, true, false, false], 'ruang dikurangi tombol +N');
+  assert.deepEqual(panel.fitTabs([100, 100, 100, 100], 300, 3, 60), [true, false, false, true], 'tab aktif di ujung tetap tampil');
+  assert.deepEqual(panel.fitTabs([100, 100, 100], 50, 1, 60), [false, true, false], 'ruang sempit: minimal tab aktif');
+  assert.deepEqual(panel.fitTabs([], 300, 0, 60), []);
+});
+
+test('review R45: strip tab request / response: tombol +N + dropdown (filter bila > 8), refit saat ukuran berubah', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const html = fs.readFileSync(join(dir, 'panel.html'), 'utf8');
+  const js = fs.readFileSync(join(dir, 'panel.js'), 'utf8');
+  assert.match(html, /\.rb-tabs \{[^}]*overflow: hidden;/, 'tanpa scroll horizontal');
+  assert.match(html, /\.rb-menu \{[^}]*position: fixed;[^}]*max-height:/);
+  assert.match(js, /className: 'rb-more'/);
+  assert.match(js, /aria-haspopup', 'menu'/);
+  assert.match(js, /placeholder: 'Filter requests'/);
+  assert.match(js, /new ResizeObserver\(/);
 });
