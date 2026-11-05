@@ -105,7 +105,10 @@ export const tests: ITests = {
       const doc = await vscode.workspace.openTextDocument(envUri('dev'));
       await api().envOp(doc, { type: 'addKey', key: 'clientId' }, false);
       assert.equal(doc.isDirty, true);
-      assert.deepEqual(fileVars('uat').map((x) => [x.key, x.value]).pop(), ['clientId', null], 'Environment lain langsung dapat key NULL');
+      assert.ok(!fileVars('uat').some((x) => x.key === 'clientId'), 'key baru baru disinkronkan ke Environment lain saat Save');
+      assert.equal(await doc.save(), true);
+      await until(() => fileVars('uat').some((x) => x.key === 'clientId'), 'Environment lain dapat key NULL setelah Save');
+      assert.deepEqual(fileVars('uat').find((x) => x.key === 'clientId'), { key: 'clientId', value: null });
       await cmd('undo');
       await until(() => !doc.getText().includes('clientId'), 'undo');
       await cmd('redo');
@@ -137,11 +140,38 @@ export const tests: ITests = {
     }
   },
 
+  async 'Editor teks: Ctrl+S file Environment (key baru / key dihapus di teks) menyinkronkan key ke Environment lain'() {
+    try {
+      await setup();
+      const doc = await vscode.workspace.openTextDocument(envUri('dev'));
+      await vscode.window.showTextDocument(doc); // editor teks, bukan tabel
+      const replaceAll = async (text: string) => {
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), text);
+        await vscode.workspace.applyEdit(edit);
+      };
+      const vars = fileVars('dev');
+      // 1. key baru diketik di teks lalu Ctrl+S -> uat dapat key itu (NULL)
+      await replaceAll(JSON.stringify({ httpmeFormat: 1, variables: [...vars, { key: 'clientId', value: 'abc' }] }, null, 2));
+      assert.equal(await doc.save(), true);
+      await until(() => fileVars('uat').some((x) => x.key === 'clientId'), 'uat dapat key clientId dari Save teks');
+      assert.deepEqual(fileVars('uat').find((x) => x.key === 'clientId'), { key: 'clientId', value: null });
+      // 2. key dihapus dari teks (manual) lalu Ctrl+S -> tidak boleh hilang diam-diam dari Environment lain, dan kembali ke file ini (key harus sama di semua Environment)
+      await replaceAll(JSON.stringify({ httpmeFormat: 1, variables: vars.filter((x) => x.key !== 'path') }, null, 2));
+      assert.equal(await doc.save(), true);
+      await until(() => fileVars('dev').some((x) => x.key === 'path'), 'key path dikembalikan ke dev (sama dengan Environment lain)');
+      assert.ok(fileVars('uat').some((x) => x.key === 'path'), 'uat tetap punya path');
+      await until(() => !doc.isDirty, 'tidak ada Save yang menggantung');
+    } finally {
+      await cleanup();
+    }
+  },
+
   async 'key tidak sama dari luar (git pull): pesan + Sync; All Environments berisi matriks'() {
     try {
       await setup();
       writeFileSync(join(dir(), 'uat.json'), JSON.stringify({ httpmeFormat: 1, variables: [{ key: 'baseUrl', value: 'https://u' }] }));
-      await wait(500);
+      await until(async () => (await api().envs.vars('uat')).length === 1, 'uat.json dibaca ulang (dokumen lama dari test sebelumnya bisa masih terbuka)', 8000);
       assert.equal(await api().envs.checkKeys(), '2 keys missing in Environment "uat"');
       assert.deepEqual(await api().envs.sync(), ['uat']);
       assert.deepEqual(fileVars('uat').map((x) => [x.key, x.value]), [['baseUrl', 'https://u'], ['apiKey', null], ['path', null]]);
