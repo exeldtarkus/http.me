@@ -3,7 +3,7 @@ import { isNewerMinor, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
 import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
-import { applyPanelEdit, importCurlText, saveUntitled, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, activeBlock, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
+import { applyPanelEdit, importCurlText, saveUntitled, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, activeBlock, registerRequestEditor, runner, quickRun, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
 import { registerSidebar, type Sidebars } from './sidebar';
 import { historyAction, registerActivity, statusBar, type HistoryAction } from './activity';
@@ -115,6 +115,8 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   ctx.subscriptions.push(registerRequestEditor(vscode.Uri.joinPath(ctx.globalStorageUri, 'httpme-cache').fsPath, ctx.globalState));
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.newRequest', () =>
     newRequest().catch((e) => reportError('newRequest', e, `New Request failed: ${errMsg(e)}`))));
+  ctx.subscriptions.push(vscode.commands.registerCommand('httpme.quickRun', () =>
+    quickRun().catch((e) => reportError('quickRun', e, `Quick Run failed: ${errMsg(e)}`))));
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.sendRequest', () =>
     sendActive().catch((e) => reportError('sendRequest', e, `Send failed: ${errMsg(e)}`))));
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.cancelRequest', () =>
