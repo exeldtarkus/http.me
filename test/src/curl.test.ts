@@ -38,8 +38,8 @@ test('parseCurl: -u, -b, -L, -k, -G, -I, --json, -A, -e, --data-urlencode', () =
 });
 
 test('parseCurl: opsi tak dikenal & yang tidak diimpor dilaporkan; bukan perintah curl = error', () => {
-  const r = parseCurl(`curl --compressed -s --http2 -F f=@a.png --weird https://a`);
-  assert.deepEqual(r.warnings, ['Ignored option --http2', 'Multipart (-F f=@a.png) is not imported yet', 'Unknown option --weird']);
+  const r = parseCurl(`curl --compressed -s --http2 --weird https://a`);
+  assert.deepEqual(r.warnings, ['Ignored option --http2', 'Unknown option --weird']);
   assert.throws(() => parseCurl('wget https://a'), /Not a curl command/);
   assert.throws(() => parseCurl('curl -H x'), /No URL/);
 });
@@ -107,4 +107,116 @@ test('quickRequest: URL polos = GET, "METHOD URL", curl, tanpa skema ditolak', (
   assert.equal(quickRequest('https://a.test/{{path}}').url, 'https://a.test/{{path}}');
   assert.throws(() => quickRequest('auth.dev.karedoc.net'), /curl command or a URL/);
   assert.throws(() => quickRequest('   '), /curl command or a URL/);
+});
+
+// --- Fase 5: dialek cmd / PowerShell, -F, Copy as cURL (cmd / PowerShell), header browser ---
+import { tokenizeCmd, tokenizePs, toCurlCmd, toPowerShell, isPowerShellRequest } from '../../src/shellDialect';
+import type { ParsedRequest } from '../../src/httpFile';
+
+test('tokenizeCmd: ^ = escape, ^ di akhir baris = sambung, \\" = kutip literal di dalam "…"', () => {
+  assert.deepEqual(tokenizeCmd('curl https://a.test/x?a=1^&b=2 ^\r\n  -H "accept: */*" ^\n  --data-raw ^"^{^\\^"a^\\^":^\\^"b c^\\^"^}^"'),
+    ['curl', 'https://a.test/x?a=1&b=2', '-H', 'accept: */*', '--data-raw', '{"a":"b c"}']);
+  assert.deepEqual(tokenizeCmd('curl ^"https://a.test/^%25^" -d ^"x^^y^"'), ['curl', 'https://a.test/%25', '-d', 'x^y']);
+  assert.throws(() => tokenizeCmd('curl "open'), /Unclosed quote/);
+});
+
+test('tokenizePs: backtick = escape / sambung, \'…\' literal (\'\' = kutip), "…" dengan `" `` `n `$ dan ""', () => {
+  assert.deepEqual(tokenizePs("curl.exe 'https://a.test/x' `\n  -H 'it''s: ok' `\r\n  --data-raw \"{`\"a`\":`\"b`n`$x\"\"}\""),
+    ['curl.exe', 'https://a.test/x', '-H', "it's: ok", '--data-raw', '{"a":"b\n$x"}']);
+  assert.throws(() => tokenizePs("curl 'open"), /Unclosed quote/);
+});
+
+const CHROME_BASH = `curl 'https://api.example.com/v1/items?x=1' \\
+  -H 'accept: application/json' \\
+  -H 'content-type: application/json' \\
+  -H 'cookie: sid=abc' \\
+  -H 'sec-ch-ua: "Chromium";v="120"' \\
+  -H 'user-agent: Mozilla/5.0 Test' \\
+  --data-raw '{"name":"a b","q":"it'\\''s"}' \\
+  --compressed`;
+const CHROME_CMD = `curl "https://api.example.com/v1/items?x=1" ^
+  -H "accept: application/json" ^
+  -H "content-type: application/json" ^
+  -H "cookie: sid=abc" ^
+  -H ^"sec-ch-ua: ^\\^"Chromium^\\^";v=^\\^"120^\\^"^" ^
+  -H "user-agent: Mozilla/5.0 Test" ^
+  --data-raw ^"^{^\\^"name^\\^":^\\^"a b^\\^",^\\^"q^\\^":^\\^"it's^\\^"^}^" ^
+  --compressed`;
+const CHROME_PS = `$session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$session.UserAgent = "Mozilla/5.0 Test"
+$session.Cookies.Add((New-Object System.Net.Cookie("sid", "abc", "/", "api.example.com")))
+Invoke-WebRequest -UseBasicParsing -Uri "https://api.example.com/v1/items?x=1" \`
+-Method "POST" \`
+-WebSession $session \`
+-Headers @{
+"accept"="application/json"
+  "sec-ch-ua"="\`"Chromium\`";v=\`"120\`""
+} \`
+-ContentType "application/json" \`
+-Body "{\`"name\`":\`"a b\`",\`"q\`":\`"it's\`"}"`;
+
+const canon = (r: ParsedRequest) => ({
+  method: r.method, url: r.url, body: r.body, follow: r.followRedirects,
+  headers: r.headers.map((h) => `${h.name.toLowerCase()}: ${h.value} ${h.enabled ? 'on' : 'off'}`).sort(),
+});
+
+test('fixture "Copy as cURL" bash, cmd, dan PowerShell menghasilkan request yang sama persis (header browser nonaktif)', () => {
+  const bash = importCurl(CHROME_BASH).request;
+  assert.equal(bash.method, 'POST');
+  assert.equal(bash.body, `{"name":"a b","q":"it's"}`);
+  assert.deepEqual(bash.headers.filter((h) => !h.enabled).map((h) => h.name).sort(), ['sec-ch-ua', 'user-agent']);
+  assert.deepEqual(canon(importCurl(CHROME_CMD).request), canon(bash));
+  assert.deepEqual(canon(importCurl(CHROME_PS).request), canon(bash));
+});
+
+test('import PowerShell: -Uri/-Method/-Headers/-ContentType/-Body, $session UA & cookie, Invoke-RestMethod, opsi lain', () => {
+  const r = parseCurl(`Invoke-RestMethod -Uri 'https://a.test/x' -Method Put -Headers @{ 'X-A' = '1'; "X-B"="two words" } -Body 'k=v' -ContentType 'text/plain' -MaximumRedirection 0 -SkipCertificateCheck -TimeoutSec 7`);
+  assert.equal(r.request.method, 'PUT');
+  assert.deepEqual(r.request.headers.map((h) => [h.name, h.value]), [['X-A', '1'], ['X-B', 'two words'], ['Content-Type', 'text/plain']]);
+  assert.equal(r.request.body, 'k=v');
+  assert.equal(r.request.followRedirects, false);
+  assert.equal(r.request.insecure, true);
+  assert.equal(r.request.timeoutSec, 7);
+  assert.equal(parseCurl(`iwr https://a.test/`).request.url, 'https://a.test/');
+  assert.equal(parseCurl(`Invoke-WebRequest -Uri https://a.test/ -Body 'x'`).request.method, 'POST');
+  assert.ok(parseCurl(`Invoke-WebRequest -Uri https://a.test/ -OutFile x.bin`).warnings.some((w) => /OutFile/.test(w)));
+  assert.throws(() => parseCurl(`Invoke-WebRequest -Method Get`), /No URL/);
+  assert.equal(isPowerShellRequest('Invoke-WebRequest -Uri x'), true);
+  assert.equal(isPowerShellRequest('curl https://x'), false);
+});
+
+test('-F / --form: field, file (< ./path), type, Content-Type multipart + boundary; --data-urlencode', () => {
+  const r = parseCurl(`curl https://a.test/up -F 'title=My Doc' -F 'file=@./pics/a.png;type=image/png' -F 'note=<./n.txt'`).request;
+  assert.equal(r.method, 'POST');
+  const ct = r.headers.find((h) => h.name === 'Content-Type')!.value;
+  const boundary = /^multipart\/form-data; boundary=(.+)$/.exec(ct)![1];
+  assert.equal(r.body, [
+    `--${boundary}`, 'Content-Disposition: form-data; name="title"', '', 'My Doc',
+    `--${boundary}`, 'Content-Disposition: form-data; name="file"; filename="a.png"', 'Content-Type: image/png', '', '< ./pics/a.png',
+    `--${boundary}`, 'Content-Disposition: form-data; name="note"', '', '< ./n.txt',
+    `--${boundary}--`,
+  ].join('\n'));
+  assert.equal(parseCurl(`curl https://a.test -F 'f=@C:\\tmp\\x.bin'`).request.body.includes('filename="x.bin"'), true);
+  assert.equal(parseCurl(`curl https://a.test --data-urlencode 'q=a b&c' --data-urlencode 'r@x'`).request.body, 'q=a%20b%26c&r%40x');
+});
+
+test('toCurlCmd / toPowerShell: round-trip (export -> import = request sama)', () => {
+  const req = parseRequest(`POST https://a.test/p?x=1&y=2\nContent-Type: application/json\nX-Q: say "hi" it's 100%\n\n{"a":"b \\"c\\"","d":"it's"}\n`);
+  const cmd = toCurlCmd(req);
+  assert.ok(/\^$/m.test(cmd), 'baris disambung dengan ^');
+  assert.deepEqual(canon(importCurl(cmd).request), canon(importCurl(toCurl(req)).request));
+  const ps = toPowerShell(req);
+  assert.match(ps, /^Invoke-WebRequest -UseBasicParsing -Uri /);
+  assert.deepEqual(canon(importCurl(ps).request), canon(importCurl(toCurl(req)).request));
+  // body file & cookie: sama seperti toCurl
+  assert.match(toPowerShell(parseRequest('GET https://a.test\nCookie: s=1\n'), { withCookies: true }), /\$session\.Cookies\.Add/);
+  assert.doesNotMatch(toPowerShell(parseRequest('GET https://a.test\nCookie: s=1\n')), /Cookie/);
+});
+
+test('header browser: Connection ikut nonaktif; --aws-sigv4 jadi # @auth aws', () => {
+  const r = importCurl(`curl https://a.test -H 'Connection: keep-alive' -H 'Accept-Encoding: gzip' -H 'X-Keep: 1'`).request;
+  assert.deepEqual(r.headers.map((h) => [h.name, h.enabled]), [['Connection', false], ['Accept-Encoding', false], ['X-Keep', true]]);
+  const a = parseCurl(`curl https://s3.us-east-1.amazonaws.com/b --aws-sigv4 'aws:amz:us-east-1:s3' --user 'AKID:SECRET'`).request;
+  assert.equal(a.auth, 'aws access_key="AKID" secret_key="SECRET" region="us-east-1" service="s3"');
+  assert.deepEqual(a.headers, []);
 });
