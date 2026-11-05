@@ -8,6 +8,8 @@ import { promises as fs } from 'node:fs';
 import { dirname, join, relative, resolve as resolvePath } from 'node:path';
 import { homedir } from 'node:os';
 import { fileBody, multipartBody } from './bodyStream';
+import { generateSnippet, maskSecrets, usesSecrets, type SnippetOptions } from './snippet';
+import type { HttpRequest } from './http';
 import { applyAuth, headerAuth, parseAuth, sendWithDigest, type AuthConfig, type AuthType } from './auth';
 import { webviewPage } from './webviewPage';
 import { NEW_REQUEST_TEXT, newRequestName } from './newRequest';
@@ -470,6 +472,48 @@ export async function handleAuthMessage(
   }
 }
 
+const isSnippetOptions = (v: unknown): v is SnippetOptions => {
+  const o = v as SnippetOptions;
+  return !!o && typeof o === 'object' && ['curl', 'cmd', 'powershell'].includes(o.language)
+    && ['longForm', 'resolve', 'followRedirects', 'cookies', 'disabledHeaders', 'multiLine'].every((k) => typeof o[k as keyof SnippetOptions] === 'boolean');
+};
+
+/** panel Code snippet: variable / auth / cookie diselesaikan di sini; secret tampil ******** dan Copy meminta konfirmasi bila isinya memuat secret */
+async function handleSnippet(doc: vscode.TextDocument, kind: 'snippet' | 'copySnippet', opts: unknown, req: ParsedRequest, post: (x: unknown) => void): Promise<void> {
+  if (!isSnippetOptions(opts)) throw new Error('Invalid snippet options.');
+  let r = req;
+  let secrets: string[] = [];
+  if (opts.resolve && hooks) { const x = await hooks.resolve(req); r = x.request; secrets = [...x.secrets]; }
+  let jar: string | undefined;
+  if (opts.cookies && session) {
+    const list = await session.forUrl(r.url);
+    jar = list.map((c) => `${c.name}=${c.value}`).join('; ') || undefined;
+    secrets.push(...list.map((c) => c.value));
+  }
+  // auth statis (Basic / Bearer / API Key / JWT ...) ikut tampil; Digest dan error auth dilewati (snippet tetap dibuat)
+  try {
+    const auth = r.auth === undefined && r.headers.some((h) => h.enabled && h.name.toLowerCase() === 'authorization') ? headerAuth(r.headers) : await resolveRequestAuth(doc.uri, r);
+    if (auth && auth.type !== 'digest') {
+      const done = applyAuth(toHttpRequest(r) as HttpRequest, auth, new Map()).request;
+      r = { ...r, url: done.url, headers: [...done.headers.map(([name, value]) => ({ name, value, enabled: true })), ...r.headers.filter((h) => !h.enabled)] };
+      secrets.push(...done.headers.filter(([n]) => n.toLowerCase() === 'authorization').map(([, v]) => v.replace(/^\S+\s+/, '')));
+    }
+  } catch (e) {
+    log().error(errorLine('snippet.auth', e)); // snippet tanpa header auth lebih berguna daripada tanpa snippet
+  }
+  const raw = generateSnippet(r, opts, { jar });
+  const withSecrets = usesSecrets(raw, secrets);
+  if (kind === 'snippet') return post({ type: 'snippet', text: maskSecrets(raw, secrets), secrets: withSecrets });
+  let text = maskSecrets(raw, secrets);
+  if (withSecrets) {
+    const pick = await vscode.window.showWarningMessage('The snippet contains secret values.', { modal: true, detail: 'Copy the real values, or copy with ******** instead?' }, 'Copy with secret values', 'Copy masked');
+    if (!pick) return;
+    if (pick === 'Copy with secret values') text = raw;
+  }
+  await vscode.env.clipboard.writeText(text);
+  void vscode.window.showInformationMessage('Code snippet copied.');
+}
+
 /** teks response untuk dokumen "Show Response": status, header, baris kosong, body (JSON dirapikan) */
 function responseText(res: Awaited<ReturnType<typeof send>>): string {
   const head = [`HTTP ${res.status} ${res.statusText}`.trimEnd(), ...res.headers.map(([k, v]) => `${k}: ${v}`)].join('\n');
@@ -721,10 +765,11 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   const subs = [
     onRunnerChange(postOthers),
     onRunnerChange(postBlocks),
-    panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown; layout?: unknown; message?: unknown; index?: unknown }) => {
+    panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown; layout?: unknown; message?: unknown; index?: unknown; opts?: unknown }) => {
       try {
         if (await handleScriptsMessage(doc, m, postMsg)) return;
         if (await handleAuthMessage(doc, m, postMsg)) return;
+        if (m.type === 'snippet' || m.type === 'copySnippet') return await handleSnippet(doc, m.type, m.opts, isRequest(m.req) ? m.req : activeReq(), postMsg);
         if (m.type === 'ready') { postMsg({ type: 'layout', layout: getLayout() }); postOthers(); postState(); await postVars(panel); await postCookies(panel, doc.uri.toString()); } else if (m.type === 'varHover' && typeof m.name === 'string' && hooks) {
           const info = await hooks.hover(m.name, new Map(activeReq().vars.map((v) => [v.name, v.value])));
           void panel.webview.postMessage({ type: 'varHover', name: m.name, info });

@@ -563,7 +563,20 @@
     return out;
   }
 
-  const api = { findMatches, bodyNotice, fitTabs, xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers, authForms: AUTH_FORMS, authForm, switchAuthType, isRawAuthSecret, authVariableName, parseAuthForm };
+  const AUTO_LABEL = { basic: 'Basic', bearer: 'Bearer', digest: 'Digest', hawk: 'Hawk', jwt: 'JWT', oauth1: 'OAuth 1.0', oauth2: 'OAuth 2.0', aws: 'AWS Signature v4', apiKey: 'API Key' };
+  /** header yang dibuat otomatis dari # @auth (ditampilkan `auto` di tab Headers); undefined = tidak ada */
+  function autoAuthHeader(r) {
+    if (!r.auth) return undefined;
+    const form = parseAuthForm(r.auth, r.headers);
+    const t = form.type, f = form.fields;
+    const label = AUTO_LABEL[t];
+    if (!label) return undefined;
+    if (t === 'apiKey') return f.in === 'header' && f.key ? { name: f.key, text: `${label} (set in the Authorization tab)` } : undefined;
+    if ((t === 'jwt' || t === 'oauth1') && (f.add_to === 'query' || f.add_to === 'body')) return undefined;
+    return { name: 'Authorization', text: `${label} (set in the Authorization tab)` };
+  }
+
+  const api = { autoAuthHeader, findMatches, bodyNotice, fitTabs, xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers, authForms: AUTH_FORMS, authForm, switchAuthType, isRawAuthSecret, authVariableName, parseAuthForm };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -592,6 +605,7 @@
     editTimer = setTimeout(() => post({ type: 'edit', req, index: activeBlock }), 250);
     counts();
     syncMirrors();
+    askSnippet();
   }
   function flush() {
     if (editTimer === undefined) return;
@@ -647,6 +661,9 @@
     });
   }
   function renderHeaders() {
+    const auto = autoAuthHeader(req);
+    $('autoHeader').hidden = !auto;
+    if (auto) { $('autoHeaderName').textContent = auto.name; $('autoHeaderText').textContent = auto.text; }
     kvTable($('headerRows'), req.headers, 'name', (structural) => {
       if (structural) renderHeaders();
       changed();
@@ -1260,6 +1277,26 @@
   };
   $('expandAll').onclick = () => { resRows().forEach((r) => r.classList.remove('shut')); refreshRows(); };
   $('collapseAll').onclick = () => { resRows().slice(1).forEach((r) => r.classList.toggle('shut', r.classList.contains('fo'))); refreshRows(); }; // akar tetap terbuka
+  // Code snippet (panel kanan): host membuat teksnya (variable, secret, cookie), webview hanya meminta dan menampilkan
+  const snippetOpts = () => ({ language: $('cpLang').value, ...Object.fromEntries([...document.querySelectorAll('#cpOpts input')].map((i) => [i.dataset.o, i.checked])) });
+  let snippetTimer;
+  function askSnippet() {
+    if ($('codePanel').hidden) return;
+    clearTimeout(snippetTimer);
+    snippetTimer = setTimeout(() => post({ type: 'snippet', req, opts: snippetOpts() }), 150);
+  }
+  const toggleCode = (on = $('codePanel').hidden) => {
+    $('codePanel').hidden = !on;
+    $('codeBtn').setAttribute('aria-expanded', String(on));
+    if (on) askSnippet(); else $('codeBtn').focus();
+  };
+  $('codeBtn').onclick = () => toggleCode();
+  $('cpClose').onclick = () => toggleCode(false);
+  $('cpLang').onchange = askSnippet;
+  $('cpOpts').onchange = askSnippet;
+  $('cpCopy').onclick = () => post({ type: 'copySnippet', req, opts: snippetOpts() });
+  $('codePanel').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); toggleCode(false); } });
+  document.addEventListener('keydown', (e) => { if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'c') { e.preventDefault(); toggleCode(); } });
   // cari di body: sorot lewat CSS Custom Highlight (DOM body tidak diubah, lipatan JSON tetap utuh)
   let found = [], foundAt = 0;
   const paintFind = (jump) => {
@@ -1636,7 +1673,8 @@
     if (m.type === 'authSecretMoved' && typeof m.name === 'string') $('authNotice').textContent = `Moved to secret variable {{${m.name}}}.`;
     if (m.type === 'authError' && typeof m.message === 'string') $('authNotice').textContent = m.message;
     if (m.blocks) renderBlocks(m.blocks, m.active);
-    if (m.type === 'vars') { vars = { ok: m.ok, nulls: m.nulls, names: m.names }; syncMirrors(); }
+    if (m.type === 'vars') { vars = { ok: m.ok, nulls: m.nulls, names: m.names }; syncMirrors(); askSnippet(); }
+    if (m.type === 'snippet') { $('cpText').textContent = m.text; $('cpNote').textContent = m.secrets ? 'Secret values are shown as ********.' : ''; }
     if (m.type === 'varHover') showHover(m.name, m.info);
     if (m.type === 'matching') $('matching').hidden = !m.on;
     if (m.type === 'reqCookies') {

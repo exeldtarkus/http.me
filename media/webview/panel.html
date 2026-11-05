@@ -238,6 +238,14 @@
   pre.code { margin: 0; font: 12px/1.55 var(--vscode-editor-font-family, monospace); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
   .code .k { color: var(--code-key); } .code .s { color: var(--code-str); } .code .n { color: var(--code-num); }
   .code.error { color: var(--err); }
+  .codepanel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; gap: 8px; width: min(440px, 100%); padding: 10px 12px; border-left: 1px solid var(--line); background: var(--vscode-sideBar-background, var(--bg)); box-shadow: -4px 0 12px #0004; }
+  .codepanel[hidden] { display: none; }
+  .cp-head { display: flex; align-items: center; gap: 8px; } .cp-head b { flex: 1; }
+  .cp-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; } .cp-opts label { display: flex; align-items: center; gap: 6px; }
+  .cp-code { flex: 1; min-height: 0; margin: 0; padding: 8px 10px; overflow: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--soft); font: 12px/1.5 var(--mono); white-space: pre; user-select: text; }
+  .cp-foot { display: flex; align-items: center; gap: 8px; } .cp-foot .note { flex: 1; margin: 0; }
+  .autohdr { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+  .autotag { padding: 0 6px; border-radius: 8px; background: var(--soft); color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; }
   .findbar { position: sticky; top: -8px; z-index: 2; display: flex; align-items: center; gap: 4px; margin: 0 0 8px auto; padding: 3px 6px; width: fit-content; border: 1px solid var(--line); border-radius: 4px; background: var(--vscode-editorWidget-background, var(--bg)); }
   .findbar[hidden] { display: none; }
   .findbar input { width: 190px; padding: 2px 6px; }
@@ -412,6 +420,7 @@
   <button class="btn ghost" id="save" type="button" title="Save (Ctrl+S)" aria-label="Save" disabled>Save<span class="dirty"></span></button>
   <div class="tools">
     <button class="ibtn" id="openText" type="button" title="Open as Text (.http)" aria-label="Open as Text"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 1.5H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5z"/><path d="M9.5 1.5V5H13"/><path d="M6.5 8.5L5 10l1.5 1.5M9.5 8.5L11 10l-1.5 1.5"/></svg></button>
+    <button class="ibtn" id="codeBtn" type="button" title="Code snippet (Ctrl+Alt+C)" aria-label="Code snippet" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5M9 3l-2 10"/></svg></button>
     <div class="help">
       <button class="ibtn" type="button" id="help" aria-label="How to use" aria-describedby="helpPop"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M6.3 6.2a1.8 1.8 0 1 1 2.4 1.7c-.5.2-.7.6-.7 1.1M8 11.2v.1"/></svg></button>
       <ul class="helppop" id="helpPop" role="tooltip">
@@ -440,6 +449,7 @@
   </div>
   <div class="pane" id="p-headers" hidden>
     <table class="kv"><thead><tr><th></th><th>Key</th><th>Value</th><th></th></tr></thead><tbody id="headerRows"></tbody></table>
+    <p class="note autohdr" id="autoHeader" hidden><span class="autotag">auto</span> <b id="autoHeaderName"></b>: <span id="autoHeaderText"></span></p>
   </div>
   <div class="pane body-pane" id="p-body" hidden>
     <div class="bar">
@@ -560,5 +570,20 @@
   <button class="ibtn" id="layoutBtn" type="button" title="Response layout" aria-label="Response layout" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M2 8h12M8 8v5.5"/></svg></button>
 </div>
 <script nonce="{{nonce}}" src="panel.js"></script>
+<aside class="codepanel" id="codePanel" aria-label="Code snippet" hidden>
+  <div class="cp-head"><b>Code snippet</b>
+    <select id="cpLang" aria-label="Language"><option value="curl">cURL</option><option value="cmd">cURL (cmd)</option><option value="powershell">PowerShell</option></select>
+    <button class="icon-btn" id="cpClose" type="button" title="Close (Escape)" aria-label="Close"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></div>
+  <div class="cp-opts" id="cpOpts">
+    <label><input type="checkbox" data-o="longForm"> Long-form options</label>
+    <label><input type="checkbox" data-o="resolve" checked> Resolve variables</label>
+    <label><input type="checkbox" data-o="followRedirects" checked> Follow redirects</label>
+    <label><input type="checkbox" data-o="cookies"> Include cookies</label>
+    <label><input type="checkbox" data-o="disabledHeaders"> Include disabled headers</label>
+    <label><input type="checkbox" data-o="multiLine" checked> Multi-line</label>
+  </div>
+  <pre class="cp-code" id="cpText" tabindex="0"></pre>
+  <div class="cp-foot"><span class="note" id="cpNote"></span><button class="btn pri sm" id="cpCopy" type="button">Copy</button></div>
+</aside>
 </body>
 </html>

@@ -597,3 +597,17 @@ test('findMatches: tanpa beda huruf besar/kecil, tidak tumpang tindih, kueri kos
   assert.deepEqual(f('abc', ''), []);
   assert.deepEqual(f('a.b a+b', 'a.b'), [{ start: 0, end: 3 }]);
 });
+
+test('autoAuthHeader: header yang dibuat otomatis oleh Authorization tab (nama + ringkasan), tanpa nilai rahasia', () => {
+  const f = (panel as unknown as { autoAuthHeader(req: unknown): { name: string; text: string } | undefined }).autoAuthHeader;
+  const r = (auth?: string, headers: unknown[] = []) => ({ auth, headers });
+  assert.deepEqual(f(r('basic username=u password=p')), { name: 'Authorization', text: 'Basic (set in the Authorization tab)' });
+  assert.deepEqual(f(r('bearer token={{t}}')), { name: 'Authorization', text: 'Bearer (set in the Authorization tab)' });
+  assert.deepEqual(f(r('apiKey key=X-Key value=v in=header')), { name: 'X-Key', text: 'API Key (set in the Authorization tab)' });
+  assert.equal(f(r('apiKey key=k value=v in=query')), undefined);
+  assert.equal(f(r('jwt secret=s add_to=query')), undefined);
+  assert.equal(f(r('jwt secret=s'))?.name, 'Authorization');
+  assert.equal(f(r('none')), undefined);
+  assert.equal(f(r(undefined)), undefined);
+  assert.equal(f(r('aws access_key=a secret_key=b region=r service=s'))?.text, 'AWS Signature v4 (set in the Authorization tab)');
+});

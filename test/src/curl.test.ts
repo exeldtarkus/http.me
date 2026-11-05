@@ -220,3 +220,27 @@ test('header browser: Connection ikut nonaktif; --aws-sigv4 jadi # @auth aws', (
   assert.equal(a.auth, 'aws access_key="AKID" secret_key="SECRET" region="us-east-1" service="s3"');
   assert.deepEqual(a.headers, []);
 });
+
+test('Copy as cURL: Basic / Digest / AWS pakai opsi cURL asli (-u, --digest, --aws-sigv4) dan round-trip ke request yang sama', () => {
+  const basic = parseRequest('GET https://a.test/x\nAuthorization: Basic us:pa:ss\n');
+  assert.equal(toCurl(basic), `curl 'https://a.test/x' \\\n  -u 'us:pa:ss' \\\n  -L`);
+  assert.equal(toCurl(basic, { longForm: true, multiLine: false }), `curl 'https://a.test/x' --user 'us:pa:ss' --location`);
+  assert.match(toCurl(parseRequest('GET https://a.test/x\n# @auth basic username="u" password="p w"\n')), /-u 'u:p w'/);
+  assert.match(toCurl(parseRequest('GET https://a.test/x\n# @auth digest username="u" password="p"\n')), /--digest \\\n  -u 'u:p'/);
+  const aws = parseRequest('GET https://s3.us-east-1.amazonaws.com/b\n# @auth aws access_key="AK" secret_key="SK" region="us-east-1" service="s3"\n');
+  assert.match(toCurl(aws), /--aws-sigv4 'aws:amz:us-east-1:s3' \\\n  --user 'AK:SK'/);
+  assert.equal(importCurl(toCurl(aws)).request.auth, 'aws access_key="AK" secret_key="SK" region="us-east-1" service="s3"');
+  assert.deepEqual(importCurl(toCurl(basic)).request.headers.map((h) => [h.name, h.value]), [['Authorization', 'Basic us:pa:ss']]);
+  assert.match(toCurlCmd(basic), /-u \^"us:pa:ss\^"/);
+  // PowerShell: header Basic harus base64 sungguhan (bentuk mentah tidak valid di HTTP)
+  assert.match(toPowerShell(basic), new RegExp(`"Authorization"="Basic ${Buffer.from('us:pa:ss').toString('base64')}"`));
+  // Bearer & lainnya: tetap header; {{var}} di Basic tidak bisa di-encode -> header apa adanya
+  assert.match(toCurl(parseRequest('GET https://a.test\nAuthorization: Bearer t\n')), /-H 'Authorization: Bearer t'/);
+  assert.match(toPowerShell(parseRequest('GET https://a.test\nAuthorization: Basic {{u}}:{{p}}\n')), /Basic \{\{u\}\}:\{\{p\}\}/);
+});
+
+test('import --digest -u user:pass -> Authorization: Digest user pass (dihitung saat Send)', () => {
+  const r = parseCurl(`curl --digest -u 'us:pa ss' https://a.test/x`).request;
+  assert.deepEqual(r.headers.map((h) => [h.name, h.value]), [['Authorization', 'Digest us pa ss']]);
+  assert.deepEqual(importCurl(toCurl(parseRequest('GET https://a.test/x\n# @auth digest username="u" password="p"\n'))).request.headers.map((h) => h.value), ['Digest u p']);
+});
