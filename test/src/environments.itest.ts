@@ -56,17 +56,17 @@ export const tests: ITests = {
   async 'Sidebar Environments: No Environment / daftar (aktif ✓, NULL) / Globals; New, Set Active, Next/Previous, Rename, Duplicate, Delete, Import Postman'() {
     try {
       await cmd('httpme.showEnvironments');
-      assert.deepEqual((await api().sidebar.getChildren()).map((n) => n.kind), ['enone', 'eempty', 'eempty', 'eglobals'], 'kosong: No environments + Create Environment');
+      assert.deepEqual((await api().sidebar.getChildren()).map((n) => n.kind), ['eglobals', 'enone', 'eempty', 'eempty'], 'kosong: No environments + Create Environment');
       await cmd('httpme.newEnvironment', 'dev');
       await api().envs.write('dev', [{ key: 'baseUrl', value: 'https://dev' }, { key: 'apiKey', value: null }]);
       await cmd('httpme.newEnvironment', 'uat');
       assert.deepEqual(fileVars('uat'), [{ key: 'baseUrl', value: null }, { key: 'apiKey', value: null }], 'Environment baru: semua key NULL');
       const kids = await api().sidebar.getChildren();
-      assert.deepEqual(kids.map((n) => n.name ?? n.kind), ['enone', 'dev', 'uat', 'eglobals']);
-      assert.equal((await api().sidebar.getTreeItem(kids[2])).description, '2 NULL');
+      assert.deepEqual(kids.map((n) => n.name ?? n.kind), ['eglobals', 'enone', 'dev', 'uat']);
+      assert.equal((await api().sidebar.getTreeItem(kids[3])).description, '2 NULL');
       await cmd('httpme.setActiveEnvironment', 'uat');
       assert.equal(api().envs.active, 'uat');
-      assert.equal((await api().sidebar.getTreeItem(kids[2])).description, 'active · 2 NULL');
+      assert.equal((await api().sidebar.getTreeItem(kids[3])).description, 'active · 2 NULL');
       await cmd('httpme.nextEnvironment');
       assert.equal(api().envs.active, 'dev');
       await cmd('httpme.previousEnvironment');

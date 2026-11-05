@@ -61,6 +61,13 @@ const isHttpmeFile = (u: vscode.Uri) =>
 
 const SUMMARY_FRESH_MS = 30_000;
 
+/** Environment di tree: ikon sama untuk semua baris; aktif = lingkaran terisi hijau (+ warna label lewat FileDecoration), tidak aktif = lingkaran kosong */
+const envIcon = (active: boolean, idle: string): vscode.ThemeIcon =>
+  active ? new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('charts.green')) : new vscode.ThemeIcon(idle, new vscode.ThemeColor('descriptionForeground'));
+/** uri semu per Environment (nama kosong = No Environment) supaya label aktif bisa diwarnai provider dekorasi */
+const envUri = (name: string | undefined): vscode.Uri => vscode.Uri.from({ scheme: ENV_SCHEME, path: `/${name ?? ''}` });
+const ENV_SCHEME = 'httpme-env';
+
 export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAndDropController<Node> {
   private changed = new vscode.EventEmitter<Node | undefined | void>();
   readonly onDidChangeTreeData = this.changed.event;
@@ -251,7 +258,7 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
     const names = await this.envs.names();
     const list: Node[] = names.length ? names.map((name): Env => ({ kind: 'env', name }))
       : [{ kind: 'eempty', what: 'label' }, { kind: 'eempty', what: 'create' }];
-    return [{ kind: 'enone' }, ...list, { kind: 'eglobals' }];
+    return [{ kind: 'eglobals' }, { kind: 'enone' }, ...list]; // Globals di atas (berlaku untuk semua), lalu No Environment, lalu Environment
   }
 
   /** jumlah NULL (nilai belum diisi, termasuk secret yang belum ada di SecretStorage) */
@@ -363,26 +370,26 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
         });
       case 'enone': {
         const on = this.envs.active === undefined;
-        return Object.assign(new vscode.TreeItem({ label: 'No Environment', highlights: on ? [[0, 14]] : [] }), {
-          id: 'enone', iconPath: new vscode.ThemeIcon(on ? 'check' : 'circle-slash'), description: on ? 'active' : undefined,
-          tooltip: 'Send requests without an Environment', contextValue: 'httpmeNoEnvironment',
+        return Object.assign(new vscode.TreeItem('No Environment'), {
+          id: 'enone', resourceUri: envUri(undefined), iconPath: envIcon(on, 'circle-slash'), description: on ? 'active' : undefined,
+          tooltip: on ? 'Active: requests are sent without an Environment' : 'Send requests without an Environment', contextValue: 'httpmeNoEnvironment',
           command: { command: 'httpme.setActiveEnvironment', title: 'Set Active', arguments: [undefined] },
         });
       }
       case 'env': {
         const on = this.envs.active === n.name;
         const nulls = await this.nullCount(n.name);
-        return Object.assign(new vscode.TreeItem({ label: n.name, highlights: on ? [[0, n.name.length]] : [] }), {
-          id: `env:${n.name}`, iconPath: new vscode.ThemeIcon(on ? 'check' : 'symbol-namespace'),
+        return Object.assign(new vscode.TreeItem(n.name), {
+          id: `env:${n.name}`, resourceUri: envUri(n.name), iconPath: envIcon(on, 'circle-large-outline'),
           description: [on ? 'active' : '', nulls ? `${nulls} NULL` : nulls === undefined ? 'invalid file' : ''].filter(Boolean).join(' · ') || undefined,
-          tooltip: `${ENV_DIR}/${n.name}.json${nulls ? `\n${nulls} variable${nulls === 1 ? '' : 's'} without a value (NULL)` : ''}`,
+          tooltip: `${on ? 'Active Environment\n' : ''}${ENV_DIR}/${n.name}.json${nulls ? `\n${nulls} variable${nulls === 1 ? '' : 's'} without a value (NULL)` : ''}`,
           contextValue: on ? 'httpmeEnvironmentActive' : 'httpmeEnvironment',
           command: { command: 'httpme.openEnvironment', title: 'Open', arguments: [n.name] },
         });
       }
       case 'eglobals':
         return Object.assign(new vscode.TreeItem('Globals'), {
-          id: 'eglobals', iconPath: new vscode.ThemeIcon('globe'), description: 'every Environment', tooltip: 'Variables for every Environment, stored on this computer',
+          id: 'eglobals', iconPath: new vscode.ThemeIcon('globe', new vscode.ThemeColor('charts.blue')), description: 'every Environment', tooltip: 'Variables for every Environment, stored on this computer',
           contextValue: 'httpmeGlobals', command: { command: 'httpme.openGlobals', title: 'Open Globals' },
         });
       case 'cenv': {
@@ -575,13 +582,25 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
     void sidebar.warm().catch((e) => log().error(errorLine('Sidebar.warm summaries', e)));
   }, 0);
 
+  // label Environment aktif berwarna hijau + tanda centang di kanan (provider dekorasi untuk uri semu httpme-env:)
+  const decorations = new vscode.EventEmitter<vscode.Uri[] | undefined>();
+  const decorationProvider = vscode.window.registerFileDecorationProvider({
+    onDidChangeFileDecorations: decorations.event,
+    provideFileDecoration: (uri) => {
+      if (uri.scheme !== ENV_SCHEME) return undefined;
+      const name = decodeURIComponent(uri.path.slice(1));
+      return (envs.active ?? '') === name ? new vscode.FileDecoration('✓', 'Active Environment', new vscode.ThemeColor('charts.green')) : undefined;
+    },
+  });
+
   const disposable = vscode.Disposable.from(
+    decorations, decorationProvider,
     ...Object.values(sections).map((x) => x.view), ...watchers, new vscode.Disposable(() => { clearTimeout(timer); clearTimeout(openTimer); }),
     vscode.window.tabGroups.onDidChangeTabs(() => { redrawOpen(); void revealActive().catch((e) => log().error(errorLine('revealActive', e))); }),
     vscode.workspace.onDidChangeTextDocument((e) => { if (isHttpmeFile(e.document.uri)) redrawOpen(); }),
     vscode.workspace.onDidSaveTextDocument(redrawOpen),
     vscode.workspace.onDidChangeWorkspaceFolders(() => sidebar.refresh()),
-    envs.onDidChange(() => { sections.environments.redraw(); sections.cookies.redraw(); }),
+    envs.onDidChange(() => { sections.environments.redraw(); sections.cookies.redraw(); decorations.fire(undefined); }),
     cookies.onDidChange(() => sections.cookies.redraw()),
 
     // Show Collections / Environments / Open / Cookies: buka & fokus section itu
