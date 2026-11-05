@@ -1,7 +1,7 @@
 // cURL dialek bash (tanpa vscode): tokenizer, perintah -> request (untuk paste / import, bukan format simpan), request -> perintah
 import { bodyTypeOf, emptyRequest, type ParsedRequest } from './httpFile';
 import { sendsBody } from './http';
-import { cookiePairs, isCmdCommand, isPowerShellRequest, isPsCurl, psToArgs, tokenizeCmd, tokenizePs } from './shellDialect';
+import { cookiePairs, curlAuthOptions, curlFlags, type ExportOpts, isCmdCommand, isPowerShellRequest, isPsCurl, psToArgs, tokenizeCmd, tokenizePs } from './shellDialect';
 
 const ANSI: Record<string, string> = { n: '\n', t: '\t', r: '\r', '\\': '\\', "'": "'", '"': '"', a: '\x07', b: '\b', e: '\x1b', f: '\f', v: '\v', '0': '\0' };
 
@@ -58,7 +58,7 @@ const VALUE: Record<string, string> = {
   '-b': 'cookie', '--cookie': 'cookie', '-A': 'agent', '--user-agent': 'agent', '-e': 'referer', '--referer': 'referer', '--url': 'url',
   '-F': 'form', '--form': 'form', '--aws-sigv4': 'sigv4', '-m': 'timeout', '--max-time': 'timeout',
 };
-const FLAGS: Record<string, string> = { '-L': 'location', '--location': 'location', '-k': 'insecure', '--insecure': 'insecure', '-G': 'get', '--get': 'get', '-I': 'head', '--head': 'head' };
+const FLAGS: Record<string, string> = { '-L': 'location', '--location': 'location', '-k': 'insecure', '--insecure': 'insecure', '-G': 'get', '--get': 'get', '-I': 'head', '--head': 'head', '--digest': 'digest' };
 /** tidak berpengaruh ke request: dilewati tanpa catatan */
 const QUIET = new Set(['--compressed', '-s', '--silent', '-S', '--show-error', '-i', '--include', '-v', '--verbose', '-#', '--progress-bar', '-f', '--fail', '--globoff', '-g']);
 const IGNORED_WITH_VALUE = new Set(['-o', '--output', '--cacert', '--cert', '--key', '-x', '--proxy', '--resolve', '--connect-timeout', '-w', '--write-out']);
@@ -150,6 +150,8 @@ export function parseCurl(command: string): CurlResult {
       r.auth = `aws access_key=${JSON.stringify(id)} secret_key=${JSON.stringify(secret.join(':'))} region=${JSON.stringify(region)} service=${JSON.stringify(service)}`;
     }
   }
+  const basic = headers.findIndex(([k, v]) => k === 'Authorization' && /^Basic [^\s:]+:/.test(v));
+  if (flag.has('digest') && basic >= 0) { const [u, ...p] = headers[basic][1].slice(6).split(':'); headers[basic][1] = `Digest ${u} ${p.join(':')}`; r.headers = headers.map(([name, value]) => ({ name, value, enabled: true })); }
   r.followRedirects = flag.has('location');
   r.insecure = flag.has('insecure');
   r.timeoutSec = timeout;
@@ -191,19 +193,22 @@ const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
  * Copy as cURL: perintah bash multi-baris (header aktif, body bila method membawa body, -L / -k).
  * Cookie = setara password: header Cookie hanya ikut bila withCookies, digabung dengan cookie jar (nama di request menang).
  */
-export function toCurl(r: ParsedRequest, opts: { withCookies?: boolean; jar?: string } = {}): string {
-  const first = `curl${r.method === 'GET' ? '' : ` -X ${r.method}`} ${quote(r.url)}`;
-  const rest = r.headers.filter((h) => h.enabled && h.name && h.name.toLowerCase() !== 'cookie').map((h) => `-H ${quote(`${h.name}: ${h.value}`)}`);
+export function toCurl(r: ParsedRequest, opts: ExportOpts = {}): string {
+  const f = curlFlags(opts.longForm);
+  const first = `curl${r.method === 'GET' ? '' : ` ${f.X} ${r.method}`} ${quote(r.url)}`;
+  const auth = curlAuthOptions(r, opts.longForm);
+  const rest = r.headers.filter((h) => h.enabled && h.name && h.name.toLowerCase() !== 'cookie' && !auth?.drop.includes(h.name.toLowerCase())).map((h) => `${f.H} ${quote(`${h.name}: ${h.value}`)}`);
+  for (const [flag, value] of auth?.options ?? []) rest.push(value === undefined ? flag : `${flag} ${quote(value)}`);
   const cookies = cookiePairs(r, opts);
-  if (cookies.length) rest.push(`-b ${quote(cookies.join('; '))}`);
+  if (cookies.length) rest.push(`${f.b} ${quote(cookies.join('; '))}`);
   if (sendsBody(r.method)) {
     if (r.bodyFile) rest.push(`--data-binary ${quote(`@${r.bodyFile}`)}`);
     else if (r.body !== '') rest.push(`--data-raw ${quote(r.body)}`);
   }
-  if (r.followRedirects) rest.push('-L');
-  if (r.insecure) rest.push('-k');
+  if (r.followRedirects) rest.push(f.L);
+  if (r.insecure) rest.push(f.k);
   if (r.timeoutSec !== undefined) rest.push(`--max-time ${r.timeoutSec}`);
-  return [first, ...rest].join(' \\\n  ');
+  return [first, ...rest].join(opts.multiLine === false ? ' ' : ' \\\n  ');
 }
 
 /** header yang hanya dikirim browser: ikut diimpor tapi dimatikan (# @disabled) */

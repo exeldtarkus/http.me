@@ -1,6 +1,7 @@
 // dialek shell selain bash (tanpa vscode): cmd (^), PowerShell (`), Invoke-WebRequest -> argumen gaya curl, dan ekspor ke cmd / PowerShell
 import type { ParsedRequest } from './httpFile';
 import { sendsBody } from './http';
+import { parseAuth } from './auth';
 
 const unclosed = () => new Error('Unclosed quote in the command');
 
@@ -185,7 +186,11 @@ export function cookiePairs(r: ParsedRequest, opts: { withCookies?: boolean; jar
   return [...own, ...(opts.jar ?? '').split(';').map((p) => p.trim()).filter((p) => p && !names.has(p.split('=')[0]))];
 }
 
-type ExportOpts = { withCookies?: boolean; jar?: string };
+export type ExportOpts = { withCookies?: boolean; jar?: string; /** --header / --request / ... bukan -H / -X */ longForm?: boolean; /** false = satu baris tanpa sambungan */ multiLine?: boolean };
+/** nama opsi curl: pendek atau panjang */
+export const curlFlags = (longForm?: boolean) => longForm
+  ? { X: '--request', H: '--header', b: '--cookie', L: '--location', k: '--insecure' } as const
+  : { X: '-X', H: '-H', b: '-b', L: '-L', k: '-k' } as const;
 const activeHeaders = (r: ParsedRequest) => r.headers.filter((h) => h.enabled && h.name && !isCookie(h.name));
 
 /** string cmd gaya Chrome: ^"…^"; \" untuk kutip, ^ di depan karakter spesial cmd, baris baru = ^<LF><LF> */
@@ -194,18 +199,21 @@ const cmdQuote = (s: string): string =>
 
 /** Copy as cURL (cmd): satu baris per opsi, disambung dengan ^ */
 export function toCurlCmd(r: ParsedRequest, opts: ExportOpts = {}): string {
-  const lines = [`curl${r.method === 'GET' ? '' : ` -X ${r.method}`} ${cmdQuote(r.url)}`];
-  for (const h of activeHeaders(r)) lines.push(`-H ${cmdQuote(`${h.name}: ${h.value}`)}`);
+  const f = curlFlags(opts.longForm);
+  const lines = [`curl${r.method === 'GET' ? '' : ` ${f.X} ${r.method}`} ${cmdQuote(r.url)}`];
+  const auth = curlAuthOptions(r, opts.longForm);
+  for (const h of activeHeaders(r)) if (!auth?.drop.includes(h.name.toLowerCase())) lines.push(`${f.H} ${cmdQuote(`${h.name}: ${h.value}`)}`);
+  for (const [flag, value] of auth?.options ?? []) lines.push(value === undefined ? flag : `${flag} ${cmdQuote(value)}`);
   const cookies = cookiePairs(r, opts);
-  if (cookies.length) lines.push(`-b ${cmdQuote(cookies.join('; '))}`);
+  if (cookies.length) lines.push(`${f.b} ${cmdQuote(cookies.join('; '))}`);
   if (sendsBody(r.method)) {
     if (r.bodyFile) lines.push(`--data-binary ${cmdQuote(`@${r.bodyFile}`)}`);
     else if (r.body !== '') lines.push(`--data-raw ${cmdQuote(r.body)}`);
   }
-  if (r.followRedirects) lines.push('-L');
-  if (r.insecure) lines.push('-k');
+  if (r.followRedirects) lines.push(f.L);
+  if (r.insecure) lines.push(f.k);
   if (r.timeoutSec !== undefined) lines.push(`--max-time ${r.timeoutSec}`);
-  return lines.join(' ^\n  ');
+  return lines.join(opts.multiLine === false ? ' ' : ' ^\n  ');
 }
 
 const psQuote = (s: string): string => `"${s.replace(/[`"$]/g, '`$&').replace(/\r/g, '`r').replace(/\n/g, '`n')}"`;
@@ -220,18 +228,31 @@ export function toPowerShell(r: ParsedRequest, opts: ExportOpts = {}): string {
     head.push('$session = New-Object Microsoft.PowerShell.Commands.WebRequestSession',
       ...cookies.map((c) => `$session.Cookies.Add((New-Object System.Net.Cookie(${psQuote(c.slice(0, c.indexOf('=')))}, ${psQuote(c.slice(c.indexOf('=') + 1))}, "/", ${psQuote(host)})))`));
   }
-  const all = activeHeaders(r);
+  const basic = curlAuthOptions(r)?.options.find(([o]) => o === '-u')?.[1];
+  const all = activeHeaders(r).map((h) => (basic !== undefined && h.name.toLowerCase() === 'authorization' && !basic.includes('{{') ? { ...h, value: `Basic ${Buffer.from(basic).toString('base64')}` } : h));
   const type = all.find((h) => h.name.toLowerCase() === 'content-type');
   const rest = all.filter((h) => h !== type);
   const parts = [`Invoke-WebRequest -UseBasicParsing -Uri ${psQuote(r.url)}`];
   if (r.method !== 'GET') parts.push(`-Method ${psQuote(r.method)}`);
   if (cookies.length) parts.push('-WebSession $session');
-  if (rest.length) parts.push(`-Headers @{\n${rest.map((h) => `${psQuote(h.name)}=${psQuote(h.value)}`).join('\n')}\n}`);
+  const multi = opts.multiLine !== false;
+  if (rest.length) parts.push(multi ? `-Headers @{\n${rest.map((h) => `${psQuote(h.name)}=${psQuote(h.value)}`).join('\n')}\n}` : `-Headers @{ ${rest.map((h) => `${psQuote(h.name)}=${psQuote(h.value)}`).join('; ')} }`);
   if (type) parts.push(`-ContentType ${psQuote(type.value)}`);
   if (sendsBody(r.method) && !r.bodyFile && r.body !== '') parts.push(`-Body ${psQuote(r.body)}`);
   if (r.bodyFile && sendsBody(r.method)) parts.push(`-InFile ${psQuote(r.bodyFile)}`);
   if (!r.followRedirects) parts.push('-MaximumRedirection 0');
   if (r.insecure) parts.push('-SkipCertificateCheck');
   if (r.timeoutSec !== undefined) parts.push(`-TimeoutSec ${r.timeoutSec}`);
-  return [...head, parts.join(' `\n')].join('\n');
+  return [...head, parts.join(multi ? ' `\n' : ' ')].join('\n');
+}
+
+/** auth yang punya opsi cURL asli: header Authorization diganti -u / --digest / --aws-sigv4 (nilai belum di-quote; pemanggil yang quote) */
+export function curlAuthOptions(r: ParsedRequest, longForm?: boolean): { drop: string[]; options: [string, string?][] } | undefined {
+  let a;
+  try { a = parseAuth(r.auth, r.headers); } catch { return undefined; } // skema tak dikenal / auth rusak: header tetap diekspor apa adanya
+  const user = longForm ? '--user' : '-u';
+  if (a.type === 'basic') return { drop: ['authorization'], options: [[user, `${a.fields.username}:${a.fields.password}`]] };
+  if (a.type === 'digest') return { drop: ['authorization'], options: [['--digest'], [user, `${a.fields.username}:${a.fields.password}`]] };
+  if (a.type === 'aws') return { drop: ['authorization'], options: [['--aws-sigv4', `aws:amz:${a.fields.region}:${a.fields.service}`], ['--user', `${a.fields.access_key}:${a.fields.secret_key}`]] };
+  return undefined;
 }
