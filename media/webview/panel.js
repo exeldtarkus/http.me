@@ -353,6 +353,19 @@
       return `<div class="ln${end >= 0 ? ' fo' : ''}"${end >= 0 ? ` data-end="${end}"` : ''}><span class="gn">${i + 1}</span><span class="gf"></span><span class="lc">${lc}</span></div>`;
     }).join('');
   }
+  /** tab yang tampil di strip (sisanya ke dropdown +N): urut dari kiri sampai ruang habis, tab aktif selalu tampil */
+  function fitTabs(widths, avail, active, moreW) {
+    const show = widths.map(() => false);
+    if (widths.reduce((a, b) => a + b, 0) <= avail) return show.map(() => true);
+    const budget = avail - moreW;
+    let used = 0;
+    for (let i = 0; i < widths.length && used + widths[i] <= budget; i++) { show[i] = true; used += widths[i]; }
+    if (widths.length && !show[active]) {
+      for (let i = widths.length - 1; i >= 0 && used + widths[active] > budget; i--) if (show[i]) { show[i] = false; used -= widths[i]; }
+      show[active] = true;
+    }
+    return show;
+  }
   /** baris yang tersembunyi: di dalam lipatan tertutup (ends[i] = baris penutup, -1 = bukan pembuka) */
   function hiddenRows(ends, shut) {
     let until = -1;
@@ -410,7 +423,7 @@
     return undefined;
   }
 
-  const api = { xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
+  const api = { fitTabs, xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -1007,21 +1020,88 @@
     $('reqBlocks').hidden = blocks.length < 2;
     $('resBlocks').hidden = blocks.length < 2;
     document.querySelector('.resp').classList.toggle('multi', blocks.length >= 2);
-    const tab = (b, i) => {
-      const t = el('button', { type: 'button', className: i === active ? 'on' : '', title: `${b.method} · ${b.label}` }, [
-        el('span', { className: `rb-m m-${b.method}`, textContent: b.method }), el('span', { className: 'rb-l', textContent: b.label }), el('span', { className: `rb-s ${b.cls}`, textContent: b.text })]);
-      t.setAttribute('role', 'tab');
-      t.setAttribute('aria-selected', String(i === active));
-      t.onclick = () => { if (i === activeBlock) return; flush(); post({ type: 'pickBlock', index: i }); };
-      return t;
-    };
-    $('rbTabs').replaceChildren(...blocks.map(tab));
-    $('resBlocks').replaceChildren(...blocks.map(tab));
+    renderStrip($('rbTabs'));
+    renderStrip($('resBlocks'));
     allRunning = blocks.some((b) => b.cls === 'run');
     $('sendAll').textContent = allRunning ? 'Cancel All' : 'Send All';
     $('sendAll').classList.toggle('busy', allRunning);
   }
   $('sendAll').onclick = () => { flush(); post({ type: allRunning ? 'cancelAll' : 'sendAll' }); };
+  const pickTab = (i) => { if (i === activeBlock) return; flush(); post({ type: 'pickBlock', index: i }); };
+  const tabParts = (b) => [el('span', { className: `rb-m m-${b.method}`, textContent: b.method }), el('span', { className: 'rb-l', textContent: b.label }), el('span', { className: `rb-s ${b.cls}`, textContent: b.text })];
+  /** strip tab request / response: tab yang muat + tombol +N (dropdown sisa tab); dihitung ulang saat lebar berubah */
+  function renderStrip(box) {
+    const tabs = blocks.map((b, i) => {
+      const t = el('button', { type: 'button', className: i === activeBlock ? 'on' : '', title: `${b.method} · ${b.label}` }, tabParts(b));
+      t.setAttribute('role', 'tab');
+      t.setAttribute('aria-selected', String(i === activeBlock));
+      t.onclick = () => pickTab(i);
+      return t;
+    });
+    const more = el('button', { type: 'button', className: 'rb-more' });
+    more.setAttribute('aria-haspopup', 'menu');
+    more.setAttribute('aria-expanded', 'false');
+    box.replaceChildren(...tabs, more);
+    box._fit = () => {
+      tabs.forEach((t) => { t.hidden = false; });
+      more.hidden = false;
+      more.textContent = `+${tabs.length}`;
+      const show = fitTabs(tabs.map((t) => t.offsetWidth + 2), box.clientWidth, activeBlock, more.offsetWidth + 6);
+      const rest = show.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0);
+      tabs.forEach((t, i) => { t.hidden = !show[i]; });
+      more.hidden = !rest.length;
+      more.textContent = `+${rest.length}`;
+      more.title = `${rest.length} more request${rest.length === 1 ? '' : 's'}`;
+      more.onclick = (e) => { e.stopPropagation(); if (stripMenu.hidden || menuBtn !== more) openStripMenu(more, rest); else closeStripMenu(); };
+    };
+    box._fit();
+  }
+  for (const box of [$('rbTabs'), $('resBlocks')]) new ResizeObserver(() => box._fit && box._fit()).observe(box);
+  // dropdown sisa tab: filter bila > 8, panah atas / bawah, Enter memilih, Escape menutup
+  const stripMenu = el('div', { className: 'rb-menu', hidden: true });
+  stripMenu.setAttribute('role', 'menu');
+  document.body.append(stripMenu);
+  let menuBtn;
+  function closeStripMenu(focus) {
+    stripMenu.hidden = true;
+    menuBtn?.setAttribute('aria-expanded', 'false');
+    if (focus) menuBtn?.focus();
+  }
+  function openStripMenu(btn, rest) {
+    menuBtn = btn;
+    const items = rest.map((i) => {
+      const b = el('button', { type: 'button', className: i === activeBlock ? 'on' : '', tabIndex: -1 }, tabParts(blocks[i]));
+      b.setAttribute('role', 'menuitemradio');
+      b.setAttribute('aria-checked', String(i === activeBlock));
+      b.onclick = () => { closeStripMenu(); pickTab(i); };
+      return b;
+    });
+    const filter = rest.length > 8 ? el('input', { type: 'search', className: 'rb-filter', placeholder: 'Filter requests', spellcheck: false }) : undefined;
+    if (filter) {
+      filter.setAttribute('aria-label', 'Filter requests');
+      filter.oninput = () => { const q = filter.value.toLowerCase(); items.forEach((b) => { b.hidden = !b.textContent.toLowerCase().includes(q); }); };
+    }
+    stripMenu.replaceChildren(...(filter ? [filter] : []), el('div', { className: 'rb-list' }, items));
+    stripMenu.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    const r = btn.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom - 12;
+    const up = below < 160 && r.top > below; // dekat bawah layar: buka ke atas
+    stripMenu.style.maxHeight = `${Math.max(120, up ? r.top - 12 : below)}px`;
+    const w = stripMenu.offsetWidth;
+    stripMenu.style.left = `${Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8))}px`;
+    stripMenu.style.top = `${up ? r.top - 4 - stripMenu.offsetHeight : r.bottom + 4}px`;
+    (filter || items.find((b) => b.classList.contains('on')) || items[0]).focus();
+  }
+  stripMenu.addEventListener('keydown', (e) => {
+    const items = [...stripMenu.querySelectorAll('.rb-list button:not([hidden])')];
+    const i = items.indexOf(document.activeElement);
+    const go = { ArrowDown: i + 1, ArrowUp: i < 0 ? items.length - 1 : i - 1, Home: 0, End: items.length - 1 }[e.key];
+    if (go !== undefined && items.length) { e.preventDefault(); items[(go + items.length) % items.length].focus(); }
+    else if (e.key === 'Enter' && e.target.classList.contains('rb-filter') && items[0]) { e.preventDefault(); items[0].click(); }
+    else if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); closeStripMenu(true); }
+  });
+  document.addEventListener('click', (e) => { if (!stripMenu.hidden && !e.target.closest('.rb-menu')) closeStripMenu(); });
   $('saveBody').onclick = () => post({ type: 'saveBody' });
 
   // ---- tab Scripts: Runs in order + editor script (isi = dokumen VS Code di host) ----

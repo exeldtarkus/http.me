@@ -1,0 +1,94 @@
+# Many requests in one file: the http.me panel shows the tabs that fit and puts the rest in the +N dropdown
+# (with a filter when more than 8 are hidden). The active request tab is always visible. Try Send All,
+# then narrow the panel to see the tabs move into the dropdown. Select an Environment (demo-dev / demo-prod) first.
+
+### Post 1
+GET {{JSONPLACEHOLDER_URL}}/posts/1
+Accept: application/json
+
+### Post 2
+GET {{JSONPLACEHOLDER_URL}}/posts/2
+Accept: application/json
+
+### Post 3
+GET {{JSONPLACEHOLDER_URL}}/posts/3
+Accept: application/json
+
+### Post 4
+GET {{JSONPLACEHOLDER_URL}}/posts/4
+Accept: application/json
+
+### Post 5
+GET {{JSONPLACEHOLDER_URL}}/posts/5
+Accept: application/json
+
+### Comments of post 1
+GET {{JSONPLACEHOLDER_URL}}/posts/1/comments
+Accept: application/json
+
+### Comments of post 2
+GET {{JSONPLACEHOLDER_URL}}/posts/2/comments
+Accept: application/json
+
+### Comments of post 3
+GET {{JSONPLACEHOLDER_URL}}/posts/3/comments
+Accept: application/json
+
+### User 1
+GET {{JSONPLACEHOLDER_URL}}/users/1
+Accept: application/json
+
+### User 2
+GET {{JSONPLACEHOLDER_URL}}/users/2
+Accept: application/json
+
+### User 3
+GET {{JSONPLACEHOLDER_URL}}/users/3
+Accept: application/json
+
+### Todos of user 1
+GET {{JSONPLACEHOLDER_URL}}/todos?userId=1&_limit=5
+
+### Albums
+GET {{JSONPLACEHOLDER_URL}}/albums?_limit=5
+
+### Create todo
+POST {{JSONPLACEHOLDER_URL}}/todos
+Content-Type: application/json
+
+{
+  "title": "Try the +N dropdown",
+  "completed": false,
+  "userId": 1
+}
+
+### Echo headers
+GET {{HTTPBIN_URL}}/headers
+X-Demo: many-requests
+
+### Echo query
+GET {{HTTPBIN_URL}}/get?page=2&size=20
+
+### UUID
+GET {{HTTPBIN_URL}}/uuid
+
+### XML sample
+GET {{HTTPBIN_URL}}/xml
+
+### Created (201)
+GET {{HTTPBIN_URL}}/status/201
+
+### Unauthorized (401)
+GET {{HTTPBIN_URL}}/status/401
+
+### Not found (404)
+GET {{HTTPBIN_URL}}/status/404
+
+### Server error (503)
+GET {{HTTPBIN_URL}}/status/503
+
+### Slow (1 s)
+GET {{HTTPBIN_URL}}/delay/1
+
+### Slow (3 s)
+GET {{HTTPBIN_URL}}/delay/3
