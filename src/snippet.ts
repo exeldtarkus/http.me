@@ -12,12 +12,26 @@ export type SnippetOptions = {
   /** sertakan header Cookie + cookie jar */ cookies: boolean;
   /** sertakan header yang dimatikan (# @disabled) */ disabledHeaders: boolean;
   /** satu opsi per baris disambung \ ^ ` */ multiLine: boolean;
+  /** body JSON dipadatkan jadi satu baris: baris baru di dalam argumen merusak paste ke cmd / PowerShell */ compactBody: boolean;
 };
 
-export const DEFAULT_SNIPPET: SnippetOptions = { language: 'curl', longForm: false, resolve: true, followRedirects: true, cookies: false, disabledHeaders: false, multiLine: true };
+export const DEFAULT_SNIPPET: SnippetOptions = { language: 'curl', longForm: false, resolve: true, followRedirects: true, cookies: false, disabledHeaders: false, multiLine: true, compactBody: true };
+
+/** JSON valid -> satu baris (isi string persis, angka tidak diubah); bukan JSON valid ({{var}} tanpa kutip, komentar, koma akhir) = teks apa adanya */
+export function minifyJson(text: string): string {
+  try { JSON.parse(text); } catch { return text; } // bukan JSON valid: biarkan, jangan merusak isi
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inString) { out += c; if (c === '\\') out += text[++i]; else if (c === '"') inString = false; } else if (c === '"') { inString = true; out += c; } else if (!/\s/.test(c)) out += c;
+  }
+  return out;
+}
 
 export function generateSnippet(r: ParsedRequest, o: SnippetOptions, extra: { jar?: string } = {}): string {
-  const prepared: ParsedRequest = { ...r, followRedirects: o.followRedirects, headers: r.headers.map((h) => ({ ...h, enabled: h.enabled || o.disabledHeaders })) };
+  const body = o.compactBody && r.body.trim() ? minifyJson(r.body) : r.body;
+  const prepared: ParsedRequest = { ...r, body, followRedirects: o.followRedirects, headers: r.headers.map((h) => ({ ...h, enabled: h.enabled || o.disabledHeaders })) };
   const render = o.language === 'cmd' ? toCurlCmd : o.language === 'powershell' ? toPowerShell : toCurl;
   return render(prepared, { withCookies: o.cookies, jar: extra.jar, longForm: o.longForm, multiLine: o.multiLine });
 }

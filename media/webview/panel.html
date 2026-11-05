@@ -238,9 +238,12 @@
   pre.code { margin: 0; font: 12px/1.55 var(--vscode-editor-font-family, monospace); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
   .code .k { color: var(--code-key); } .code .s { color: var(--code-str); } .code .n { color: var(--code-num); }
   .code.error { color: var(--err); }
-  .codepanel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; gap: 8px; width: min(440px, 100%); padding: 10px 12px; border-left: 1px solid var(--line); background: var(--vscode-sideBar-background, var(--bg)); box-shadow: -4px 0 12px #0004; }
+  .codepanel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; gap: 8px; width: min(440px, 100%); padding: 10px 12px; border-left: 1px solid var(--line); background: var(--vscode-sideBar-background, var(--vscode-editor-background, #1e1e1e)); box-shadow: -4px 0 12px #0004; }
   .codepanel[hidden] { display: none; }
-  .cp-head { display: flex; align-items: center; gap: 8px; } .cp-head b { flex: 1; }
+  .cp-head { display: flex; align-items: center; gap: 6px; } .cp-head b { flex: 1; }
+  .cp-copy { width: 28px; height: 26px; } .cp-copy svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+  .cp-copy:hover { background: var(--soft); color: var(--fg); } .cp-copy .ok { display: none; color: var(--ok); } .cp-copy.done .ok { display: block; } .cp-copy.done svg:not(.ok) { display: none; }
+  .cp-code.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
   .cp-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; } .cp-opts label { display: flex; align-items: center; gap: 6px; }
   .cp-code { flex: 1; min-height: 0; margin: 0; padding: 8px 10px; overflow: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--soft); font: 12px/1.5 var(--mono); white-space: pre; user-select: text; }
   .cp-foot { display: flex; align-items: center; gap: 8px; } .cp-foot .note { flex: 1; margin: 0; }
@@ -580,6 +583,7 @@
 <aside class="codepanel" id="codePanel" aria-label="Code snippet" hidden>
   <div class="cp-head"><b>Code snippet</b>
     <select id="cpLang" aria-label="Language"><option value="curl">cURL</option><option value="cmd">cURL (cmd)</option><option value="powershell">PowerShell</option></select>
+    <button class="icon-btn cp-copy" id="cpCopy" type="button" title="Copy snippet" aria-label="Copy snippet"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="9" rx="1"/><path d="M3.5 10.5h-1v-8a1 1 0 0 1 1-1h7v1"/></svg><svg class="ok" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg></button>
     <button class="icon-btn" id="cpClose" type="button" title="Close (Escape)" aria-label="Close"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></div>
   <div class="cp-opts" id="cpOpts">
     <label><input type="checkbox" data-o="longForm"> Long-form options</label>
@@ -588,9 +592,11 @@
     <label><input type="checkbox" data-o="cookies"> Include cookies</label>
     <label><input type="checkbox" data-o="disabledHeaders"> Include disabled headers</label>
     <label><input type="checkbox" data-o="multiLine" checked> Multi-line</label>
+    <label title="One line JSON: pasting line breaks into cmd or PowerShell runs the command early"><input type="checkbox" data-o="compactBody" checked> Compact JSON body</label>
+    <label><input type="checkbox" id="cpWrap"> Wrap long lines</label>
   </div>
   <pre class="cp-code" id="cpText" tabindex="0"></pre>
-  <div class="cp-foot"><span class="note" id="cpNote"></span><button class="btn pri sm" id="cpCopy" type="button">Copy</button></div>
+  <div class="cp-foot"><span class="note" id="cpNote"></span></div>
 </aside>
 <script nonce="{{nonce}}" src="panel.js"></script>
 </body>
