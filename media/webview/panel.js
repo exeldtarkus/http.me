@@ -329,24 +329,68 @@
     return `\n${/^ */.exec(line)[0]}${/[{[]\s*$/.test(line) ? '  ' : ''}`;
   }
 
-  /** HTML JSON rapi (host, satu baris per item) -> blok .f yang bisa dilipat; jumlah isi di data-n supaya Copy (textContent) tetap JSON asli */
-  function foldJson(html) {
-    const stack = [];
+  /** HTML JSON rapi (host, satu baris per item) -> baris bergutter ala editor VS Code: nomor + panah lipat di kiri.
+   *  Baris pembuka (.fo, data-end = baris penutup) membawa .fz = ringkasan (data-n) + penutupnya, tampil saat dilipat */
+  function jsonRows(html) {
     const lines = html.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const lead = /^ */.exec(line)[0];
-      const rest = line.slice(lead.length);
-      if (/^[}\]]/.test(rest) && stack.length) {
-        const n = stack.pop();
-        const unit = rest[0] === '}' ? (n === 1 ? 'key' : 'keys') : (n === 1 ? 'item' : 'items');
-        lines[i] = `${lead}</span><span class="fs" data-n="${n} ${unit}"></span>${rest[0]}</span>${rest.slice(1)}`;
-        continue;
+    const ends = lines.map(() => -1);
+    const counts = lines.map(() => 0);
+    const stack = [];
+    lines.forEach((line, i) => {
+      const rest = line.trimStart();
+      if (/^[}\]]/.test(rest) && stack.length) { ends[stack.pop()] = i; return; }
+      if (stack.length) counts[stack[stack.length - 1]]++;
+      if (/[{[]$/.test(rest)) stack.push(i);
+    });
+    return lines.map((line, i) => {
+      const end = ends[i];
+      let lc = line;
+      if (end >= 0) {
+        const close = lines[end].trimStart();
+        const n = counts[i];
+        lc += `<span class="fz" data-n="${n} ${close[0] === '}' ? (n === 1 ? 'key' : 'keys') : (n === 1 ? 'item' : 'items')}">${close}</span>`;
       }
-      if (stack.length) stack[stack.length - 1]++;
-      if (/[{[]$/.test(rest)) { stack.push(0); lines[i] = `${lead}<span class="f"><i class="ft"></i>${rest}<span class="fi">`; }
+      return `<div class="ln${end >= 0 ? ' fo' : ''}"${end >= 0 ? ` data-end="${end}"` : ''}><span class="gn">${i + 1}</span><span class="gf"></span><span class="lc">${lc}</span></div>`;
+    }).join('');
+  }
+  /** baris yang tersembunyi: di dalam lipatan tertutup (ends[i] = baris penutup, -1 = bukan pembuka) */
+  function hiddenRows(ends, shut) {
+    let until = -1;
+    return ends.map((end, i) => {
+      if (i <= until) return true;
+      if (shut[i] && end > i) until = end;
+      return false;
+    });
+  }
+  /** body: kurung pembuka di akhir baris yang pasangannya di baris lain = bisa dilipat; from = sesudah pembuka, to = posisi penutup */
+  function foldRanges(text) {
+    const out = [];
+    const stack = [];
+    let line = 0;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (c === '\n') { line++; continue; }
+      if (c === '{' && text[i + 1] === '{') { const e = text.indexOf('}}', i + 2); if (e > 0 && !text.slice(i, e).includes('\n')) { i = e + 1; continue; } }
+      if (c === '"') { i++; while (i < text.length && text[i] !== '"' && text[i] !== '\n') i += text[i] === '\\' ? 2 : 1; if (text[i] === '\n') line++; continue; }
+      if (c === '{' || c === '[') stack.push({ i, line });
+      else if ((c === '}' || c === ']') && stack.length) {
+        const o = stack.pop();
+        const eol = text.indexOf('\n', o.i);
+        if (o.line < line && (text[o.i] === '{') === (c === '}') && !text.slice(o.i + 1, eol).trim()) out.push({ line: o.line, from: o.i + 1, to: i });
+      }
     }
-    return lines.join('\n');
+    return out.sort((x, y) => x.from - y.from);
+  }
+  /** teks editor -> teks asli: karakter penanda lipatan (Private Use) diganti isinya, bertingkat; penanda tak dikenal dibiarkan */
+  const unfold = (text, hidden) => text.replace(/[-]/g, (c) => (hidden.has(c) ? unfold(hidden.get(c), hidden) : c));
+  /** nomor baris asli tiap baris editor (baris di dalam lipatan ikut dihitung) */
+  function realLines(text, hidden) {
+    const out = [1];
+    let n = 1;
+    for (const c of text) {
+      if (c === '\n') { n++; out.push(n); } else if (hidden.has(c)) n += (unfold(c, hidden).match(/\n/g) || []).length;
+    }
+    return out;
   }
   /** kurung { } [ ] di kursor (sebelum lalu sesudah) + pasangannya; kurung di dalam string / variabel diabaikan */
   function bracketMatch(text, caret) {
@@ -366,7 +410,7 @@
     return undefined;
   }
 
-  const api = { xmlRanges, foldJson, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
+  const api = { xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -463,6 +507,19 @@
   }
 
   let formRows = [];
+  /** lipatan body: karakter penanda (Private Use) -> teks yang dilipat; teks asli = unfold(nilai textarea) */
+  const folds = new Map();
+  let nextFold = 0xE000;
+  /** gutter body: nomor baris asli + panah lipat (bisa dilipat / sedang dilipat) */
+  function paintGutter() {
+    const v = $('bodyText').value;
+    const can = new Set(req && req.bodyType === 'json' && v.length <= 200000 ? foldRanges(v).map((r) => r.line) : []);
+    $('bodyGutter').innerHTML = realLines(v, folds).map((n, i) => {
+      const line = v.split('\n', i + 1)[i] || '';
+      const shut = [...line].some((c) => folds.has(c));
+      return `<div class="gl${shut ? ' shut' : can.has(i) ? ' can' : ''}" data-l="${i}">${n}</div>`;
+    }).join('');
+  }
   function renderBody() {
     $('bodyFileNote').hidden = !req.bodyFile;
     $('bodyFileNote').textContent = req.bodyFile ? `The body is read from ${req.bodyFile} when the request is sent.` : '';
@@ -483,15 +540,15 @@
         renderMethod();
         changed();
       });
-    } else $('bodyText').value = req.body;
+    } else if (unfold($('bodyText').value, folds) !== req.body) $('bodyText').value = req.body; // body sama: lipatan tetap
     $('bodyEmpty').hidden = req.bodyType !== 'none' || !!req.bodyFile;
-    $('bodyGutter').textContent = lineNumbers($('bodyText').value);
+    paintGutter();
     paintBodyError();
   }
   /** garis merah + pesan di bawah editor Body bila JSON / XML tidak valid */
   function paintBodyError() {
     const t = $('bodyText');
-    const err = !t.hidden && !req.bodyFile ? bodyError(t.value, req.bodyType) : undefined;
+    const err = !t.hidden && !req.bodyFile ? bodyError(unfold(t.value, folds), req.bodyType) : undefined;
     $('bodyErr').hidden = !err;
     $('bodyErr').textContent = err ? err.message : '';
     t.closest('.vwrap').classList.toggle('bad', !!err);
@@ -541,15 +598,18 @@
     const cs = getComputedStyle(input);
     for (const p of ['font', 'letterSpacing', 'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'textIndent', 'tabSize']) m.style[p] = cs[p];
     let segs = segments(input.value, vars, fileVars());
-    const err = input.id === 'bodyText' && !$('bodyErr').hidden && req ? bodyError(input.value, req.bodyType) : undefined;
+    const marks = input.id === 'bodyText' ? [...input.value.matchAll(/[\uE000-\uF8FF]/g)].filter((x) => folds.has(x[0])) : [];
+    // garis merah hanya tanpa lipatan (posisi error dihitung dari teks asli); pesan tetap tampil
+    const err = input.id === 'bodyText' && !marks.length && !$('bodyErr').hidden && req ? bodyError(input.value, req.bodyType) : undefined;
     // shortcut: warna JSON / XML hanya untuk body <= 200 KB, lebih besar teks polos (mirror tiap ketikan)
     if (input.id === 'bodyText' && req && ['json', 'xml'].includes(req.bodyType) && input.value.length <= 200000) segs = applyRanges(segs, req.bodyType === 'xml' ? xmlRanges(input.value) : jsonRanges(input.value), 'j');
     if (err) segs = markSegments(segs, err.start, err.end);
     // pasangan kurung di kursor (hanya saat body difokus)
     const bm = input.id === 'bodyText' && document.activeElement === input && input.value.length <= 200000 ? bracketMatch(input.value, input.selectionStart) : undefined;
     if (bm) segs = applyRanges(segs, bm.map((p) => ({ start: p, end: p + 1, val: true })), 'bm');
+    if (marks.length) segs = applyRanges(segs, marks.map((x) => ({ start: x.index, end: x.index + 1, val: true })), 'fold');
     m.replaceChildren(...segs.map((s) => {
-      if (s.err || s.j || s.bm) return el('span', { className: `${s.err ? 'synerr ' : ''}${s.j ? `jx-${s.j} ` : ''}${s.bm ? 'jx-bm' : ''}`.trim(), textContent: s.text });
+      if (s.err || s.j || s.bm || s.fold) return el('span', { className: `${s.err ? 'synerr ' : ''}${s.j ? `jx-${s.j} ` : ''}${s.bm ? 'jx-bm ' : ''}${s.fold ? 'jx-fold' : ''}`.trim(), textContent: s.text });
       if (!s.name) return document.createTextNode(s.text);
       const t = el('span', { className: `tok t-${s.cls}`, textContent: s.text });
       t.dataset.name = s.name;
@@ -558,7 +618,7 @@
     // input satu baris: teks lebih panjang dari field ikut bergeser sesuai scroll input
     m.scrollTop = input.scrollTop;
     m.scrollLeft = input.scrollLeft;
-    input.parentNode?.classList.toggle('tokd', segs.some((s) => s.name || s.err || s.j || s.bm));
+    input.parentNode?.classList.toggle('tokd', segs.some((s) => s.name || s.err || s.j || s.bm || s.fold));
   }
   function syncMirrors() {
     for (const input of mirrors) {
@@ -710,7 +770,50 @@
     e.preventDefault();
     post({ type: 'pasteCurl', text });
   });
-  $('bodyText').oninput = () => { req.body = $('bodyText').value; $('bodyGutter').textContent = lineNumbers(req.body); renderMethod(); paintBodyError(); changed(); };
+  $('bodyText').oninput = () => {
+    const full = unfold($('bodyText').value, folds);
+    paintGutter();
+    if (full === req.body) return paintBodyError(); // hanya lipat / buka lipatan
+    req.body = full;
+    renderMethod();
+    paintBodyError();
+    changed();
+  };
+  // gutter body: klik panah = lipat / buka lipatan baris itu (lewat insertText supaya Undo tetap jalan)
+  $('bodyGutter').addEventListener('mousedown', (e) => {
+    const g = e.target.closest('.gl.can, .gl.shut');
+    if (!g) return;
+    e.preventDefault();
+    const t = $('bodyText');
+    const v = t.value;
+    const line = +g.dataset.l;
+    let start = 0;
+    for (let i = 0; i < line; i++) start = v.indexOf('\n', start) + 1;
+    const eol = v.indexOf('\n', start) < 0 ? v.length : v.indexOf('\n', start);
+    t.focus();
+    if (g.classList.contains('shut')) {
+      for (let k = eol - 1; k >= start; k--) if (folds.has(v[k])) { t.setSelectionRange(k, k + 1); document.execCommand('insertText', false, folds.get(v[k])); }
+    } else {
+      const r = foldRanges(v).find((x) => x.line === line);
+      if (!r) return;
+      const mark = String.fromCharCode(nextFold++);
+      folds.set(mark, v.slice(r.from, r.to));
+      t.setSelectionRange(r.from, r.to);
+      document.execCommand('insertText', false, mark);
+    }
+    t.setSelectionRange(eol, eol);
+  });
+  // Copy / Cut dari body yang terlipat: isi lipatan ikut tersalin
+  for (const type of ['copy', 'cut']) {
+    $('bodyText').addEventListener(type, (e) => {
+      const t = $('bodyText');
+      const sel = t.value.slice(t.selectionStart, t.selectionEnd);
+      if (!/[\uE000-\uF8FF]/.test(sel)) return;
+      e.preventDefault();
+      e.clipboardData.setData('text/plain', unfold(sel, folds));
+      if (type === 'cut') document.execCommand('delete');
+    });
+  }
   $('bodyText').addEventListener('scroll', () => { $('bodyGutter').scrollTop = $('bodyText').scrollTop; });
   // Tab = 2 spasi (banyak baris: indent / Shift+Tab outdent), Enter ikut indentasi; lewat insertText supaya Undo tetap jalan
   $('bodyText').addEventListener('keydown', (e) => {
@@ -794,9 +897,14 @@
     $('resEmpty').hidden = !!view && !running;
     $('resBody').className = `code${view?.kind === 'error' ? ' error' : ''}`;
     const isJson = res?.format === 'JSON';
+    resText = undefined;
     $('resBody').classList.toggle('json', isJson);
     $('expandAll').hidden = $('collapseAll').hidden = !isJson;
-    if (res) $('resBody').innerHTML = res.format === 'JSON' ? foldJson(res.bodyHtml) : res.bodyHtml; // sudah di-escape di host (response.ts)
+    if (res) $('resBody').innerHTML = isJson ? jsonRows(res.bodyHtml) : res.bodyHtml; // sudah di-escape di host (response.ts)
+    if (isJson) {
+      resText = el('pre', { innerHTML: res.bodyHtml }).textContent; // Copy = JSON asli, tanpa nomor baris / ringkasan lipatan
+      $('resBody').style.setProperty('--gw', `${String($('resBody').children.length).length}ch`);
+    }
     else $('resBody').textContent = view?.kind === 'error' ? view.message : view?.kind === 'cancelled' ? 'The request was cancelled.' : '';
     $('resHeaders').replaceChildren(...(res ? res.headers : []).map(([k, v]) => el('tr', {}, [el('td', { textContent: k }), el('td', { textContent: v })])));
     $('nResHeaders').textContent = res ? String(res.headers.length) : '';
@@ -857,16 +965,26 @@
   };
   $('others').onclick = () => post({ type: 'showRunning' });
   // Copy: teks body yang tampil; body > 1 MB diambil utuh dari file cache oleh host
-  // lipatan JSON: klik panah / ringkasan = buka-tutup; Alt+klik = ikut semua turunannya
+  // lipatan JSON: klik panah / nomor / ringkasan = buka-tutup; Alt+klik = ikut semua turunannya
+  let resText;
+  const resRows = () => [...$('resBody').children];
+  function refreshRows() {
+    const rows = resRows();
+    const hid = hiddenRows(rows.map((r) => (r.classList.contains('fo') ? +r.dataset.end : -1)), rows.map((r) => r.classList.contains('shut')));
+    rows.forEach((r, i) => { r.hidden = hid[i]; });
+  }
   $('resBody').onclick = (e) => {
-    const f = e.target.closest('.ft, .fs')?.closest('.f');
-    if (!f) return;
-    const fold = !f.classList.contains('shut');
-    for (const x of e.altKey ? [f, ...f.querySelectorAll('.f')] : [f]) x.classList.toggle('shut', fold);
+    const row = e.target.closest('.gn, .gf, .fz')?.closest('.ln.fo');
+    if (!row) return;
+    const rows = resRows();
+    const i = rows.indexOf(row);
+    const fold = !row.classList.contains('shut');
+    for (const r of e.altKey ? rows.slice(i, +row.dataset.end + 1) : [row]) if (r.classList.contains('fo')) r.classList.toggle('shut', fold);
+    refreshRows();
   };
-  $('expandAll').onclick = () => $('resBody').querySelectorAll('.f.shut').forEach((x) => x.classList.remove('shut'));
-  $('collapseAll').onclick = () => $('resBody').querySelectorAll('.f .f').forEach((x) => x.classList.add('shut')); // akar tetap terbuka
-  $('copyBody').onclick = () => post({ type: 'copyBody', text: $('resBody').textContent });
+  $('expandAll').onclick = () => { resRows().forEach((r) => r.classList.remove('shut')); refreshRows(); };
+  $('collapseAll').onclick = () => { resRows().slice(1).forEach((r) => r.classList.toggle('shut', r.classList.contains('fo'))); refreshRows(); }; // akar tetap terbuka
+  $('copyBody').onclick = () => post({ type: 'copyBody', text: resText ?? $('resBody').textContent });
   $('openBody').onclick = () => post({ type: 'openBody' });
   // Save aktif bila .http atau script rantainya belum disimpan
   let docDirty = false;

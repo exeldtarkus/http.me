@@ -172,9 +172,16 @@
   /* R31: editor body = gutter nomor baris + textarea tanpa wrap (warna JSON di lapisan mirror) */
   .bodyed { flex: 1; display: flex; min-height: 90px; border: 1px solid var(--line); border-radius: 4px; background: var(--input); overflow: hidden; }
   .bodyed:focus-within { border-color: var(--focus); }
+  #bodyGutter .gl { position: relative; }
+  #bodyGutter .gl.can, #bodyGutter .gl.shut { cursor: pointer; }
+  #bodyGutter .gl.can::after, #bodyGutter .gl.shut::after { right: -18px; color: var(--fg); }
+  .bodyed:hover #bodyGutter .gl.can::after, #bodyGutter .gl.shut::after { opacity: .75; }
+  /* penanda lipatan di body: karakter asli transparan (lebar sama dengan textarea), tampil sebagai ⋯ */
+  .jx-fold { position: relative; color: transparent; }
+  .jx-fold::before { content: '⋯'; position: absolute; inset: 0 -1px; border-radius: 3px; background: var(--soft); color: var(--muted); text-align: center; }
   .bodyed:has(.bad) { border-color: var(--err); }
   .bodyed[hidden] { display: none; }
-  #bodyGutter { margin: 0; padding: 6px 10px 6px 8px; min-width: 40px; text-align: right; color: var(--muted); font: 12.5px/1.6 var(--mono); border-right: 1px solid var(--line); overflow: hidden; user-select: none; opacity: .8; }
+  #bodyGutter { margin: 0; padding: 6px 20px 6px 8px; min-width: 40px; text-align: right; color: var(--muted); font: 12.5px/1.6 var(--mono); border-right: 1px solid var(--line); overflow: hidden; user-select: none; opacity: .8; }
   #bodyText { flex: 1; min-height: 90px; width: 100%; resize: none; border: 0; border-radius: 0; background: transparent; font: 12.5px/1.6 var(--mono); padding: 6px 12px; tab-size: 2; white-space: pre; overflow: auto; }
   .bodyed .vwrap.area { min-height: 0; }
   .bodyed .vwrap.area > .mirror { white-space: pre; overflow-wrap: normal; }
@@ -205,18 +212,21 @@
   .code .k { color: var(--code-key); } .code .s { color: var(--code-str); } .code .n { color: var(--code-num); }
   .code.error { color: var(--err); }
   .code .c { color: var(--muted); font-style: italic; }
-  /* lipatan JSON response: panah di indentasi (lebar 0, teks tidak bergeser), isi blok disembunyikan saat .c */
-  pre.code.json { padding-left: 14px; }
-  .code .ft { position: relative; display: inline-block; width: 0; font-style: normal; user-select: none; }
-  .code .ft::before { content: ''; position: absolute; left: -13px; top: -11px; width: 12px; height: 14px; cursor: pointer; opacity: .55;
-    background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 6l3.5 3.5L11.5 6' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px no-repeat; }
-  .code .ft:hover::before { opacity: 1; }
-  .code .f.shut > .ft::before { transform: rotate(-90deg); }
-  .code .f.shut > .fi { display: none; }
-  .code .fs { display: none; cursor: pointer; user-select: none; }
-  .code .f.shut > .fs { display: inline; }
-  .code .fs::before { content: ' … ' attr(data-n) ' '; color: var(--muted); font-style: italic; }
-  .code .fs:hover::before { color: var(--fg); }
+  /* JSON response ala editor VS Code: gutter nomor baris + panah lipat di kiri (panah tampil saat hover, selalu saat dilipat) */
+  pre.code.json { white-space: normal; }
+  .code .ln { display: flex; }
+  .code .ln[hidden] { display: none; }
+  .code .gn { flex: none; min-width: calc(var(--gw, 2ch) + 10px); padding-right: 2px; text-align: right; color: var(--muted); opacity: .7; user-select: none; }
+  .code .gf { flex: none; position: relative; width: 18px; user-select: none; }
+  .code .fo > .gn, .code .fo > .gf { cursor: pointer; }
+  .fold-chev, .code .fo > .gf::before, .gl.can::after, .gl.shut::after { content: ''; position: absolute; top: 0; bottom: 0; width: 16px; opacity: 0; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 6l3.5 3.5L11.5 6' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 14px no-repeat; transition: opacity .1s; }
+  .code .fo > .gf::before { left: 1px; color: var(--fg); }
+  .code.json:hover .fo > .gf::before, .code .fo.shut > .gf::before { opacity: .75; }
+  .code .fo.shut > .gf::before, .gl.shut::after { transform: rotate(-90deg); }
+  .code .lc { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .code .fz { display: none; }
+  .code .shut > .lc > .fz { display: inline; }
+  .code .fz::before { content: '⋯ ' attr(data-n); display: inline-block; margin: 0 3px; padding: 0 5px; border-radius: 3px; background: var(--soft); color: var(--muted); font-style: italic; cursor: pointer; }
   .fmt { font: 600 10.5px var(--mono); letter-spacing: .04em; }
   table.csv { border-collapse: collapse; font: 12px var(--mono); white-space: pre-wrap; }
   table.csv th, table.csv td { border: 1px solid var(--line); padding: 2px 8px; text-align: left; vertical-align: top; }

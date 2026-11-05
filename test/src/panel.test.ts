@@ -18,7 +18,11 @@ const panel = require(join(__dirname, '..', '..', '..', 'media', 'webview', 'pan
   enterIndent(text: string, caret: number): string;
   layoutGrid(layout: string, size: number | undefined, total: number): { rows: string; cols: string };
   markSegments(segs: { text: string; name?: string; cls?: string }[], start: number, end: number): { text: string; name?: string; cls?: string; err?: boolean }[];
-  foldJson(html: string): string;
+  jsonRows(html: string): string;
+  hiddenRows(ends: number[], shut: boolean[]): boolean[];
+  foldRanges(text: string): { line: number; from: number; to: number }[];
+  unfold(text: string, hidden: Map<string, string>): string;
+  realLines(text: string, hidden: Map<string, string>): number[];
   bracketMatch(text: string, caret: number): [number, number] | undefined;
 };
 type Vars = { ok: string[]; nulls: string[]; names: string[] };
@@ -325,7 +329,7 @@ test('review R31: editor body: gutter nomor baris, tanpa wrap, Tab / Enter lewat
   const js = fs.readFileSync(join(dir, 'panel.js'), 'utf8');
   assert.match(html, /<div class="bodyed" id="bodyEd"><pre id="bodyGutter" aria-hidden="true">1<\/pre><textarea id="bodyText" spellcheck="false" wrap="off"/);
   assert.match(js, /document\.execCommand\('insertText', false,/);
-  assert.match(js, /\$\('bodyGutter'\)\.textContent = lineNumbers\(/);
+  assert.match(js, /\$\('bodyGutter'\)\.innerHTML = realLines\(/, 'gutter = nomor baris asli (lipatan ikut dihitung)');
 });
 
 test('review R32: layoutGrid: single = baris (tinggi request), two = kolom (lebar request), panel / tanpa ukuran = bawaan CSS', () => {
@@ -406,19 +410,6 @@ test('review R34: bar URL tanpa garis ganda; method = pill + menu custom berwarn
   assert.match(js, /ArrowDown/);
 });
 
-test('review R36: foldJson membungkus objek / array multi-baris jadi blok yang bisa dilipat, jumlah isi lewat data-n (tidak ikut textContent)', () => {
-  const html = '{\n  <span class="k">"a"</span>: [\n    1,\n    {}\n  ],\n  <span class="k">"b"</span>: {\n    <span class="k">"c"</span>: 2\n  }\n}';
-  const out = panel.foldJson(html);
-  assert.equal(out,
-    '<span class="f"><i class="ft"></i>{<span class="fi">\n' +
-    '  <span class="f"><i class="ft"></i><span class="k">"a"</span>: [<span class="fi">\n    1,\n    {}\n  </span><span class="fs" data-n="2 items"></span>]</span>,\n' +
-    '  <span class="f"><i class="ft"></i><span class="k">"b"</span>: {<span class="fi">\n    <span class="k">"c"</span>: 2\n  </span><span class="fs" data-n="1 key"></span>}</span>\n' +
-    '</span><span class="fs" data-n="2 keys"></span>}</span>');
-  assert.equal(out.replace(/<[^>]+>/g, ''), html.replace(/<[^>]+>/g, ''), 'teks yang disalin tetap JSON asli');
-  assert.equal(panel.foldJson('[]'), '[]', 'kosong satu baris tidak dilipat');
-  assert.equal(panel.foldJson('"x {"'), '"x {"');
-});
-
 test('review R36: bracketMatch: pasangan kurung di kursor (sebelum / sesudah), abaikan string dan {{var}}', () => {
   const t = '{"a": [1, "]{"], "v": {{x}}}';
   assert.deepEqual(panel.bracketMatch(t, 0), [0, t.length - 1], 'kursor sebelum {');
@@ -430,17 +421,14 @@ test('review R36: bracketMatch: pasangan kurung di kursor (sebelum / sesudah), a
   assert.equal(panel.bracketMatch('{ [ }', 0), undefined, 'tidak berpasangan');
 });
 
-test('review R36: tombol Expand all / Collapse all di response, CSS lipatan + highlight pasangan kurung body', () => {
+test('review R36: tombol Expand all / Collapse all di response + highlight pasangan kurung body', () => {
   const fs = require('node:fs') as typeof import('node:fs');
   const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
   const html = fs.readFileSync(join(dir, 'panel.html'), 'utf8');
   const js = fs.readFileSync(join(dir, 'panel.js'), 'utf8');
   assert.match(html, /<button class="icon-btn" id="expandAll" type="button" title="Expand all" aria-label="Expand all" hidden>/);
   assert.match(html, /<button class="icon-btn" id="collapseAll" type="button" title="Collapse all \(Alt\+click an arrow to fold its children\)" aria-label="Collapse all" hidden>/);
-  assert.match(html, /\.code \.f\.shut > \.fi \{ display: none; \}/);
-  assert.match(html, /\.code \.fs::before \{ content: ' … ' attr\(data-n\) ' ';/);
   assert.match(html, /\.jx-bm \{/);
-  assert.match(js, /res\.format === 'JSON' \? foldJson\(res\.bodyHtml\)/);
   assert.match(js, /bracketMatch\(input\.value, input\.selectionStart\)/);
 });
 
@@ -472,4 +460,38 @@ test('review R37: XML: teks bukan XML = error, warna XML di body (tanda, tag, at
   assert.match(html, /\.jx-t, \.code \.t \{ color: var\(--j-k\); \}/);
   const host = fs.readFileSync(join(__dirname, '..', '..', '..', 'src', 'httpEditor.ts'), 'utf8');
   assert.match(host, /m\.type === 'warn' && typeof m\.message === 'string'\) void vscode\.window\.showWarningMessage\(m\.message\)/);
+});
+
+test('review R38: response JSON = baris bergutter (nomor + panah lipat di kiri), ringkasan lipatan lewat data-n', () => {
+  const html = '{\n  <span class="k">"a"</span>: [\n    1\n  ],\n  <span class="k">"b"</span>: 2\n}';
+  const row = (n: number, lc: string, end?: number) => `<div class="ln${end === undefined ? '' : ' fo'}"${end === undefined ? '' : ` data-end="${end}"`}><span class="gn">${n}</span><span class="gf"></span><span class="lc">${lc}</span></div>`;
+  assert.equal(panel.jsonRows(html), [
+    row(1, '{<span class="fz" data-n="2 keys">}</span>', 5),
+    row(2, '  <span class="k">"a"</span>: [<span class="fz" data-n="1 item">],</span>', 3),
+    row(3, '    1'),
+    row(4, '  ],'),
+    row(5, '  <span class="k">"b"</span>: 2'),
+    row(6, '}'),
+  ].join(''));
+  assert.equal(panel.jsonRows('[]'), row(1, '[]'));
+});
+
+test('review R38: hiddenRows: baris di dalam lipatan tertutup disembunyikan (termasuk baris penutup), lipatan bertingkat', () => {
+  const ends = [5, 3, -1, -1, -1, -1];
+  assert.deepEqual(panel.hiddenRows(ends, [false, true, false, false, false, false]), [false, false, true, true, false, false]);
+  assert.deepEqual(panel.hiddenRows(ends, [true, true, false, false, false, false]), [false, true, true, true, true, true]);
+});
+
+test('review R38: body: foldRanges dari kurung pembuka di akhir baris, unfold mengembalikan teks asli (bertingkat), realLines = nomor baris asli', () => {
+  const t = '{\n  "a": [\n    1\n  ],\n  "b": "{"\n}';
+  assert.deepEqual(panel.foldRanges(t), [{ line: 0, from: 1, to: t.length - 1 }, { line: 1, from: 10, to: 19 }]);
+  assert.deepEqual(panel.foldRanges('{"a": 1}'), [], 'satu baris tidak bisa dilipat');
+  const inner = t.slice(10, 19);
+  const shown1 = t.slice(0, 10) + '\uE000' + t.slice(19);
+  const hidden = new Map([['\uE000', inner]]);
+  assert.equal(panel.unfold(shown1, hidden), t);
+  hidden.set('\uE001', shown1.slice(1, shown1.length - 1));
+  assert.equal(panel.unfold('{\uE001}', hidden), t, 'lipatan di dalam lipatan');
+  assert.deepEqual(panel.realLines(shown1, hidden), [1, 2, 5, 6]);
+  assert.equal(panel.unfold('x\uE0FF', hidden), 'x\uE0FF', 'karakter tanpa lipatan dibiarkan');
 });
