@@ -1341,7 +1341,8 @@
     "test:it": "npm run compile && node out/test/src/it/run.js",
     "package": "vsce package --skip-license",
     "install:local": "node scripts/install-local.js",
-    "deploy": "bash scripts/deploy-v2.sh"
+    "deploy": "bash scripts/deploy-v2.sh",
+    "test:ui": "npm run compile && node test/ui/unfold.js"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
