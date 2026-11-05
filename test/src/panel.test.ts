@@ -518,3 +518,15 @@ test('review R41: file multi-request di panel: tab request + Send All (hanya bil
   assert.match(host, /else if \(m\.type === 'sendAll'\) await sendAll\(doc\)/);
   assert.match(host, /replaceBlock\(doc\.getText\(\), active, m\.req\)/);
 });
+
+test('review R42: tab request yang belum dikirim tidak menampilkan response request lain (view null, bukan undefined yang hilang di postMessage)', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const root = join(__dirname, '..', '..', '..');
+  const host = fs.readFileSync(join(root, 'src', 'httpEditor.ts'), 'utf8');
+  const js = fs.readFileSync(join(root, 'media', 'webview', 'panel.js'), 'utf8');
+  assert.match(host, /postMessage\(\{ type: 'view', view: docs\.get\(key\)\?\.view \?\? null \}\)/);
+  assert.match(host, /postMessage\(\{ type: 'view', view: s\?\.view \?\? null \}\)/);
+  assert.match(host, /type: 'state', req, view: lastView \?\? null,/);
+  assert.match(host, /\.\.\.\(v !== lastView \? \{ view: v \?\? null \} : \{\}\)/);
+  assert.match(js, /'This request has not been sent yet\. Click Send or Send All\.'/);
+});

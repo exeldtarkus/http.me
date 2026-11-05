@@ -125,7 +125,7 @@ function postOutputBlocks(): void {
 /** view Response panel bawah menampilkan key ini (pilih tab request) */
 function showInOutput(key: string): void {
   output.key = key;
-  void output.view?.webview.postMessage({ type: 'view', view: docs.get(key)?.view });
+  void output.view?.webview.postMessage({ type: 'view', view: docs.get(key)?.view ?? null }); // undefined hilang di postMessage: view lama tetap tampil
   postOutputBlocks();
 }
 listeners.add(postOutputBlocks);
@@ -142,7 +142,7 @@ const outputProvider: vscode.WebviewViewProvider = {
         if (m.type === 'ready') {
           await view.webview.postMessage({ type: 'mode', responseOnly: true });
           await view.webview.postMessage({ type: 'layout', layout: getLayout() });
-          await view.webview.postMessage({ type: 'view', view: s?.view });
+          await view.webview.postMessage({ type: 'view', view: s?.view ?? null });
           postOutputBlocks();
         } else if (m.type === 'pickBlock' && typeof m.index === 'number' && output.key !== undefined) showInOutput(`${uriOfKey(output.key)}#${m.index}`);
         else if (m.type === 'layout' && isLayout(m.layout)) await setLayout(m.layout);
@@ -511,13 +511,13 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   const postState = () => {
     const req = activeReq();
     lastView = cur().view;
-    void panel.webview.postMessage({ type: 'state', req, view: lastView, blocks: blockTabs(doc.getText(), doc.uri.toString()), active, dirty: doc.isDirty || doc.isUntitled });
+    void panel.webview.postMessage({ type: 'state', req, view: lastView ?? null, blocks: blockTabs(doc.getText(), doc.uri.toString()), active, dirty: doc.isDirty || doc.isUntitled });
   };
   /** tab request + view blok aktif ikut berubah saat request mana pun di file ini berjalan / selesai */
   const postBlocks = () => {
     if (blockCount() < 2) return;
     const v = cur().view;
-    void panel.webview.postMessage({ type: 'blocks', blocks: blockTabs(doc.getText(), doc.uri.toString()), active, ...(v !== lastView ? { view: v } : {}) });
+    void panel.webview.postMessage({ type: 'blocks', blocks: blockTabs(doc.getText(), doc.uri.toString()), active, ...(v !== lastView ? { view: v ?? null } : {}) });
     lastView = v;
   };
 

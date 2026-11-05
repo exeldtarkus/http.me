@@ -895,6 +895,8 @@
     $('fmt').textContent = res ? res.format : '';
     $('sz').textContent = res ? res.size : '';
     $('resEmpty').hidden = !!view && !running;
+    // file multi-request: tab yang belum pernah dikirim punya pesan sendiri
+    document.querySelector('#resEmpty p').textContent = blocks.length > 1 ? 'This request has not been sent yet. Click Send or Send All.' : 'Enter the URL and click Send to get a response';
     $('resBody').className = `code${view?.kind === 'error' ? ' error' : ''}`;
     const isJson = res?.format === 'JSON';
     resText = undefined;
