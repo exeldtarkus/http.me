@@ -570,7 +570,8 @@
         "path": "./syntaxes/http.tmLanguage.json",
         "embeddedLanguages": {
           "meta.embedded.block.json": "json",
-          "meta.embedded.block.xml": "xml"
+          "meta.embedded.block.xml": "xml",
+          "meta.embedded.block.javascript": "javascript"
         }
       }
     ],
