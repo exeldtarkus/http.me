@@ -36,6 +36,78 @@
     {
       "key": "SIGNING_SECRET",
       "value": "demo-secret-dev"
+    },
+    {
+      "key": "REPORT_SERVICE_HOST",
+      "value": null
+    },
+    {
+      "key": "WORKER_SERVICE_HOST",
+      "value": null
+    },
+    {
+      "key": "AUTH_SERVICE_HOST",
+      "value": null
+    },
+    {
+      "key": "sadfjksda",
+      "value": null
+    },
+    {
+      "key": "jasdkf",
+      "value": null
+    },
+    {
+      "key": "exel",
+      "value": null
+    },
+    {
+      "key": "jhksafkdhs",
+      "value": null
+    },
+    {
+      "key": "ajskldf",
+      "value": null
+    },
+    {
+      "key": "terst3",
+      "value": null
+    },
+    {
+      "key": "qweq",
+      "value": null
+    },
+    {
+      "key": "sadfs",
+      "value": null
+    },
+    {
+      "key": "afdasf",
+      "value": null
+    },
+    {
+      "key": "sadfsaf",
+      "value": null
+    },
+    {
+      "key": "exeltest1",
+      "value": null
+    },
+    {
+      "key": "jkzhklfjsdaf",
+      "value": null
+    },
+    {
+      "key": "sakjdfk",
+      "value": null
+    },
+    {
+      "key": "kzxdjfk",
+      "value": null
+    },
+    {
+      "key": "daksd",
+      "value": null
     }
   ]
 }
