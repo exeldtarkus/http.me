@@ -1017,7 +1017,7 @@
   // paste cURL mentah ke kolom URL: diimpor host (method, header, body, opsi)
   $('url').addEventListener('paste', (e) => {
     const text = e.clipboardData?.getData('text') ?? '';
-    if (!/^\s*curl\s/i.test(text)) return;
+    if (!/^\s*(curl|Invoke-WebRequest|Invoke-RestMethod|iwr|irm|\$session)\b/i.test(text)) return;
     e.preventDefault();
     post({ type: 'pasteCurl', text });
   });

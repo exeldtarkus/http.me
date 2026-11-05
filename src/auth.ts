@@ -79,6 +79,9 @@ function validateFields(type: AuthType, fields: Readonly<Record<string, string>>
 }
 
 function parseBasicHeader(value: string): AuthConfig {
+  // bentuk http.me / REST Client: `Basic user:pass` atau `Basic user pass` (di-encode base64 saat Send)
+  const raw = /^Basic\s+([^\s:]+)[:\s]\s*(.*)$/i.exec(value.trim());
+  if (raw && /[:\s]/.test(value.trim().slice(6).trim())) return { type: 'basic', fields: { username: raw[1], password: raw[2] } };
   const encoded = /^Basic\s+(\S+)$/i.exec(value.trim())?.[1];
   if (!encoded || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded) || encoded.length % 4 === 1) {
     throw new Error('Invalid Basic Authorization header');
@@ -422,7 +425,7 @@ function applyOauth1(copy: HttpRequest, config: AuthConfig, values: ReadonlyMap<
 export function headerAuth(headers: readonly Header[]): AuthConfig | undefined {
   try {
     const c = parseAuth(undefined, headers);
-    return c.type === 'digest' || c.type === 'aws' ? c : undefined;
+    return c.type === 'digest' || c.type === 'aws' || c.type === 'basic' ? c : undefined;
   } catch {
     return undefined; // skema lain / header tidak lazim: bukan urusan auth, dikirim apa adanya
   }

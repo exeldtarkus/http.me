@@ -1,6 +1,7 @@
 // cURL dialek bash (tanpa vscode): tokenizer, perintah -> request (untuk paste / import, bukan format simpan), request -> perintah
 import { bodyTypeOf, emptyRequest, type ParsedRequest } from './httpFile';
 import { sendsBody } from './http';
+import { cookiePairs, isCmdCommand, isPowerShellRequest, isPsCurl, psToArgs, tokenizeCmd, tokenizePs } from './shellDialect';
 
 const ANSI: Record<string, string> = { n: '\n', t: '\t', r: '\r', '\\': '\\', "'": "'", '"': '"', a: '\x07', b: '\b', e: '\x1b', f: '\f', v: '\v', '0': '\0' };
 
@@ -55,7 +56,7 @@ const VALUE: Record<string, string> = {
   '-X': 'method', '--request': 'method', '-H': 'header', '--header': 'header', '-d': 'data', '--data': 'data', '--data-raw': 'data',
   '--data-binary': 'data', '--data-ascii': 'data', '--data-urlencode': 'urlencode', '--json': 'json', '-u': 'user', '--user': 'user',
   '-b': 'cookie', '--cookie': 'cookie', '-A': 'agent', '--user-agent': 'agent', '-e': 'referer', '--referer': 'referer', '--url': 'url',
-  '-F': 'form', '--form': 'form', '-m': 'timeout', '--max-time': 'timeout',
+  '-F': 'form', '--form': 'form', '--aws-sigv4': 'sigv4', '-m': 'timeout', '--max-time': 'timeout',
 };
 const FLAGS: Record<string, string> = { '-L': 'location', '--location': 'location', '-k': 'insecure', '--insecure': 'insecure', '-G': 'get', '--get': 'get', '-I': 'head', '--head': 'head' };
 /** tidak berpengaruh ke request: dilewati tanpa catatan */
@@ -66,15 +67,20 @@ export type CurlResult = { request: ParsedRequest; warnings: string[] };
 
 /** perintah curl (bash) -> request http.me; opsi yang tidak diimpor dicatat di warnings (ditampilkan ke user) */
 export function parseCurl(command: string): CurlResult {
-  const args = tokenize(command.trim());
-  if (!args.length || !/(^|\/)curl(\.exe)?$/i.test(args[0])) throw new Error('Not a curl command');
+  const text = command.trim();
   const warnings: string[] = [];
+  let args: string[];
+  if (isPowerShellRequest(text)) { const ps = psToArgs(text); args = ps.args; warnings.push(...ps.warnings); }
+  else args = isCmdCommand(text) ? tokenizeCmd(text) : isPsCurl(text) ? tokenizePs(text) : tokenize(text);
+  if (!args.length || !/(^|\/)curl(\.exe)?$/i.test(args[0])) throw new Error('Not a curl command');
   const headers: [string, string][] = [];
   const data: string[] = [];
   let method: string | undefined;
   let url: string | undefined;
   let json: string | undefined;
   let timeout: number | undefined;
+  const forms: string[] = [];
+  let sigv4: string | undefined;
   const flag = new Set<string>();
   const take = (opt: string, value: string | undefined) => {
     if (value === undefined) throw new Error(`Option ${opt} needs a value`);
@@ -89,7 +95,8 @@ export function parseCurl(command: string): CurlResult {
       case 'agent': headers.push(['User-Agent', value]); break;
       case 'referer': headers.push(['Referer', value]); break;
       case 'url': url ??= value; break;
-      case 'form': warnings.push(`Multipart (-F ${value}) is not imported yet`); break;
+      case 'form': forms.push(value); break;
+      case 'sigv4': sigv4 = value; break;
       case 'timeout': timeout = Math.ceil(Number(value)) || undefined; break;
     }
   };
@@ -118,7 +125,11 @@ export function parseCurl(command: string): CurlResult {
     if (!has('Accept')) headers.push(['Accept', 'application/json']);
     data.push(json);
   }
-  let body = data.join('&');
+  if (forms.length) {
+    if (!has('Content-Type')) headers.push(['Content-Type', `multipart/form-data; boundary=${FORM_BOUNDARY}`]);
+    data.push(multipartBody(forms));
+  }
+  let body = forms.length ? data.join('\n') : data.join('&');
   if (flag.has('get') && body) {
     url += (url.includes('?') ? '&' : '?') + body;
     body = '';
@@ -128,10 +139,50 @@ export function parseCurl(command: string): CurlResult {
   r.headers = headers.map(([name, value]) => ({ name, value, enabled: true }));
   r.body = body;
   r.bodyType = bodyTypeOf(headers.find(([k]) => k.toLowerCase() === 'content-type')?.[1], body);
+  if (sigv4 !== undefined) {
+    const [, , region, service] = sigv4.split(':');
+    const i = headers.findIndex(([k, v]) => k === 'Authorization' && v.startsWith('Basic ') && v.includes(':'));
+    if (!region || !service || i < 0) warnings.push('--aws-sigv4 needs provider:provider:region:service and --user id:secret');
+    else {
+      const [id, ...secret] = headers[i][1].slice(6).split(':');
+      headers.splice(i, 1);
+      r.headers = headers.map(([name, value]) => ({ name, value, enabled: true }));
+      r.auth = `aws access_key=${JSON.stringify(id)} secret_key=${JSON.stringify(secret.join(':'))} region=${JSON.stringify(region)} service=${JSON.stringify(service)}`;
+    }
+  }
   r.followRedirects = flag.has('location');
   r.insecure = flag.has('insecure');
   r.timeoutSec = timeout;
   return { request: r, warnings };
+}
+
+const FORM_BOUNDARY = '----HttpMeFormBoundary';
+/** -F name=value | name=@file[;type=..;filename=..] | name=<file -> body multipart `.http` (bagian file = `< ./path`, dibaca saat Send) */
+function multipartBody(forms: string[]): string {
+  const out: string[] = [];
+  for (const f of forms) {
+    const eq = f.indexOf('=');
+    if (eq <= 0) throw new Error(`Invalid -F value: ${f}`);
+    const name = f.slice(0, eq);
+    const rest = f.slice(eq + 1);
+    const opts: Record<string, string> = {};
+    const cut = (v: string) => { const [first, ...more] = v.split(';'); for (const m of more) { const [k, ...x] = m.split('='); opts[k.trim().toLowerCase()] = x.join('=').trim(); } return first; };
+    out.push(`--${FORM_BOUNDARY}`);
+    if (/^[@<]/.test(rest)) {
+      const path = cut(rest.slice(1)).replace(/\\/g, '/');
+      const file = rest[0] === '@';
+      out.push(`Content-Disposition: form-data; name="${name}"${file ? `; filename="${opts.filename ?? path.split('/').pop()}"` : ''}`);
+      if (opts.type) out.push(`Content-Type: ${opts.type}`);
+      out.push('', `< ${/^(\.{1,2}\/|\/|[A-Za-z]:)/.test(path) ? path : `./${path}`}`);
+    } else {
+      out.push(`Content-Disposition: form-data; name="${name}"`);
+      const value = cut(rest);
+      if (opts.type) out.push(`Content-Type: ${opts.type}`);
+      out.push('', value);
+    }
+  }
+  out.push(`--${FORM_BOUNDARY}--`);
+  return out.join('\n');
 }
 
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
@@ -142,14 +193,9 @@ const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
  */
 export function toCurl(r: ParsedRequest, opts: { withCookies?: boolean; jar?: string } = {}): string {
   const first = `curl${r.method === 'GET' ? '' : ` -X ${r.method}`} ${quote(r.url)}`;
-  const isCookie = (name: string) => name.toLowerCase() === 'cookie';
-  const rest = r.headers.filter((h) => h.enabled && h.name && !isCookie(h.name)).map((h) => `-H ${quote(`${h.name}: ${h.value}`)}`);
-  if (opts.withCookies) {
-    const own = r.headers.filter((h) => h.enabled && isCookie(h.name)).flatMap((h) => h.value.split(';').map((p) => p.trim()).filter(Boolean));
-    const names = new Set(own.map((p) => p.split('=')[0]));
-    const all = [...own, ...(opts.jar ?? '').split(';').map((p) => p.trim()).filter((p) => p && !names.has(p.split('=')[0]))];
-    if (all.length) rest.push(`-b ${quote(all.join('; '))}`);
-  }
+  const rest = r.headers.filter((h) => h.enabled && h.name && h.name.toLowerCase() !== 'cookie').map((h) => `-H ${quote(`${h.name}: ${h.value}`)}`);
+  const cookies = cookiePairs(r, opts);
+  if (cookies.length) rest.push(`-b ${quote(cookies.join('; '))}`);
   if (sendsBody(r.method)) {
     if (r.bodyFile) rest.push(`--data-binary ${quote(`@${r.bodyFile}`)}`);
     else if (r.body !== '') rest.push(`--data-raw ${quote(r.body)}`);
@@ -161,7 +207,7 @@ export function toCurl(r: ParsedRequest, opts: { withCookies?: boolean; jar?: st
 }
 
 /** header yang hanya dikirim browser: ikut diimpor tapi dimatikan (# @disabled) */
-const BROWSER_HEADER = /^(sec-ch-ua(-.*)?|sec-fetch-.*|sec-gpc|dnt|priority|upgrade-insecure-requests|user-agent|accept-language|accept-encoding|referer|origin|cache-control|pragma)$/i;
+const BROWSER_HEADER = /^(sec-ch-ua(-.*)?|sec-fetch-.*|sec-gpc|dnt|priority|upgrade-insecure-requests|user-agent|accept-language|accept-encoding|referer|origin|cache-control|pragma|connection)$/i;
 
 /** paste / Import from Clipboard: parseCurl + header browser dimatikan + ringkasan satu kalimat untuk notifikasi */
 export function importCurl(command: string): CurlResult & { summary: string; /** isi header Cookie / -b (ditawarkan disimpan ke cookie jar) */ cookies?: string } {
@@ -180,7 +226,7 @@ export function importCurl(command: string): CurlResult & { summary: string; /**
 /** Quick Run: perintah curl, atau URL polos (GET), atau `METHOD URL` -> request siap kirim */
 export function quickRequest(text: string): ParsedRequest {
   const t = text.trim();
-  if (/^curl(\.exe)?\s/i.test(t)) return importCurl(t).request;
+  if (/^(curl(\.exe)?|Invoke-WebRequest|Invoke-RestMethod|iwr|irm|\$session)\b/i.test(t)) return importCurl(t).request;
   const m = /^(?:([A-Za-z]+)\s+)?(https?:\/\/\S+)$/.exec(t);
   if (!m) throw new Error('Enter a curl command or a URL starting with http:// or https://');
   return { ...emptyRequest(), method: (m[1] ?? 'GET').toUpperCase(), url: m[2] };

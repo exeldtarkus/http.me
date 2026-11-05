@@ -9,6 +9,7 @@ import {
 import { createFolder, dropKeepIfUsed, duplicateFile, KEEP_FILE, siblingName } from './store';
 import { splitBlocks, parseRequest } from './httpFile';
 import { toCurl } from './curl';
+import { toCurlCmd, toPowerShell } from './shellDialect';
 import { resolveRequest } from './vars';
 import { newRequest, REQUEST_VIEW } from './httpEditor';
 import { errMsg, errorLine } from './log';
@@ -626,25 +627,30 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
       sidebar.refresh();
     }),
     cmd('httpme.revealInExplorer', (a?: Arg) => vscode.commands.executeCommand('revealInExplorer', uriOf(a ?? view.selection[0]))),
-    // Copy as cURL: tanpa cookie; varian "with Cookies" menyertakan header Cookie + cookie jar Environment aktif
-    ...([false, true] as const).map((withCookies) => cmd(withCookies ? 'httpme.copyAsCurlWithCookies' : 'httpme.copyAsCurl', async (a?: Arg) => {
-      const uri = uriOf(a ?? view.selection[0]);
-      if (!uri) return;
-      const text = (await vscode.workspace.openTextDocument(uri)).getText();
-      const blocks = splitBlocks(text);
-      const reqs = blocks.length > 1 ? blocks.map((b) => parseRequest(b.text)) : [parseRequest(text)];
-      const out: string[] = [];
-      for (const r of reqs) {
-        let jar: string | undefined;
-        if (withCookies) {
-          const url = resolveRequest(r, await envs.scopes(r.vars)).request.url;
-          jar = (await cookies.forUrl(url)).map((c) => `${c.name}=${c.value}`).join('; ') || undefined;
+    // Copy as cURL (bash / cmd) dan PowerShell: tanpa cookie; varian "with Cookies" menyertakan header Cookie + cookie jar Environment aktif
+    ...([
+      ['httpme.copyAsCurl', 'httpme.copyAsCurlWithCookies', 'cURL command', toCurl],
+      ['httpme.copyAsCurlCmd', 'httpme.copyAsCurlCmdWithCookies', 'cURL (cmd) command', toCurlCmd],
+      ['httpme.copyAsPowerShell', 'httpme.copyAsPowerShellWithCookies', 'PowerShell command', toPowerShell],
+    ] as const).flatMap(([plain, withJar, label, render]) => ([false, true] as const).map((withCookies) =>
+      cmd(withCookies ? withJar : plain, async (a?: Arg) => {
+        const uri = uriOf(a ?? view.selection[0]);
+        if (!uri) return;
+        const text = (await vscode.workspace.openTextDocument(uri)).getText();
+        const blocks = splitBlocks(text);
+        const reqs = blocks.length > 1 ? blocks.map((b) => parseRequest(b.text)) : [parseRequest(text)];
+        const out: string[] = [];
+        for (const r of reqs) {
+          let jar: string | undefined;
+          if (withCookies) {
+            const url = resolveRequest(r, await envs.scopes(r.vars)).request.url;
+            jar = (await cookies.forUrl(url)).map((c) => `${c.name}=${c.value}`).join('; ') || undefined;
+          }
+          out.push(render(r, { withCookies, jar }));
         }
-        out.push(toCurl(r, { withCookies, jar }));
-      }
-      await vscode.env.clipboard.writeText(out.join('\n\n'));
-      void vscode.window.showInformationMessage(`${blocks.length > 1 ? `${blocks.length} cURL commands` : 'cURL command'} copied${withCookies ? ' with cookies' : ''}.`);
-    })),
+        await vscode.env.clipboard.writeText(out.join('\n\n'));
+        void vscode.window.showInformationMessage(`${blocks.length > 1 ? `${blocks.length} ${label}s` : label} copied${withCookies ? ' with cookies' : ''}.`);
+      }))),
     cmd('httpme.moveTo', (uri: vscode.Uri, dest: vscode.Uri) => moveInto([uri], dest).then(() => sidebar.refresh())),
 
     // Open

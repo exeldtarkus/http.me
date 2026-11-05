@@ -295,5 +295,14 @@ import { oauth1BaseString as oauth1Base } from '../../src/auth';
 test('headerAuth: hanya Digest user pass / AWS yang dihitung; Basic, Bearer, skema lain dikirim apa adanya', () => {
   assert.equal(headerAuth(headers(['Authorization', 'Digest u p', true]))?.type, 'digest');
   assert.equal(headerAuth(headers(['Authorization', 'AWS a s region:r service:x', true]))?.type, 'aws');
-  for (const v of ['Basic dTpw', 'Bearer t', 'Token abc', 'Digest']) assert.equal(headerAuth(headers(['Authorization', v, true])), undefined, v);
+  assert.equal(headerAuth(headers(['Authorization', 'Basic user:pa ss', true]))?.type, 'basic');
+  for (const v of ['Bearer t', 'Token abc', 'Digest']) assert.equal(headerAuth(headers(['Authorization', v, true])), undefined, v);
+});
+
+test('parseAuth: Basic mentah `user:pass` / `user pass` di-encode base64 saat Send; base64 asli tetap dikenali', () => {
+  assert.deepEqual(parseAuth(undefined, headers(['Authorization', 'Basic us:pa:ss', true])), { type: 'basic', fields: { username: 'us', password: 'pa:ss' } });
+  assert.deepEqual(parseAuth(undefined, headers(['Authorization', 'Basic us pa ss', true])), { type: 'basic', fields: { username: 'us', password: 'pa ss' } });
+  const sent = applyAuth({ method: 'GET', url: 'http://h/', headers: [['Authorization', 'Basic us:pa:ss']] }, parseAuth(undefined, headers(['Authorization', 'Basic us:pa:ss', true])), new Map());
+  assert.deepEqual(sent.request.headers, [['Authorization', `Basic ${Buffer.from('us:pa:ss').toString('base64')}`]]);
+  assert.equal(parseAuth(undefined, headers(['Authorization', `Basic ${Buffer.from('a:b').toString('base64')}`, true])).fields.username, 'a');
 });
