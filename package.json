@@ -2,7 +2,7 @@
   "name": "httpme",
   "displayName": "http.me",
   "description": "Lightweight HTTP client for VS Code: send requests from .http files, collections, environments and history, with a focus on low memory use.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "exeltarkus",
   "engines": {
     "vscode": "^1.90.0"
