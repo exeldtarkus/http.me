@@ -8,14 +8,14 @@ import { dirname, join, resolve as resolvePath } from 'node:path';
 import { homedir } from 'node:os';
 import { webviewPage } from './webviewPage';
 import { NEW_REQUEST_TEXT, newRequestName } from './newRequest';
-import { parseRequest, serializeRequest, splitBlocks, toHttpRequestWithFile, type ParsedRequest } from './httpFile';
+import { blockLabel, parseRequest, replaceBlock, serializeRequest, splitBlocks, toHttpRequestWithFile, type ParsedRequest } from './httpFile';
 import { prettyJson } from './response';
 import { beautifyBody } from './beautify';
 import { importCurl } from './curl';
 import { defaultFileName } from './sidebarModel';
 import { dropKeepIfUsed, requestFileName } from './store';
 import { DEFAULT_TIMEOUT_MS, RequestError, send } from './http';
-import { responseView, type ResponseView } from './response';
+import { responseView, tabStatus, type ResponseView } from './response';
 import { createRunner } from './runner';
 import { stageText, type Stage } from './runningStatus';
 import { errMsg, errorLine, maskValues } from './log';
@@ -105,20 +105,47 @@ async function copyBody(s: DocState, text: string): Promise<void> {
   void vscode.window.showInformationMessage('Response body copied to the clipboard.');
 }
 
+/** tab per request file multi-request: label + status Send terakhir; [] bila file hanya 1 request */
+function blockTabs(text: string, uri: string): { label: string; method: string; text: string; cls: string }[] {
+  const blocks = splitBlocks(text);
+  if (blocks.length < 2) return [];
+  return blocks.map((b, i) => {
+    const r = parseRequest(b.text);
+    return { label: blockLabel(r), method: r.method, ...tabStatus(docs.get(`${uri}#${i}`)?.view) };
+  });
+}
+const uriOfKey = (key: string) => key.replace(/#\d+$/, '');
+/** view Response panel bawah: tab request bila key = blok file multi-request */
+function postOutputBlocks(): void {
+  if (!output.view || output.key === undefined || !/#\d+$/.test(output.key)) return void output.view?.webview.postMessage({ type: 'blocks', blocks: [], active: 0 });
+  const uri = uriOfKey(output.key);
+  const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri);
+  if (doc) void output.view.webview.postMessage({ type: 'blocks', blocks: blockTabs(doc.getText(), uri), active: Number(output.key.slice(uri.length + 1)) });
+}
+/** view Response panel bawah menampilkan key ini (pilih tab request) */
+function showInOutput(key: string): void {
+  output.key = key;
+  void output.view?.webview.postMessage({ type: 'view', view: docs.get(key)?.view });
+  postOutputBlocks();
+}
+listeners.add(postOutputBlocks);
+
 const outputProvider: vscode.WebviewViewProvider = {
   resolveWebviewView(view) {
     output.view = view;
     view.webview.options = { enableScripts: true };
     view.webview.html = webviewPage('panel', { cspSource: view.webview.cspSource, nonce: randomBytes(16).toString('base64') });
     view.onDidDispose(() => { if (output.view === view) output.view = undefined; });
-    view.webview.onDidReceiveMessage(async (m: { type?: string; layout?: unknown; text?: unknown }) => {
+    view.webview.onDidReceiveMessage(async (m: { type?: string; layout?: unknown; text?: unknown; index?: unknown }) => {
       const s = output.key === undefined ? undefined : docs.get(output.key);
       try {
         if (m.type === 'ready') {
           await view.webview.postMessage({ type: 'mode', responseOnly: true });
           await view.webview.postMessage({ type: 'layout', layout: getLayout() });
           await view.webview.postMessage({ type: 'view', view: s?.view });
-        } else if (m.type === 'layout' && isLayout(m.layout)) await setLayout(m.layout);
+          postOutputBlocks();
+        } else if (m.type === 'pickBlock' && typeof m.index === 'number' && output.key !== undefined) showInOutput(`${uriOfKey(output.key)}#${m.index}`);
+        else if (m.type === 'layout' && isLayout(m.layout)) await setLayout(m.layout);
         else if (m.type === 'cancel' && output.key !== undefined) runner.cancel(output.key);
         else if (m.type === 'showRunning') await vscode.commands.executeCommand('httpme.showRunning');
         else if (m.type === 'copyBody' && s && typeof m.text === 'string') await copyBody(s, m.text);
@@ -469,9 +496,30 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   panel.webview.html = webviewPage('panel', { cspSource: panel.webview.cspSource, nonce: randomBytes(16).toString('base64') });
   let written: string | undefined; // teks terakhir yang ditulis dari panel: echo-nya tidak dikirim balik
   let cookieTimer: ReturnType<typeof setTimeout> | undefined;
-  const postState = () => void panel.webview.postMessage({
-    type: 'state', req: parseRequest(doc.getText()), view: s.view, multi: splitBlocks(doc.getText()).length, dirty: doc.isDirty || doc.isUntitled,
-  });
+  // file multi-request: panel mengedit / mengirim blok aktif (tab request); file 1 request = key uri seperti biasa
+  let active = 0;
+  const blockCount = () => splitBlocks(doc.getText()).length;
+  const activeReq = (): ParsedRequest => {
+    const b = splitBlocks(doc.getText());
+    active = Math.min(active, Math.max(0, b.length - 1));
+    return b.length > 1 ? parseRequest(b[active].text) : parseRequest(doc.getText());
+  };
+  const activeKey = () => blockKey(doc, active, blockCount());
+  const cur = () => stateFor(activeKey());
+  const writeActive = (r: ParsedRequest) => (blockCount() > 1 ? replaceBlock(doc.getText(), active, r) : serializeRequest(r));
+  let lastView: View | undefined;
+  const postState = () => {
+    const req = activeReq();
+    lastView = cur().view;
+    void panel.webview.postMessage({ type: 'state', req, view: lastView, blocks: blockTabs(doc.getText(), doc.uri.toString()), active, dirty: doc.isDirty || doc.isUntitled });
+  };
+  /** tab request + view blok aktif ikut berubah saat request mana pun di file ini berjalan / selesai */
+  const postBlocks = () => {
+    if (blockCount() < 2) return;
+    const v = cur().view;
+    void panel.webview.postMessage({ type: 'blocks', blocks: blockTabs(doc.getText(), doc.uri.toString()), active, ...(v !== lastView ? { view: v } : {}) });
+    lastView = v;
+  };
 
   const postMsg = (x: unknown) => void panel.webview.postMessage(x);
   const postDirty = () => postMsg({ type: 'dirty', dirty: doc.isDirty || doc.isUntitled });
@@ -485,37 +533,44 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   };
   const subs = [
     onRunnerChange(postOthers),
-    panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown; layout?: unknown; message?: unknown }) => {
+    onRunnerChange(postBlocks),
+    panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown; layout?: unknown; message?: unknown; index?: unknown }) => {
       try {
         if (await handleScriptsMessage(doc, m, postMsg)) return;
         if (m.type === 'ready') { postMsg({ type: 'layout', layout: getLayout() }); postOthers(); postState(); await postVars(panel); await postCookies(panel, doc.uri.toString()); } else if (m.type === 'varHover' && typeof m.name === 'string' && hooks) {
-          const info = await hooks.hover(m.name, new Map(parseRequest(doc.getText()).vars.map((v) => [v.name, v.value])));
+          const info = await hooks.hover(m.name, new Map(activeReq().vars.map((v) => [v.name, v.value])));
           void panel.webview.postMessage({ type: 'varHover', name: m.name, info });
         } else if (m.type === 'varGoto' && typeof m.name === 'string') await vscode.commands.executeCommand('httpme.gotoVariable', m.name);
         else if (m.type === 'showSecret' && typeof m.env === 'string' && typeof m.key === 'string') await vscode.commands.executeCommand('httpme.showSecret', m.env, m.key);
         else if (m.type === 'edit' && isRequest(m.req)) {
-          written = serializeRequest(m.req);
+          written = blockCount() > 1 ? replaceBlock(doc.getText(), active, m.req) : serializeRequest(m.req);
           await writeDocument(doc, written);
-        } else if (m.type === 'send') await sendRequest(doc, doc.uri.toString(), isRequest(m.req) ? m.req : parseRequest(doc.getText()));
+        } else if (m.type === 'send') await sendRequest(doc, activeKey(), isRequest(m.req) ? m.req : activeReq());
+        else if (m.type === 'pickBlock' && typeof m.index === 'number') {
+          active = m.index;
+          postState();
+          if (getLayout() === 'panel' && cur().view) showInOutput(activeKey());
+        } else if (m.type === 'sendAll') await sendAll(doc);
+        else if (m.type === 'cancelAll') cancelFile(doc.uri.toString());
         else if (m.type === 'openAsText') await openAsText(doc.uri);
         else if (m.type === 'pasteCurl' && typeof m.text === 'string') await importCurlText(m.text, doc);
-        else if (m.type === 'cancel') runner.cancel(doc.uri.toString());
+        else if (m.type === 'cancel') runner.cancel(activeKey());
         else if (m.type === 'showRunning') await vscode.commands.executeCommand('httpme.showRunning');
         else if (m.type === 'save') {
           if (doc.isUntitled) await vscode.commands.executeCommand('httpme.saveUntitled', doc.uri);
           else await saveScripts(doc, true); // script rantai yang berubah + .http
         }
-        else if (m.type === 'copyBody' && typeof m.text === 'string') await copyBody(s, m.text);
+        else if (m.type === 'copyBody' && typeof m.text === 'string') await copyBody(cur(), m.text);
         else if (m.type === 'layout' && isLayout(m.layout)) await setLayout(m.layout);
         else if (m.type === 'warn' && typeof m.message === 'string') void vscode.window.showWarningMessage(m.message);
         else if (m.type === 'beautify') {
-          const r = parseRequest(doc.getText());
+          const r = activeReq();
           const out = beautifyBody(r.body, r.bodyType);
-          if (out.text !== undefined && out.text !== r.body) await writeDocument(doc, serializeRequest({ ...r, body: out.text }));
+          if (out.text !== undefined && out.text !== r.body) await writeDocument(doc, writeActive({ ...r, body: out.text }));
           void panel.webview.postMessage({ type: 'beautifyResult', error: out.error });
         }
-        else if (m.type === 'openBody') await openBody(s);
-        else if (m.type === 'saveBody') await saveBody(s);
+        else if (m.type === 'openBody') await openBody(cur());
+        else if (m.type === 'saveBody') await saveBody(cur());
       } catch (e) {
         reportError(`requestEditor.${m.type}`, e, `http.me: ${errMsg(e)}`);
       }

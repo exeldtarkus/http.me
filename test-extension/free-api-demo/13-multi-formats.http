@@ -1,0 +1,32 @@
+# Multi-request file with different response formats and status codes: each response tab shows its own
+# status (200 / 404 / 500 …) and format (JSON, XML, HTML, text). Use Send All, then switch between the tabs.
+
+### JSON response
+GET {{HTTPBIN_URL}}/json
+
+### XML response
+GET {{HTTPBIN_URL}}/xml
+
+### HTML response
+GET {{HTTPBIN_URL}}/html
+
+### Plain text (robots.txt)
+GET {{HTTPBIN_URL}}/robots.txt
+
+### Send XML body
+POST {{HTTPBIN_URL}}/post
+Content-Type: application/xml
+
+<order id="7">
+  <item sku="A1">Book</item>
+  <total currency="IDR">150000</total>
+</order>
+
+### Not found (404)
+GET {{HTTPBIN_URL}}/status/404
+
+### Server error (500)
+GET {{HTTPBIN_URL}}/status/500
+
+### Slow response (2 s)
+GET {{HTTPBIN_URL}}/delay/2

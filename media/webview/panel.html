@@ -24,7 +24,22 @@
   button { cursor: pointer; }
   :focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
   input, select, textarea { background: var(--input); color: var(--input-fg); border: 1px solid var(--line); border-radius: 3px; }
-  .urlrow { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; }
+  .urlrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px 6px; }
+  /* file multi-request: tab per request (+ Send All) di atas bar URL dan di atas response */
+  .reqblocks { flex-basis: 100%; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .reqblocks[hidden], .resblocks[hidden] { display: none; }
+  .rb-tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+  .rb-tabs button { flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 240px; padding: 4px 10px; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .rb-tabs button:hover { background: var(--hover); color: var(--fg); }
+  .rb-tabs button.on { background: var(--soft); border-color: var(--line); color: var(--fg); }
+  .rb-m { font: 700 10.5px var(--mono); }
+  .rb-l { overflow: hidden; text-overflow: ellipsis; }
+  .rb-s { font: 600 10.5px var(--mono); } .rb-s:empty { display: none; }
+  .rb-s.run { color: var(--muted); animation: blink 1s infinite; }
+  #sendAll { flex: none; }
+  #sendAll.busy { background: var(--err); color: var(--vscode-editor-background); }
+  .resblocks { padding: 8px 12px 0; }
+  .resp.multi { grid-template-rows: auto auto minmax(0, 1fr); }
   /* konsep A: kartu URL (method pill + URL + Send) */
   /* R30: bar datar — method | URL | Send menempel di kanan */
   .urlbox { flex: 1; display: flex; align-items: center; min-width: 0; height: var(--ctl-h); border: 1px solid var(--line); border-radius: 6px; background: var(--input); }
@@ -125,7 +140,7 @@
   body.l-panel .resp, body.l-panel .sash { display: none; }
   /* view panel bawah: hanya response */
   body.only-resp { grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); }
-  body.only-resp .urlrow, body.only-resp #reqTabs, body.only-resp .reqpanes, body.only-resp .sash, body.only-resp .multi { display: none; }
+  body.only-resp .urlrow, body.only-resp #reqTabs, body.only-resp .reqpanes, body.only-resp .sash { display: none; }
   body.resizing { cursor: row-resize; user-select: none; }
   /* scrollbar ikut tema VS Code (bukan scrollbar bawaan berpanah) */
   ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -154,9 +169,6 @@
   .note.warn { color: var(--warn); }
   .note.err { color: var(--err); margin: 0 0 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .vwrap > .mirror .synerr { text-decoration: underline wavy var(--err); text-decoration-skip-ink: none; text-underline-offset: 3px; }
-  .multi { position: fixed; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; background: var(--bg); text-align: center; }
-  .multi[hidden] { display: none; }
-  .multi p { max-width: 460px; margin: 0; }
   .radios { display: flex; flex-wrap: wrap; gap: 4px 22px; margin-bottom: 8px; font-size: 13.5px; }
   .radios label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
   .radios input { margin: 0; accent-color: var(--focus); }
@@ -342,11 +354,8 @@
 </style>
 </head>
 <body>
-<div class="multi" id="multi" hidden role="alert">
-  <p><b id="multiCount"></b> The http.me panel edits files with one request. Open the file as text to send each request with ▶ Send.</p>
-  <button class="btn pri" id="openAsText" type="button">Open as Text</button>
-</div>
 <div class="urlrow">
+  <div class="reqblocks" id="reqBlocks" hidden><div class="rb-tabs" id="rbTabs" role="tablist" aria-label="Requests"></div><button class="btn pri sm" id="sendAll" type="button" title="Send all requests in this file">Send All</button></div>
   <div class="urlbox">
     <button class="mbtn" id="method" type="button" aria-label="Method" aria-haspopup="menu" aria-expanded="false"><span id="methodText"></span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
     <div class="mmenu" id="methodMenu" role="menu" aria-label="Method" hidden></div>
@@ -440,6 +449,7 @@
 </div>
 <div class="sash" id="sash" role="separator" aria-orientation="horizontal" aria-label="Resize request and response" tabindex="0" title="Drag to resize · double-click to reset"></div>
 <section class="resp" aria-label="Response">
+  <div class="rb-tabs resblocks" id="resBlocks" role="tablist" aria-label="Responses" hidden></div>
   <div class="subtabs" role="tablist" aria-label="Response" id="resTabs">
     <button type="button" data-r="rbody" class="on" id="resBodyTab">Body</button>
     <button type="button" data-r="rheaders">Headers<span class="n" id="nResHeaders"></span></button>

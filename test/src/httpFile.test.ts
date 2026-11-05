@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { emptyRequest, parseRequest, serializeRequest, toHttpRequest, toHttpRequestWithFile, splitBlocks, type ParsedRequest , cookieFlags } from '../../src/httpFile';
+import { emptyRequest, parseRequest, serializeRequest, toHttpRequest, toHttpRequestWithFile, splitBlocks, type ParsedRequest , cookieFlags , replaceBlock, blockLabel } from '../../src/httpFile';
 
 test('parseRequest: baris request, header, body; baris lain di atas disimpan apa adanya', () => {
   const r = parseRequest('### Log page view\n# @name logPageView\n\nPOST https://api.test/log?a=1 HTTP/1.1\nContent-Type: application/json\nX-Id: 7\n\n{"a":1}\n');
@@ -184,4 +184,26 @@ test('metadata cookie: # @no-send-cookies / # @no-save-cookies (default kirim & 
   assert.deepEqual([plain.noSendCookies, plain.noSaveCookies], [false, false]);
   assert.deepEqual(cookieFlags(parseRequest('# @no-cookie-jar\nGET https://a\n')), { send: false, save: false });
   assert.deepEqual(cookieFlags(parseRequest('# @no-save-cookies\nGET https://a\n')), { send: true, save: false });
+});
+
+test('review R41: replaceBlock menulis ulang satu blok file multi-request; variabel kepala file & blok lain utuh', () => {
+  const text = '@host = https://a.test\n\n### Satu\nGET {{host}}/1\n\n### Dua\n# @name kedua\nPOST {{host}}/2\nContent-Type: application/json\n\n{"a":1}\n\n### Tiga\nGET {{host}}/3\n';
+  const blocks = splitBlocks(text);
+  const r = parseRequest(blocks[1].text);
+  assert.deepEqual(r.vars, [{ name: 'host', value: 'https://a.test' }], 'blok membawa variabel kepala file');
+  r.url = '{{host}}/dua';
+  r.body = '{"a":2}';
+  assert.equal(replaceBlock(text, 1, r), text.replace('POST {{host}}/2', 'POST {{host}}/dua').replace('{"a":1}', '{"a":2}'));
+  const t1 = parseRequest(blocks[0].text);
+  t1.method = 'DELETE';
+  assert.equal(replaceBlock(text, 0, t1), text.replace('GET {{host}}/1', 'DELETE {{host}}/1'));
+  assert.equal(replaceBlock(text, 9, t1), text, 'indeks tidak ada = teks tetap');
+});
+
+test('review R41: blockLabel = judul ###, lalu # @name, lalu METHOD path', () => {
+  const [a, b, c] = splitBlocks('### Login user\nPOST https://a.test/login\n\n###\n# @name ping\nGET https://a.test/ping\n\n###\nGET https://a.test/users?page=2\n');
+  assert.equal(blockLabel(parseRequest(a.text)), 'Login user');
+  assert.equal(blockLabel(parseRequest(b.text)), 'ping');
+  assert.equal(blockLabel(parseRequest(c.text)), 'GET /users');
+  assert.equal(blockLabel(parseRequest('GET {{host}}/x/y?z=1')), 'GET /x/y');
 });

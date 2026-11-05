@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { formatSize, formatTime, highlightJson, highlightMarkup, parseCsv, prettyJson, prettyXml, responseView, statusClass } from '../../src/response';
+import { tabStatus, formatSize, formatTime, highlightJson, highlightMarkup, parseCsv, prettyJson, prettyXml, responseView, statusClass } from '../../src/response';
 import type { HttpResponse } from '../../src/http';
 
 const res = (p: Partial<HttpResponse>): HttpResponse => ({
@@ -125,4 +125,13 @@ test('responseView: tab Cookies (Set-Cookie semua hop) + Timeline (rantai redire
     { status: 200, url: 'http://bima.test/home', cookies: ['theme'] },
   ]);
   assert.deepEqual(responseView(res({}), 'GET').cookies, []);
+});
+
+test('review R41: tabStatus = status ringkas untuk tab response per request', () => {
+  assert.deepEqual(tabStatus(undefined), { text: '', cls: '' });
+  assert.deepEqual(tabStatus({ kind: 'running' }), { text: '…', cls: 'run' });
+  assert.deepEqual(tabStatus({ kind: 'queued' }), { text: '…', cls: 'run' });
+  assert.deepEqual(tabStatus({ kind: 'response', status: '201 Created', statusClass: 'st-2' }), { text: '201', cls: 'st-2' });
+  assert.deepEqual(tabStatus({ kind: 'error' }), { text: 'Error', cls: 'st-5' });
+  assert.deepEqual(tabStatus({ kind: 'cancelled' }), { text: 'Cancelled', cls: 'st-1' });
 });
