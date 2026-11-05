@@ -497,7 +497,8 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   let written: string | undefined; // teks terakhir yang ditulis dari panel: echo-nya tidak dikirim balik
   let cookieTimer: ReturnType<typeof setTimeout> | undefined;
   // file multi-request: panel mengedit / mengirim blok aktif (tab request); file 1 request = key uri seperti biasa
-  let active = 0;
+  let active = pendingBlock.get(doc.uri.toString()) ?? 0;
+  pendingBlock.delete(doc.uri.toString());
   const blockCount = () => splitBlocks(doc.getText()).length;
   const activeReq = (): ParsedRequest => {
     const b = splitBlocks(doc.getText());
@@ -531,6 +532,11 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
     clearTimeout(scriptsTimer);
     scriptsTimer = setTimeout(() => void scriptsState(doc).then(postMsg, (e) => log().error(errorLine('requestEditor.scriptsState', e))), 200);
   };
+  const picker = {
+    pick: (index: number) => { active = index; postState(); if (getLayout() === 'panel' && cur().view) showInOutput(activeKey()); },
+    get: () => active,
+  };
+  blockPickers.set(doc.uri.toString(), picker);
   const subs = [
     onRunnerChange(postOthers),
     onRunnerChange(postBlocks),
@@ -543,13 +549,11 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
         } else if (m.type === 'varGoto' && typeof m.name === 'string') await vscode.commands.executeCommand('httpme.gotoVariable', m.name);
         else if (m.type === 'showSecret' && typeof m.env === 'string' && typeof m.key === 'string') await vscode.commands.executeCommand('httpme.showSecret', m.env, m.key);
         else if (m.type === 'edit' && isRequest(m.req)) {
-          written = blockCount() > 1 ? replaceBlock(doc.getText(), active, m.req) : serializeRequest(m.req);
+          written = blockCount() > 1 ? replaceBlock(doc.getText(), typeof m.index === 'number' ? m.index : active, m.req) : serializeRequest(m.req);
           await writeDocument(doc, written);
         } else if (m.type === 'send') await sendRequest(doc, activeKey(), isRequest(m.req) ? m.req : activeReq());
         else if (m.type === 'pickBlock' && typeof m.index === 'number') {
-          active = m.index;
-          postState();
-          if (getLayout() === 'panel' && cur().view) showInOutput(activeKey());
+          picker.pick(m.index);
         } else if (m.type === 'sendAll') await sendAll(doc);
         else if (m.type === 'cancelAll') cancelFile(doc.uri.toString());
         else if (m.type === 'openAsText') await openAsText(doc.uri);
@@ -608,6 +612,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
     clearTimeout(scriptsTimer);
     subs.forEach((x) => x.dispose());
     s.panels.delete(panel);
+    if (blockPickers.get(doc.uri.toString()) === picker) blockPickers.delete(doc.uri.toString());
   });
 }
 
@@ -648,8 +653,19 @@ export function releaseDocument(doc: vscode.TextDocument): void {
   }
 }
 
-/** Open in http.me Panel: editor teks .http -> panel request (dokumen yang sama) */
-export async function openInPanel(uri: vscode.Uri): Promise<void> {
+/** panel yang terbuka per file: tab request aktif bisa dipilih dari luar (CodeLens Open in http.me per blok) */
+const blockPickers = new Map<string, { pick: (index: number) => void; get: () => number }>();
+/** blok pilihan untuk panel yang baru akan dibuka */
+const pendingBlock = new Map<string, number>();
+export const activeBlock = (uri: string): number | undefined => blockPickers.get(uri)?.get();
+
+/** Open in http.me Panel: editor teks .http -> panel request (dokumen yang sama); index = tab request blok itu */
+export async function openInPanel(uri: vscode.Uri, index?: number): Promise<void> {
+  const picker = blockPickers.get(uri.toString());
+  if (index !== undefined) {
+    if (picker) picker.pick(index);
+    else pendingBlock.set(uri.toString(), index);
+  }
   await vscode.commands.executeCommand('vscode.openWith', uri, REQUEST_VIEW);
 }
 

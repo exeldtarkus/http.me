@@ -429,7 +429,7 @@
   /** kirim perubahan ke extension host (ditulis ke dokumen .http), digabung tiap 250 ms */
   function changed() {
     clearTimeout(editTimer);
-    editTimer = setTimeout(() => post({ type: 'edit', req }), 250);
+    editTimer = setTimeout(() => post({ type: 'edit', req, index: activeBlock }), 250);
     counts();
     syncMirrors();
   }
@@ -437,7 +437,7 @@
     if (editTimer === undefined) return;
     clearTimeout(editTimer);
     editTimer = undefined;
-    post({ type: 'edit', req });
+    post({ type: 'edit', req, index: activeBlock });
   }
 
   function el(tag, props, children) {
@@ -1241,6 +1241,8 @@
 
   window.addEventListener('message', (e) => {
     const m = e.data;
+    // tab request dipindah dari host (Open in http.me): edit tertunda dikirim dulu ke blok asalnya
+    if (m.blocks && m.active !== activeBlock) flush();
     if (m.type === 'state') {
       docDirty = m.dirty;
       paintSave();

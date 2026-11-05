@@ -1,4 +1,4 @@
-// CodeLens di editor teks .http: ▶ Send per blok, ⟳ Sending… / ■ Cancel saat jalan, hasil (klik = Show Response), ▶ Send All / ■ Cancel All
+// CodeLens di editor teks .http: ▶ Send + Open in http.me per blok, ⟳ Sending… / ■ Cancel saat jalan, hasil (klik = Show Response), ▶ Send All / ■ Cancel All
 import * as vscode from 'vscode';
 import { splitBlocks } from './httpFile';
 import { isRunning, onRunnerChange, viewOf } from './httpEditor';
@@ -27,9 +27,11 @@ export class RequestLenses implements vscode.CodeLensProvider {
       if (v?.kind === 'running' || v?.kind === 'queued') {
         out.push(lens(b.start, v.kind === 'queued' ? `$(clock) ${v.position}` : '$(sync~spin) Sending…', 'httpme.showRunning'));
         out.push(lens(b.start, '■ Cancel', 'httpme.cancelBlock', doc.uri, i));
+        out.push(lens(b.start, 'Open in http.me', 'httpme.openInPanel', doc.uri, i));
         return;
       }
       out.push(lens(b.start, '▶ Send', 'httpme.sendBlock', doc.uri, i));
+      out.push(lens(b.start, 'Open in http.me', 'httpme.openInPanel', doc.uri, i));
       if (v?.kind === 'response') out.push(lens(b.start, `${v.status} · ${v.time} · ${v.size}`, 'httpme.showResponse', keys[i]));
       else if (v?.kind === 'error') out.push(lens(b.start, `✕ ${v.message.slice(0, 80)}`, 'httpme.showLog'));
       else if (v?.kind === 'cancelled') out.push(lens(b.start, 'Cancelled', 'httpme.sendBlock', doc.uri, i));

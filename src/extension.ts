@@ -3,7 +3,7 @@ import { isNewerMinor, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
 import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
-import { applyPanelEdit, importCurlText, saveUntitled, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
+import { applyPanelEdit, importCurlText, saveUntitled, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, activeBlock, registerRequestEditor, runner, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
 import { registerSidebar, type Sidebars } from './sidebar';
 import { historyAction, registerActivity, statusBar, type HistoryAction } from './activity';
@@ -62,6 +62,7 @@ export type HttpmeApi = {
   /** layout response (single / two pane / panel bawah) + view Response panel bawah */
   layout: { get: typeof getLayout; set: typeof setLayout; outputKey: typeof outputKey; outputShown: typeof outputShown };
   history: { list(): ReturnType<typeof listHistory>; action(id: string, a: HistoryAction): Promise<void> };
+  /** tab request aktif panel file multi-request */ activeBlock: typeof activeBlock;
 };
 async function scriptsCall(uri: vscode.Uri, m: ScriptsMessage): Promise<unknown[]> {
   const out: unknown[] = [];
@@ -166,9 +167,9 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
       if (target) await openAsText(target);
     })),
     vscode.commands.registerCommand('httpme.replaceValuesWithVariables', (uri?: vscode.Uri) => run('replaceValuesWithVariables', () => replaceValuesWithVariables(uri))),
-    vscode.commands.registerCommand('httpme.openInPanel', (uri?: vscode.Uri) => run('openInPanel', async () => {
+    vscode.commands.registerCommand('httpme.openInPanel', (uri?: vscode.Uri, index?: number) => run('openInPanel', async () => {
       const target = uri ?? activeUri();
-      if (target) await openInPanel(target);
+      if (target) await openInPanel(target, typeof index === 'number' ? index : undefined);
     })),
   );
 
@@ -178,7 +179,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   void ctx.globalState.update(VERSION_KEY, version);
   if (isNewerMinor(version, previous)) openWhatsNew(ctx);
   return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt, scriptsCall,
-    statusBar, layout: { get: getLayout, set: setLayout, outputKey, outputShown }, history: { list: () => listHistory(historyDir), action: (id, a) => historyAction(historyDir, id, a) } };
+    statusBar, layout: { get: getLayout, set: setLayout, outputKey, outputShown }, history: { list: () => listHistory(historyDir), action: (id, a) => historyAction(historyDir, id, a) }, activeBlock };
 }
 
 export function deactivate(): void {}
