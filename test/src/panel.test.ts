@@ -516,7 +516,8 @@ test('review R41: file multi-request di panel: tab request + Send All (hanya bil
   assert.match(js, /post\(\{ type: allRunning \? 'cancelAll' : 'sendAll' \}\)/);
   assert.match(host, /m\.type === 'pickBlock' && typeof m\.index === 'number'/);
   assert.match(host, /else if \(m\.type === 'sendAll'\) await sendAll\(doc\)/);
-  assert.match(host, /replaceBlock\(doc\.getText\(\), active, m\.req\)/);
+  assert.match(host, /replaceBlock\(doc\.getText\(\), typeof m\.index === 'number' \? m\.index : active, m\.req\)/, 'edit memakai blok asal edit (tab bisa pindah dari host)');
+  assert.match(js, /post\(\{ type: 'edit', req, index: activeBlock \}\)/);
 });
 
 test('review R42: tab request yang belum dikirim tidak menampilkan response request lain (view null, bukan undefined yang hilang di postMessage)', () => {

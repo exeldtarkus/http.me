@@ -16,11 +16,36 @@ async function openText(content: string): Promise<vscode.TextDocument> {
 }
 
 export const tests: ITests = {
+  async 'CodeLens Open in http.me: panel terbuka di tab request blok itu (panel baru maupun yang sudah terbuka)'() {
+    const dir = join(vscode.workspace.workspaceFolders![0].uri.fsPath, 'tmp-open-lens-it');
+    const api = vscode.extensions.getExtension('exeltarkus.httpme')!.exports as { activeBlock(uri: string): number | undefined };
+    try {
+      mkdirSync(dir, { recursive: true });
+      const file = join(dir, 'three.http');
+      writeFileSync(file, '### A\nGET https://a.test/a\n\n### B\nGET https://a.test/b\n\n### C\nGET https://a.test/c\n');
+      const uri = vscode.Uri.file(file);
+      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri));
+      const lens = ((await vscode.commands.executeCommand<vscode.CodeLens[]>('vscode.executeCodeLensProvider', uri)) ?? []).filter((l) => l.command?.title === 'Open in http.me');
+      assert.equal(lens.length, 3);
+      assert.deepEqual(lens[1].command!.arguments!.map(String), [uri.toString(), '1']);
+      await vscode.commands.executeCommand(lens[1].command!.command, ...lens[1].command!.arguments!);
+      await wait(300);
+      const tab = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+      assert.ok(tab instanceof vscode.TabInputCustom && tab.viewType === 'httpme.request', 'panel http.me terbuka');
+      assert.equal(api.activeBlock(uri.toString()), 1, 'tab request B');
+      await vscode.commands.executeCommand('httpme.openInPanel', uri, 2);
+      await wait(200);
+      assert.equal(api.activeBlock(uri.toString()), 2, 'panel yang sudah terbuka pindah ke tab C');
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
   async 'CodeLens ▶ Send per blok + ▶ Send All; Send blok menampilkan status di lens'() {
     const srv = await startServer(async (req) => ({ status: req.url === '/b' ? 201 : 200, headers: { 'content-type': 'text/plain' }, body: 'ok' }));
     try {
       const doc = await openText(`### A\nGET ${srv.url}/a\n\n### B\nPOST ${srv.url}/b\n`);
-      assert.deepEqual(await titles(doc.uri), ['0:▶ Send All (2)', '0:▶ Send', '3:▶ Send']);
+      assert.deepEqual(await titles(doc.uri), ['0:▶ Send All (2)', '0:▶ Send', '0:Open in http.me', '3:▶ Send', '3:Open in http.me']);
       await vscode.commands.executeCommand('httpme.sendBlock', doc.uri, 1);
       await wait(100);
       const t = await titles(doc.uri);
@@ -81,6 +106,8 @@ export const tests: ITests = {
     const dir = join(vscode.workspace.workspaceFolders![0].uri.fsPath, 'tmp-layout-it');
     try {
       assert.equal(api.layout.get(), 'panel', 'bawaan Bottom panel, juga untuk Send dari file .http teks');
+      // dokumen Response sisa test sebelumnya (closeAllEditors bisa tertahan dokumen untitled yang dirty)
+      await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputText && t.input.uri.path === '/Response'));
       mkdirSync(dir, { recursive: true });
       const file = join(dir, 'one.http');
       writeFileSync(file, `GET ${srv.url}/x\n`);
