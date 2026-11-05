@@ -4,17 +4,26 @@ const { spawn } = require('node:child_process'); const path = require('node:path
 const { chromium } = require(process.env.PW || 'playwright-core');
 const root = path.join(__dirname, '..', '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** matikan seluruh grup proses VS Code (anak-anak Electron ikut) dan tunggu sampai benar-benar mati: sisa proses membuat run berikutnya terhubung ke jendela lama */
+async function stop(child) {
+  for (const sig of ['SIGTERM', 'SIGKILL']) {
+    try { process.kill(-child.pid, sig); } catch { return; } // grup sudah tidak ada
+    for (let i = 0; i < 30; i++) { await sleep(100); try { process.kill(-child.pid, 0); } catch { return; } }
+  }
+}
+
 const vscodeDir = fs.readdirSync(path.join(root, '.vscode-test')).filter((d) => d.startsWith('vscode-')).sort().pop();
 delete process.env.ELECTRON_RUN_AS_NODE;
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'httpme-ui-'));
 const dir = path.join(root, 'test-extension', 'zz-ui-snippet'); const file = path.join(dir, 'snippet-ui.http');
 fs.mkdirSync(dir, { recursive: true });
 fs.writeFileSync(file, 'POST https://api.example.test/items?x=1\nContent-Type: application/json\n\n{\n  "name": "demo",\n  "n": [1, 2]\n}\n');
+const PORT = 9400 + Math.floor(Math.random() * 500);
 const results = []; const check = (name, ok, detail = '') => { results.push(ok); console.log(ok ? 'ok  ' : 'FAIL', name, detail); };
 
 (async () => {
-  const child = spawn(path.join(root, '.vscode-test', vscodeDir, 'code'), ['--remote-debugging-port=9351', `--user-data-dir=${userData}`, `--extensionDevelopmentPath=${root}`, '--disable-extensions', '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes', '--disable-gpu', '--no-sandbox', path.join(root, 'test-extension')], { stdio: 'ignore' });
-  let b; for (let i = 0; i < 60; i++) { try { b = await chromium.connectOverCDP('http://127.0.0.1:9351'); break; } catch { await sleep(1000); } }
+  const child = spawn(path.join(root, '.vscode-test', vscodeDir, 'code'), [`--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, `--extensionDevelopmentPath=${root}`, '--disable-extensions', '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes', '--disable-gpu', '--no-sandbox', path.join(root, 'test-extension')], { stdio: 'ignore', detached: true });
+  let b; for (let i = 0; i < 60; i++) { try { b = await chromium.connectOverCDP(`http://127.0.0.1:${PORT}`); break; } catch { await sleep(1000); } }
   let page; for (let i = 0; i < 60 && !page; i++) { page = b.contexts()[0].pages().find((p) => /workbench/.test(p.url())); await sleep(500); }
   await page.waitForSelector('.monaco-workbench'); await sleep(3000);
   const palette = async (text) => { await page.keyboard.press('F1'); await sleep(500); await page.keyboard.type(text); await sleep(900); await page.keyboard.press('Enter'); await sleep(1500); };
@@ -73,7 +82,7 @@ const results = []; const check = (name, ok, detail = '') => { results.push(ok);
     await ui.press('#cpText', 'Escape');
     check('Escape menutup panel', !!(await until(panelHidden)));
   } finally {
-    await b.close(); child.kill('SIGTERM'); fs.rmSync(dir, { recursive: true, force: true });
+    await b.close().catch(() => undefined); await stop(child); fs.rmSync(dir, { recursive: true, force: true });
   }
   const bad = results.filter((x) => !x).length;
   console.log(bad ? `FAIL: ${bad} cek gagal` : 'PASS: panel Code snippet');

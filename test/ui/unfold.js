@@ -6,6 +6,14 @@ const pwPath = process.env.PW || 'playwright-core';
 const { chromium } = require(pwPath);
 const root = path.join(__dirname, '..', '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** matikan seluruh grup proses VS Code (anak-anak Electron ikut) dan tunggu sampai benar-benar mati: sisa proses membuat run berikutnya terhubung ke jendela lama */
+async function stop(child) {
+  for (const sig of ['SIGTERM', 'SIGKILL']) {
+    try { process.kill(-child.pid, sig); } catch { return; } // grup sudah tidak ada
+    for (let i = 0; i < 30; i++) { await sleep(100); try { process.kill(-child.pid, 0); } catch { return; } }
+  }
+}
+
 const vscodeDir = fs.readdirSync(path.join(root, '.vscode-test')).filter((d) => d.startsWith('vscode-')).sort().pop();
 if (!vscodeDir) throw new Error('VS Code belum diunduh: jalankan npm run test:it sekali');
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'httpme-ui-'));
@@ -13,7 +21,7 @@ delete process.env.ELECTRON_RUN_AS_NODE;
 const SECTIONS = ['Collections', 'Environments', 'Cookies']; // Open dibuka saat start (tidak bisa ditutup semua oleh VS Code)
 
 async function launch(port) {
-  const child = spawn(path.join(root, '.vscode-test', vscodeDir, 'code'), [`--remote-debugging-port=${port}`, `--user-data-dir=${userData}`, `--extensionDevelopmentPath=${root}`, '--disable-extensions', '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes', '--disable-gpu', '--no-sandbox', path.join(root, 'test-extension')], { stdio: 'ignore' });
+  const child = spawn(path.join(root, '.vscode-test', vscodeDir, 'code'), [`--remote-debugging-port=${port}`, `--user-data-dir=${userData}`, `--extensionDevelopmentPath=${root}`, '--disable-extensions', '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes', '--disable-gpu', '--no-sandbox', path.join(root, 'test-extension')], { stdio: 'ignore', detached: true });
   let b; for (let i = 0; i < 60; i++) { try { b = await chromium.connectOverCDP(`http://127.0.0.1:${port}`); break; } catch { await sleep(1000); } }
   if (!b) throw new Error('CDP tidak tersedia');
   let page; for (let i = 0; i < 60 && !page; i++) { page = b.contexts()[0].pages().find((p) => /workbench/.test(p.url())); await sleep(500); }
@@ -35,7 +43,7 @@ const SAMPLER = `(() => {
   requestAnimationFrame(f); })()`;
 
 (async () => {
-  const s = await launch(9341);
+  const s = await launch(9400 + Math.floor(Math.random() * 500));
   await s.page.click('[aria-label="Http.Me"], .activitybar [aria-label*="Http" i]'); await s.page.waitForSelector('.pane-header'); await sleep(1500);
   for (const t of SECTIONS) if (await isOpen(s.page, t)) { await hdr(s.page, t).click(); await sleep(300); }
   console.log('FASE 1: ditutup', JSON.stringify(await Promise.all(SECTIONS.map((t) => isOpen(s.page, t)))));
@@ -62,5 +70,5 @@ const SAMPLER = `(() => {
     if (!ok) bad++;
   }
   console.log(bad ? `FAIL: ${bad} section blank / loading tidak tertutup` : 'PASS: tidak ada blank, loading tertutup setelah data tampil');
-  await s.b.close(); s.child.kill('SIGTERM'); process.exitCode = bad ? 1 : 0;
+  await s.b.close().catch(() => undefined); await stop(s.child); process.exitCode = bad ? 1 : 0;
 })().catch((e) => { console.error('ERR', e.message); process.exitCode = 2; }).finally(() => setTimeout(() => process.exit(process.exitCode ?? 0), 1500));
