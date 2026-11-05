@@ -3,7 +3,7 @@ import { isNewerMinor, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
 import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
-import { applyPanelEdit, handleAuthMessage, importCurlText, saveUntitled, setAuthHooks, setOAuthStore, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, activeBlock, registerRequestEditor, runner, quickRun, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
+import { applyPanelEdit, handleAuthMessage, importCurlText, saveUntitled, setAuthHooks, setOAuthStore, handleSnippet, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, activeBlock, registerRequestEditor, runner, quickRun, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
 import { registerSidebar, type Sidebars } from './sidebar';
 import { historyAction, registerActivity, statusBar, type HistoryAction } from './activity';
@@ -19,7 +19,7 @@ import { hoverInfo } from './diagnostics';
 import { resolveRequest } from './vars';
 import { varize, varizeCandidates } from './varize';
 import { Cookies, registerCookieCommands, registerLoginStatus } from './cookies';
-import { cookieFlags } from './httpFile';
+import { cookieFlags, parseRequest } from './httpFile';
 import { sendUri, setSessionHooks } from './httpEditor';
 
 // versi terakhir yang pernah aktif, untuk What's New sekali per minor
@@ -60,6 +60,8 @@ export type HttpmeApi = {
   scriptsCall(uri: vscode.Uri, m: ScriptsMessage): Promise<unknown[]>;
   /** pesan tab Authorization seperti dari webview; kembalikan pesan balasan host */
   authCall(uri: vscode.Uri, m: Record<string, unknown>): Promise<unknown[]>;
+  /** panel Code snippet seperti dari webview (tanpa Copy: dialog konfirmasi secret bersifat modal); kembalikan pesan balasan host */
+  snippetCall(uri: vscode.Uri, opts: unknown, request?: import('./httpFile').ParsedRequest): Promise<unknown[]>;
   statusBar: typeof statusBar;
   /** layout response (single / two pane / panel bawah) + view Response panel bawah */
   layout: { get: typeof getLayout; set: typeof setLayout; outputKey: typeof outputKey; outputShown: typeof outputShown };
@@ -74,6 +76,13 @@ async function scriptsCall(uri: vscode.Uri, m: ScriptsMessage): Promise<unknown[
 async function authCall(uri: vscode.Uri, m: Record<string, unknown>): Promise<unknown[]> {
   const out: unknown[] = [];
   await handleAuthMessage(await vscode.workspace.openTextDocument(uri), m, (x) => out.push(x));
+  return out;
+}
+
+async function snippetCall(uri: vscode.Uri, opts: unknown, request?: import('./httpFile').ParsedRequest): Promise<unknown[]> {
+  const out: unknown[] = [];
+  const doc = await vscode.workspace.openTextDocument(uri);
+  await handleSnippet(doc, 'snippet', opts, request ?? parseRequest(doc.getText()), (x) => out.push(x));
   return out;
 }
 
@@ -203,7 +212,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   const previous = ctx.globalState.get<string>(VERSION_KEY);
   void ctx.globalState.update(VERSION_KEY, version);
   if (isNewerMinor(version, previous)) openWhatsNew(ctx);
-  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt, scriptsCall, authCall,
+  return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt, scriptsCall, authCall, snippetCall,
     statusBar, layout: { get: getLayout, set: setLayout, outputKey, outputShown }, history: { list: () => listHistory(historyDir), action: (id, a) => historyAction(historyDir, id, a) }, activeBlock };
 }
 
