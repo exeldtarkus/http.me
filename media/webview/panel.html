@@ -178,6 +178,7 @@
   #bodyText { flex: 1; min-height: 90px; width: 100%; resize: none; border: 0; border-radius: 0; background: transparent; font: 12.5px/1.6 var(--mono); padding: 6px 12px; tab-size: 2; white-space: pre; overflow: auto; }
   .bodyed .vwrap.area { min-height: 0; }
   .bodyed .vwrap.area > .mirror { white-space: pre; overflow-wrap: normal; }
+  .jx-bm { outline: 1px solid var(--vscode-editorBracketMatch-border, var(--muted)); background: var(--vscode-editorBracketMatch-background, transparent); border-radius: 2px; }
   .jx-k { color: var(--code-key); } .jx-s { color: var(--code-str); } .jx-n { color: var(--code-num); } .jx-l { color: var(--j-k); }
   #bodyText:focus { outline: none; }
   .sc-editor:focus-within { border-color: var(--focus); outline: none; }
@@ -199,6 +200,18 @@
   .code .k { color: var(--code-key); } .code .s { color: var(--code-str); } .code .n { color: var(--code-num); }
   .code.error { color: var(--err); }
   .code .c { color: var(--muted); font-style: italic; }
+  /* lipatan JSON response: panah di indentasi (lebar 0, teks tidak bergeser), isi blok disembunyikan saat .c */
+  pre.code.json { padding-left: 14px; }
+  .code .ft { position: relative; display: inline-block; width: 0; font-style: normal; user-select: none; }
+  .code .ft::before { content: ''; position: absolute; left: -13px; top: -11px; width: 12px; height: 14px; cursor: pointer; opacity: .55;
+    background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 6l3.5 3.5L11.5 6' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px no-repeat; }
+  .code .ft:hover::before { opacity: 1; }
+  .code .f.shut > .ft::before { transform: rotate(-90deg); }
+  .code .f.shut > .fi { display: none; }
+  .code .fs { display: none; cursor: pointer; user-select: none; }
+  .code .f.shut > .fs { display: inline; }
+  .code .fs::before { content: ' … ' attr(data-n) ' '; color: var(--muted); font-style: italic; }
+  .code .fs:hover::before { color: var(--fg); }
   .fmt { font: 600 10.5px var(--mono); letter-spacing: .04em; }
   table.csv { border-collapse: collapse; font: 12px var(--mono); white-space: pre-wrap; }
   table.csv th, table.csv td { border: 1px solid var(--line); padding: 2px 8px; text-align: left; vertical-align: top; }
@@ -418,7 +431,7 @@
     <button type="button" data-r="rtimeline">Timeline</button>
     <button type="button" data-r="rtests">Tests<span class="n" id="nTests"></span></button>
     <button type="button" data-r="rconsole">Console<span class="n" id="nConsole"></span></button>
-    <div class="right" id="meta"><button class="icon-btn" id="copyBody" type="button" title="Copy response body" aria-label="Copy response body" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="9" rx="1"/><path d="M3.5 10.5h-1v-8a1 1 0 0 1 1-1h7v1"/></svg></button><button type="button" class="loading inline" id="others" hidden title="Show running requests"><span class="spin"><i></i><i></i><i></i></span><span id="othersText"></span></button><span class="fmt" id="fmt"></span><span class="status" id="st"></span><span id="ms"></span><span id="sz"></span></div>
+    <div class="right" id="meta"><button class="icon-btn" id="expandAll" type="button" title="Expand all" aria-label="Expand all" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6l3.5-3.5L11.5 6M4.5 10l3.5 3.5 3.5-3.5"/></svg></button><button class="icon-btn" id="collapseAll" type="button" title="Collapse all (Alt+click an arrow to fold its children)" aria-label="Collapse all" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.5L8 6l3.5-3.5M4.5 13.5L8 10l3.5 3.5"/></svg></button><button class="icon-btn" id="copyBody" type="button" title="Copy response body" aria-label="Copy response body" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="9" rx="1"/><path d="M3.5 10.5h-1v-8a1 1 0 0 1 1-1h7v1"/></svg></button><button type="button" class="loading inline" id="others" hidden title="Show running requests"><span class="spin"><i></i><i></i><i></i></span><span id="othersText"></span></button><span class="fmt" id="fmt"></span><span class="status" id="st"></span><span id="ms"></span><span id="sz"></span></div>
   </div>
   <div class="loading" id="loading" hidden aria-live="polite">
     <div class="bar2"></div>

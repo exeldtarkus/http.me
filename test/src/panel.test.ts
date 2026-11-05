@@ -18,6 +18,8 @@ const panel = require(join(__dirname, '..', '..', '..', 'media', 'webview', 'pan
   enterIndent(text: string, caret: number): string;
   layoutGrid(layout: string, size: number | undefined, total: number): { rows: string; cols: string };
   markSegments(segs: { text: string; name?: string; cls?: string }[], start: number, end: number): { text: string; name?: string; cls?: string; err?: boolean }[];
+  foldJson(html: string): string;
+  bracketMatch(text: string, caret: number): [number, number] | undefined;
 };
 type Vars = { ok: string[]; nulls: string[]; names: string[] };
 
@@ -401,4 +403,42 @@ test('review R34: bar URL tanpa garis ganda; method = pill + menu custom berwarn
   assert.doesNotMatch(html, /border-right: 1px solid var\(--line\); border-radius: 5px 0 0 5px/, 'garis pemisah method dihapus');
   assert.match(js, /role: 'menuitemradio'/);
   assert.match(js, /ArrowDown/);
+});
+
+test('review R36: foldJson membungkus objek / array multi-baris jadi blok yang bisa dilipat, jumlah isi lewat data-n (tidak ikut textContent)', () => {
+  const html = '{\n  <span class="k">"a"</span>: [\n    1,\n    {}\n  ],\n  <span class="k">"b"</span>: {\n    <span class="k">"c"</span>: 2\n  }\n}';
+  const out = panel.foldJson(html);
+  assert.equal(out,
+    '<span class="f"><i class="ft"></i>{<span class="fi">\n' +
+    '  <span class="f"><i class="ft"></i><span class="k">"a"</span>: [<span class="fi">\n    1,\n    {}\n  </span><span class="fs" data-n="2 items"></span>]</span>,\n' +
+    '  <span class="f"><i class="ft"></i><span class="k">"b"</span>: {<span class="fi">\n    <span class="k">"c"</span>: 2\n  </span><span class="fs" data-n="1 key"></span>}</span>\n' +
+    '</span><span class="fs" data-n="2 keys"></span>}</span>');
+  assert.equal(out.replace(/<[^>]+>/g, ''), html.replace(/<[^>]+>/g, ''), 'teks yang disalin tetap JSON asli');
+  assert.equal(panel.foldJson('[]'), '[]', 'kosong satu baris tidak dilipat');
+  assert.equal(panel.foldJson('"x {"'), '"x {"');
+});
+
+test('review R36: bracketMatch: pasangan kurung di kursor (sebelum / sesudah), abaikan string dan {{var}}', () => {
+  const t = '{"a": [1, "]{"], "v": {{x}}}';
+  assert.deepEqual(panel.bracketMatch(t, 0), [0, t.length - 1], 'kursor sebelum {');
+  assert.deepEqual(panel.bracketMatch(t, t.length), [0, t.length - 1], 'kursor sesudah }');
+  assert.deepEqual(panel.bracketMatch(t, 6), [6, 14], 'kursor sebelum [');
+  assert.deepEqual(panel.bracketMatch(t, 15), [6, 14], 'kursor sesudah ]');
+  assert.equal(panel.bracketMatch(t, 3), undefined, 'bukan di kurung');
+  assert.equal(panel.bracketMatch(t, 12), undefined, 'kurung di dalam string');
+  assert.equal(panel.bracketMatch('{ [ }', 0), undefined, 'tidak berpasangan');
+});
+
+test('review R36: tombol Expand all / Collapse all di response, CSS lipatan + highlight pasangan kurung body', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const html = fs.readFileSync(join(dir, 'panel.html'), 'utf8');
+  const js = fs.readFileSync(join(dir, 'panel.js'), 'utf8');
+  assert.match(html, /<button class="icon-btn" id="expandAll" type="button" title="Expand all" aria-label="Expand all" hidden>/);
+  assert.match(html, /<button class="icon-btn" id="collapseAll" type="button" title="Collapse all \(Alt\+click an arrow to fold its children\)" aria-label="Collapse all" hidden>/);
+  assert.match(html, /\.code \.f\.shut > \.fi \{ display: none; \}/);
+  assert.match(html, /\.code \.fs::before \{ content: ' … ' attr\(data-n\) ' ';/);
+  assert.match(html, /\.jx-bm \{/);
+  assert.match(js, /res\.format === 'JSON' \? foldJson\(res\.bodyHtml\)/);
+  assert.match(js, /bracketMatch\(input\.value, input\.selectionStart\)/);
 });

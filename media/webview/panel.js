@@ -309,7 +309,44 @@
     return `\n${/^ */.exec(line)[0]}${/[{[]\s*$/.test(line) ? '  ' : ''}`;
   }
 
-  const api = { layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
+  /** HTML JSON rapi (host, satu baris per item) -> blok .f yang bisa dilipat; jumlah isi di data-n supaya Copy (textContent) tetap JSON asli */
+  function foldJson(html) {
+    const stack = [];
+    const lines = html.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lead = /^ */.exec(line)[0];
+      const rest = line.slice(lead.length);
+      if (/^[}\]]/.test(rest) && stack.length) {
+        const n = stack.pop();
+        const unit = rest[0] === '}' ? (n === 1 ? 'key' : 'keys') : (n === 1 ? 'item' : 'items');
+        lines[i] = `${lead}</span><span class="fs" data-n="${n} ${unit}"></span>${rest[0]}</span>${rest.slice(1)}`;
+        continue;
+      }
+      if (stack.length) stack[stack.length - 1]++;
+      if (/[{[]$/.test(rest)) { stack.push(0); lines[i] = `${lead}<span class="f"><i class="ft"></i>${rest}<span class="fi">`; }
+    }
+    return lines.join('\n');
+  }
+  /** kurung { } [ ] di kursor (sebelum lalu sesudah) + pasangannya; kurung di dalam string / variabel diabaikan */
+  function bracketMatch(text, caret) {
+    const pair = new Map();
+    const stack = [];
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (c === '{' && text[i + 1] === '{') { const e = text.indexOf('}}', i + 2); if (e > 0) { i = e + 1; continue; } }
+      if (c === '"') { i++; while (i < text.length && text[i] !== '"' && text[i] !== '\n') i += text[i] === '\\' ? 2 : 1; continue; }
+      if (c === '{' || c === '[') stack.push(i);
+      else if (c === '}' || c === ']') {
+        const o = stack.pop();
+        if (o !== undefined && (text[o] === '{') === (c === '}')) { pair.set(o, i); pair.set(i, o); }
+      }
+    }
+    for (const at of [caret - 1, caret]) if (pair.has(at)) { const b = pair.get(at); return at < b ? [at, b] : [b, at]; }
+    return undefined;
+  }
+
+  const api = { foldJson, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -488,8 +525,11 @@
     // shortcut: warna JSON hanya untuk body <= 200 KB, lebih besar teks polos (mirror tiap ketikan)
     if (input.id === 'bodyText' && req && req.bodyType === 'json' && input.value.length <= 200000) segs = applyRanges(segs, jsonRanges(input.value), 'j');
     if (err) segs = markSegments(segs, err.start, err.end);
+    // pasangan kurung di kursor (hanya saat body difokus)
+    const bm = input.id === 'bodyText' && document.activeElement === input && input.value.length <= 200000 ? bracketMatch(input.value, input.selectionStart) : undefined;
+    if (bm) segs = applyRanges(segs, bm.map((p) => ({ start: p, end: p + 1, val: true })), 'bm');
     m.replaceChildren(...segs.map((s) => {
-      if (s.err || s.j) return el('span', { className: `${s.err ? 'synerr ' : ''}${s.j ? `jx-${s.j}` : ''}`, textContent: s.text });
+      if (s.err || s.j || s.bm) return el('span', { className: `${s.err ? 'synerr ' : ''}${s.j ? `jx-${s.j} ` : ''}${s.bm ? 'jx-bm' : ''}`.trim(), textContent: s.text });
       if (!s.name) return document.createTextNode(s.text);
       const t = el('span', { className: `tok t-${s.cls}`, textContent: s.text });
       t.dataset.name = s.name;
@@ -498,7 +538,7 @@
     // input satu baris: teks lebih panjang dari field ikut bergeser sesuai scroll input
     m.scrollTop = input.scrollTop;
     m.scrollLeft = input.scrollLeft;
-    input.parentNode?.classList.toggle('tokd', segs.some((s) => s.name || s.err || s.j));
+    input.parentNode?.classList.toggle('tokd', segs.some((s) => s.name || s.err || s.j || s.bm));
   }
   function syncMirrors() {
     for (const input of mirrors) {
@@ -615,6 +655,8 @@
 
   mirror($('url'));
   mirror($('bodyText'));
+  document.addEventListener('selectionchange', () => { if (document.activeElement === $('bodyText')) paint($('bodyText'), $('bodyText')._mirror); });
+  $('bodyText').addEventListener('blur', () => paint($('bodyText'), $('bodyText')._mirror));
   $('varPop').addEventListener('mouseleave', () => leaveToken());
   document.addEventListener('keyup', (e) => { if (e.key === 'Control' || e.key === 'Meta') document.querySelectorAll('.tok.link, .linkable').forEach((x) => x.classList.remove('link', 'linkable')); });
   // menu method custom: klik / Enter memilih, panah atas-bawah pindah item, Escape menutup
@@ -726,7 +768,10 @@
     $('sz').textContent = res ? res.size : '';
     $('resEmpty').hidden = !!view && !running;
     $('resBody').className = `code${view?.kind === 'error' ? ' error' : ''}`;
-    if (res) $('resBody').innerHTML = res.bodyHtml; // sudah di-escape di host (response.ts)
+    const isJson = res?.format === 'JSON';
+    $('resBody').classList.toggle('json', isJson);
+    $('expandAll').hidden = $('collapseAll').hidden = !isJson;
+    if (res) $('resBody').innerHTML = res.format === 'JSON' ? foldJson(res.bodyHtml) : res.bodyHtml; // sudah di-escape di host (response.ts)
     else $('resBody').textContent = view?.kind === 'error' ? view.message : view?.kind === 'cancelled' ? 'The request was cancelled.' : '';
     $('resHeaders').replaceChildren(...(res ? res.headers : []).map(([k, v]) => el('tr', {}, [el('td', { textContent: k }), el('td', { textContent: v })])));
     $('nResHeaders').textContent = res ? String(res.headers.length) : '';
@@ -787,6 +832,15 @@
   };
   $('others').onclick = () => post({ type: 'showRunning' });
   // Copy: teks body yang tampil; body > 1 MB diambil utuh dari file cache oleh host
+  // lipatan JSON: klik panah / ringkasan = buka-tutup; Alt+klik = ikut semua turunannya
+  $('resBody').onclick = (e) => {
+    const f = e.target.closest('.ft, .fs')?.closest('.f');
+    if (!f) return;
+    const fold = !f.classList.contains('shut');
+    for (const x of e.altKey ? [f, ...f.querySelectorAll('.f')] : [f]) x.classList.toggle('shut', fold);
+  };
+  $('expandAll').onclick = () => $('resBody').querySelectorAll('.f.shut').forEach((x) => x.classList.remove('shut'));
+  $('collapseAll').onclick = () => $('resBody').querySelectorAll('.f .f').forEach((x) => x.classList.add('shut')); // akar tetap terbuka
   $('copyBody').onclick = () => post({ type: 'copyBody', text: $('resBody').textContent });
   $('openBody').onclick = () => post({ type: 'openBody' });
   // Save aktif bila .http atau script rantainya belum disimpan
