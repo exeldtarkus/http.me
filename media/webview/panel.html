@@ -29,9 +29,20 @@
   /* R30: bar datar — method | URL | Send menempel di kanan */
   .urlbox { flex: 1; display: flex; align-items: center; min-width: 0; height: var(--ctl-h); border: 1px solid var(--line); border-radius: 6px; background: var(--input); }
   .urlbox:focus-within { border-color: var(--focus); }
-  /* method = pill berwarna sesuai method */
-  .urlbox select { align-self: stretch; min-width: 86px; border: 0; border-right: 1px solid var(--line); border-radius: 5px 0 0 5px; background: transparent; font: 700 12.5px var(--mono); padding: 0 6px 0 10px; cursor: pointer; }
-  .urlbox select:hover { background: var(--hover); }
+  /* fokus cukup ditandai border .urlbox; outline field di dalamnya bikin garis ganda */
+  .urlbox input:focus-visible, .urlbox button:focus-visible { outline: none; }
+  /* method = pill berlatar tint warna method; popup = menu custom (popup <select> tidak bisa diwarnai per opsi) */
+  .mbtn { flex: none; display: inline-flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 84px; height: calc(var(--ctl-h) - 12px); margin-left: 6px; padding: 0 6px 0 10px; border: 1px solid transparent; border-radius: 4px; background: color-mix(in srgb, currentColor 14%, transparent); font: 700 12px var(--mono); letter-spacing: .02em; }
+  .mbtn:hover, .mbtn[aria-expanded="true"] { background: color-mix(in srgb, currentColor 24%, transparent); }
+  .mbtn:focus-visible { border-color: currentColor; }
+  .mbtn svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .8; transition: transform .12s; }
+  .mbtn[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .mmenu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 8; display: flex; flex-direction: column; gap: 1px; min-width: 150px; padding: 4px; border: 1px solid var(--vscode-menu-border, var(--line)); border-radius: 6px; background: var(--vscode-menu-background, var(--bg)); box-shadow: 0 4px 14px var(--vscode-widget-shadow, #0006); }
+  .mmenu[hidden] { display: none; }
+  .mmenu button { display: flex; align-items: center; justify-content: space-between; padding: 5px 10px; border: 0; border-radius: 4px; background: none; font: 700 12px var(--mono); letter-spacing: .02em; text-align: left; }
+  .mmenu button:hover, .mmenu button:focus-visible { background: var(--vscode-menu-selectionBackground, var(--hover)); outline: none; }
+  .mmenu button[aria-checked="true"] { background: color-mix(in srgb, currentColor 14%, transparent); }
+  .mmenu button[aria-checked="true"]::after { content: '\2713'; font-weight: 400; }
   .urlbox input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; padding: 0 12px; font: 13px var(--mono); }
   .m-GET { color: var(--m-get); } .m-POST { color: var(--m-post); } .m-PUT { color: var(--m-put); } .m-PATCH { color: var(--m-patch); }
   .m-DELETE { color: var(--m-delete); } .m-HEAD { color: var(--m-head); } .m-OPTIONS { color: var(--m-options); } .m-QUERY { color: var(--m-query); }
@@ -308,7 +319,8 @@
 </div>
 <div class="urlrow">
   <div class="urlbox">
-    <select id="method" aria-label="Method"></select>
+    <button class="mbtn" id="method" type="button" aria-label="Method" aria-haspopup="menu" aria-expanded="false"><span id="methodText"></span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
+    <div class="mmenu" id="methodMenu" role="menu" aria-label="Method" hidden></div>
     <input id="url" aria-label="URL" spellcheck="false" placeholder="https://api.example.com/path">
     <span class="matching" id="matching" hidden>Matching values with Environment variables…</span>
     <button class="btn pri" id="send" type="button" aria-label="Send request" title="Send (Ctrl+Enter)"><span id="sendIdle"><span id="sendText">Send</span></span><span id="sendLabel" hidden>Cancel</span></button>
