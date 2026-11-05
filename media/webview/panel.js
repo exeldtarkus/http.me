@@ -2,6 +2,110 @@
 // UI hanya jalan di webview (acquireVsCodeApi ada). State request dipegang extension host, panel mengirim 'edit'.
 (function () {
   const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'QUERY'];
+  const authField = (name, label, kind = 'text', options = {}) => ({ name, label, kind, ...options });
+  const AUTH_FORMS = [
+    { type: 'inherit', label: 'Inherit from parent', description: 'Use the closest _auth.http file above this request.', fields: [] },
+    { type: 'none', label: 'No Auth', description: 'Do not add authentication to this request.', fields: [] },
+    { type: 'apiKey', label: 'API Key', description: 'Send a key in a request header or query parameter.', fields: [
+      authField('key', 'Key name'), authField('value', 'Value', 'password', { secret: true }),
+      authField('in', 'Add to', 'select', { options: [['header', 'Header'], ['query', 'Query Params']], default: 'header' }),
+    ] },
+    { type: 'basic', label: 'Basic Auth', description: 'Send a username and password using HTTP Basic authentication.', fields: [
+      authField('username', 'Username'), authField('password', 'Password', 'password', { secret: true }),
+    ] },
+    { type: 'bearer', label: 'Bearer Token', description: 'Send a bearer token in the Authorization header.', fields: [
+      authField('token', 'Token', 'password', { secret: true }),
+    ] },
+    { type: 'digest', label: 'Digest Auth', description: 'Configure HTTP Digest authentication.', fields: [
+      authField('username', 'Username'), authField('password', 'Password', 'password', { secret: true }),
+      authField('retry', 'Retry once after 401', 'checkbox', { placement: 'side', default: 'true' }),
+      authField('algorithm', 'Algorithm', 'select', { advanced: true, options: [['MD5', 'MD5'], ['MD5-sess', 'MD5-sess'], ['SHA-256', 'SHA-256'], ['SHA-256-sess', 'SHA-256-sess'], ['SHA-512-256', 'SHA-512-256']] }),
+      authField('qop', 'Quality of protection', 'select', { advanced: true, options: [['auth', 'auth'], ['auth-int', 'auth-int']] }),
+      authField('realm', 'Realm', 'text', { advanced: true }), authField('nonce', 'Nonce', 'text', { advanced: true }),
+      authField('nc', 'Nonce count', 'text', { advanced: true }), authField('cnonce', 'Client nonce', 'text', { advanced: true }),
+      authField('opaque', 'Opaque', 'text', { advanced: true }),
+    ] },
+    { type: 'hawk', label: 'Hawk Authentication', description: 'Configure a Hawk message authentication code.', fields: [
+      authField('id', 'ID'), authField('key', 'Key', 'password', { secret: true }),
+      authField('algorithm', 'Algorithm', 'select', { options: [['sha256', 'SHA-256'], ['sha1', 'SHA-1']], default: 'sha256' }),
+      authField('user', 'User', 'text', { advanced: true }), authField('nonce', 'Nonce', 'text', { advanced: true }),
+      authField('ext', 'Extension', 'text', { advanced: true }), authField('app', 'Application', 'text', { advanced: true }),
+      authField('dlg', 'Delegation', 'text', { advanced: true }), authField('timestamp', 'Timestamp', 'text', { advanced: true }),
+    ] },
+    { type: 'jwt', label: 'JWT Bearer', description: 'Configure a JWT bearer token.', fields: [
+      authField('algorithm', 'Algorithm', 'select', { options: [['HS256', 'HS256'], ['HS384', 'HS384'], ['HS512', 'HS512'], ['RS256', 'RS256'], ['RS384', 'RS384'], ['RS512', 'RS512'], ['PS256', 'PS256'], ['ES256', 'ES256'], ['ES384', 'ES384']], default: 'HS256' }),
+      authField('secret', 'Signing secret or private key', 'password', { secret: true }),
+      authField('payload', 'Payload', 'textarea'), authField('header', 'Header JSON', 'textarea'),
+      authField('add_to', 'Add token to', 'select', { options: [['header', 'Authorization header'], ['query', 'Query parameter']], default: 'header' }),
+      authField('prefix', 'Header prefix', 'text', { default: 'Bearer' }),
+      authField('secret_base64', 'Secret is Base64 encoded', 'checkbox', { placement: 'side', default: 'false' }),
+    ] },
+    { type: 'oauth1', label: 'OAuth 1.0', description: 'Configure OAuth 1.0 request credentials and signature options.', fields: [
+      authField('consumer_key', 'Consumer key'), authField('consumer_secret', 'Consumer secret', 'password', { secret: true }),
+      authField('token', 'Access token', 'password', { secret: true }), authField('token_secret', 'Token secret', 'password', { secret: true }),
+      authField('signature_method', 'Signature method', 'select', { options: [['HMAC-SHA1', 'HMAC-SHA1'], ['HMAC-SHA256', 'HMAC-SHA256'], ['HMAC-SHA512', 'HMAC-SHA512'], ['RSA-SHA1', 'RSA-SHA1'], ['RSA-SHA256', 'RSA-SHA256'], ['PLAINTEXT', 'PLAINTEXT']], default: 'HMAC-SHA1' }),
+      authField('add_to', 'Add credentials to', 'select', { options: [['header', 'Authorization header'], ['body', 'Body or URL']], default: 'header' }),
+      authField('callback', 'Callback URL', 'text', { advanced: true }), authField('verifier', 'Verifier', 'text', { advanced: true }),
+      authField('timestamp', 'Timestamp', 'text', { advanced: true }), authField('nonce', 'Nonce', 'text', { advanced: true }),
+      authField('version', 'Version', 'text', { advanced: true }), authField('realm', 'Realm', 'text', { advanced: true }),
+    ] },
+    { type: 'oauth2', label: 'OAuth 2.0', description: 'Configure OAuth 2.0 grant and client settings.', fields: [
+      authField('grant', 'Grant type', 'select', { options: [['client_credentials', 'Client Credentials'], ['password', 'Password'], ['authorization_code', 'Authorization Code + PKCE'], ['implicit', 'Implicit'], ['refresh_token', 'Refresh Token']], default: 'client_credentials' }),
+      authField('token_url', 'Token URL'), authField('authorization_url', 'Authorization URL'),
+      authField('client_id', 'Client ID'), authField('client_secret', 'Client secret', 'password', { secret: true }),
+      authField('username', 'Username'), authField('password', 'Password', 'password', { secret: true }),
+      authField('scope', 'Scopes'), authField('redirect_uri', 'Redirect URI', 'text', { advanced: true }),
+      authField('code_verifier', 'PKCE code verifier', 'password', { advanced: true, secret: true }),
+      authField('refresh_token', 'Refresh token', 'password', { advanced: true, secret: true }),
+    ], actions: ['Get New Access Token', 'Clear'] },
+    { type: 'aws', label: 'AWS Signature', description: 'Configure AWS Signature Version 4 credentials.', fields: [
+      authField('access_key', 'Access key ID'), authField('secret_key', 'Secret access key', 'password', { secret: true }),
+      authField('region', 'Region'), authField('service', 'Service'),
+      authField('session_token', 'Session token', 'password', { secret: true }),
+    ] },
+  ];
+
+  function authForm(type) {
+    return AUTH_FORMS.find((x) => x.type === type) || AUTH_FORMS[0];
+  }
+  function switchAuthType(current, type) {
+    const form = authForm(type);
+    const allowed = new Set(form.fields.map((x) => x.name));
+    const fields = Object.fromEntries(Object.entries((current && current.fields) || {})
+      .filter(([name, value]) => allowed.has(name) && typeof value === 'string'));
+    return { type: form.type, fields };
+  }
+  function isRawAuthSecret(type, name, value) {
+    const field = authForm(type).fields.find((x) => x.name === name);
+    return !!field?.secret && !!value && !/^\{\{\s*[^{}]+\s*\}\}$/.test(value.trim());
+  }
+  function authVariableName(type, name) {
+    return `auth_${type.toLowerCase()}_${name}`;
+  }
+  function parseAuthForm(value, headers = []) {
+    if (value) {
+      let rest = value.trim();
+      const first = /^(\S+)/.exec(rest);
+      if (!first) return { type: 'inherit', fields: {} };
+      rest = rest.slice(first[0].length).trimStart();
+      const aliases = { apikey: 'apiKey', 'api-key': 'apiKey' };
+      const type = aliases[first[1].toLowerCase()] || first[1];
+      const form = AUTH_FORMS.find((x) => x.type === type);
+      if (!form) return { type: 'inherit', fields: {} };
+      const fields = {};
+      while (rest) {
+        const match = /^([a-z][a-z0-9_]*)=(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|(\S+))/.exec(rest);
+        if (!match) break;
+        const raw = match[2] ?? match[3] ?? match[4];
+        fields[match[1]] = raw.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\(["'\\])/g, '$1');
+        rest = rest.slice(match[0].length).trimStart();
+      }
+      return { type: form.type, fields };
+    }
+    const auth = headers.find((x) => x.enabled && x.name.toLowerCase() === 'authorization');
+    const bearer = auth && /^Bearer\s+(.+)$/i.exec(auth.value);
+    return bearer ? { type: 'bearer', fields: { token: bearer[1] } } : { type: 'inherit', fields: {} };
+  }
 
   /** query URL -> baris Params; nilai mentah (tidak di-decode) supaya variabel dan %xx tetap seperti diketik */
   function urlToParams(url) {
@@ -450,7 +554,7 @@
     return { code: m[1], title, sub: text && !known ? CLASS_HINT[code >= 500 ? 5 : 4] : sub, cls: view.statusClass, ...(text ? { body: text } : { empty: 'Response body not found' }) };
   }
 
-  const api = { bodyNotice, fitTabs, xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers };
+  const api = { bodyNotice, fitTabs, xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers, authForms: AUTH_FORMS, authForm, switchAuthType, isRawAuthSecret, authVariableName, parseAuthForm };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -461,6 +565,12 @@
   /** request seperti ParsedRequest di httpFile.ts */
   let req;
   let editTimer;
+  let authModel = { type: 'inherit', fields: {} };
+  let authTimer;
+  let authDirty = false;
+  let authAdvancedOpen = false;
+  let authSource;
+  let authSourceIndex = -1;
   /** dari host: nama variable yang punya nilai / NULL di Environment aktif + Globals */
   let vars = { ok: [], nulls: [], names: [] };
   const fileVars = () => (req ? req.vars.map((v) => v.name) : []);
@@ -602,6 +712,7 @@
     renderHeaders();
     renderBody();
     renderSettings();
+    renderAuth();
     counts();
     syncMirrors();
   }
@@ -772,6 +883,106 @@
     $('tls').value = req.insecure ? 'ignore' : 'verify';
     $('tmo').value = req.timeoutSec === undefined ? '' : String(req.timeoutSec);
   }
+
+  function authValue(field) {
+    return authModel.fields[field.name] ?? field.default ?? (field.kind === 'checkbox' ? 'false' : '');
+  }
+  function renderAuthField(field) {
+    const row = el('div', { className: 'row auth-row' });
+    const id = `auth-${field.name}`;
+    const label = el('label', { htmlFor: id, textContent: field.label });
+    let control;
+    if (field.kind === 'select') {
+      control = el('select', { id });
+      for (const [value, text] of field.options) control.append(el('option', { value, textContent: text }));
+      const current = authValue(field);
+      if (current && !field.options.some(([value]) => value === current)) control.append(el('option', { value: current, textContent: current }));
+      control.value = current;
+    } else if (field.kind === 'textarea') {
+      control = el('textarea', { id, value: authValue(field), spellcheck: false });
+    } else if (field.kind === 'checkbox') {
+      control = el('input', { id, type: 'checkbox', checked: authValue(field) === 'true' });
+    } else {
+      control = el('input', { id, type: field.kind === 'password' ? 'password' : 'text', value: authValue(field), spellcheck: false });
+    }
+    const update = () => {
+      authModel.fields[field.name] = field.kind === 'checkbox' ? String(control.checked) : control.value;
+      const oldWarning = row.querySelector('.auth-warning');
+      if (oldWarning) oldWarning.remove();
+      if (isRawAuthSecret(authModel.type, field.name, authModel.fields[field.name])) row.append(authWarning(field));
+      scheduleAuthChange();
+    };
+    control.oninput = update;
+    control.onchange = update;
+    row.append(label, control);
+    if (isRawAuthSecret(authModel.type, field.name, authValue(field))) row.append(authWarning(field));
+    return row;
+  }
+  function authWarning(field) {
+    const warning = el('p', { className: 'note warn auth-warning' });
+    warning.append(document.createTextNode('This secret is stored in this request file and will be committed.'));
+    const move = el('button', { type: 'button', textContent: 'Move to secret variable' });
+    move.onclick = () => {
+      flushAuthChange();
+      post({
+        type: 'authMoveToSecret', index: activeBlock,
+        auth: { type: authModel.type, fields: { ...authModel.fields } },
+        field: field.name, name: authVariableName(authModel.type, field.name),
+      });
+    };
+    warning.append(move);
+    return warning;
+  }
+  function scheduleAuthChange() {
+    authDirty = true;
+    clearTimeout(authTimer);
+    authTimer = setTimeout(flushAuthChange, 250);
+  }
+  function flushAuthChange() {
+    if (!authDirty) return;
+    clearTimeout(authTimer);
+    authTimer = undefined;
+    post({ type: 'authChange', index: activeBlock, auth: { type: authModel.type, fields: { ...authModel.fields } } });
+  }
+  function renderAuth() {
+    if (!authDirty) authModel = parseAuthForm(req.auth, req.headers);
+    const form = authForm(authModel.type);
+    $('authType').value = form.type;
+    $('authDescription').textContent = form.description;
+    $('authSource').hidden = form.type !== 'inherit';
+    $('authSource').textContent = authSource ? `Inherited from ${authSource}.` : 'No parent _auth.http file was found.';
+    if (form.type === 'inherit' && authSourceIndex !== activeBlock) {
+      authSourceIndex = activeBlock;
+      post({ type: 'authSourceGet', index: activeBlock });
+    }
+    const side = form.fields.filter((x) => x.placement === 'side');
+    const main = form.fields.filter((x) => !x.placement && !x.advanced);
+    const advanced = form.fields.filter((x) => x.advanced);
+    $('authOptions').replaceChildren(...side.map(renderAuthField));
+    $('authOptions').hidden = !side.length;
+    $('authFields').replaceChildren(...main.map(renderAuthField));
+    $('authFields').hidden = !main.length;
+    $('authAdvancedFields').replaceChildren(...advanced.map(renderAuthField));
+    $('authAdvanced').hidden = !advanced.length;
+    $('authAdvanced').open = authAdvancedOpen;
+    $('authActions').replaceChildren(...(form.actions || []).map((text) => el('button', {
+      type: 'button', className: 'btn ghost sm', textContent: text, disabled: true,
+      title: 'OAuth 2.0 token actions will be available in a later task.',
+    })));
+    $('authActions').hidden = !(form.actions || []).length;
+  }
+  for (const form of AUTH_FORMS) $('authType').append(el('option', { value: form.type, textContent: form.label }));
+  $('authType').onchange = () => {
+    authModel = switchAuthType(authModel, $('authType').value);
+    authAdvancedOpen = false;
+    authSource = undefined;
+    authSourceIndex = -1;
+    $('authNotice').textContent = '';
+    authDirty = true;
+    renderAuth();
+    flushAuthChange();
+  };
+  $('authAdvanced').addEventListener('toggle', () => { authAdvancedOpen = $('authAdvanced').open; });
 
   mirror($('url'));
   mirror($('bodyText'));
@@ -1369,6 +1580,14 @@
       req = m.req;
       renderRequest();
     }
+    if (m.type === 'authSaved') authDirty = false;
+    if (m.type === 'authSource' && m.index === activeBlock) {
+      authSource = typeof m.source === 'string' ? m.source : undefined;
+      authSourceIndex = activeBlock;
+      renderAuth();
+    }
+    if (m.type === 'authSecretMoved' && typeof m.name === 'string') $('authNotice').textContent = `Moved to secret variable {{${m.name}}}.`;
+    if (m.type === 'authError' && typeof m.message === 'string') $('authNotice').textContent = m.message;
     if (m.blocks) renderBlocks(m.blocks, m.active);
     if (m.type === 'vars') { vars = { ok: m.ok, nulls: m.nulls, names: m.names }; syncMirrors(); }
     if (m.type === 'varHover') showHover(m.name, m.info);
@@ -1396,6 +1615,7 @@
     if ('view' in m) renderView(m.view);
   });
   window.addEventListener('blur', flush);
+  window.addEventListener('blur', flushAuthChange);
   post({ type: 'ready' });
   post({ type: 'scriptsGet' });
 })();
