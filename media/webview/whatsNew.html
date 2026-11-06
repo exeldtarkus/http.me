@@ -25,6 +25,8 @@
   .release[open] > summary::before { transform: rotate(90deg); }
   summary:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; border-radius: 6px; }
   .ver { font-family: var(--mono); font-size: 15px; font-weight: 600; }
+  .note { color: var(--muted); margin: 0 0 12px; }
+  .active { font-size: 11px; padding: 0 7px; border-radius: 9px; color: var(--vscode-badge-foreground); background: var(--vscode-charts-green, #3fb950); }
   .latest { font-size: 11px; padding: 0 7px; border-radius: 9px; color: var(--vscode-badge-foreground); background: var(--vscode-badge-background); }
   time { color: var(--muted); }
   .counts { margin-left: auto; display: flex; gap: 6px; }
@@ -47,7 +49,7 @@
 <header>
 <p class="eyebrow">http.me</p>
 <h1>What's New</h1>
-<p class="installed">Version <b>{{installed}}</b> installed</p>
+<p class="installed">Active version <b>{{installed}}</b></p>
 </header>
 {{releases}}
 <footer>Open this page again anytime: <kbd>Ctrl+Shift+P</kbd> → <b>http.me: What's New</b>.</footer>

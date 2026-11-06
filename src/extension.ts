@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { isNewerMinor, whatsNewHtml } from './whatsNew';
+import { isNewerVersion, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
 import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
@@ -22,7 +22,7 @@ import { Cookies, registerCookieCommands, registerLoginStatus } from './cookies'
 import { cookieFlags, parseRequest } from './httpFile';
 import { sendUri, setSessionHooks } from './httpEditor';
 
-// versi terakhir yang pernah aktif, untuk What's New sekali per minor
+// versi terakhir yang pernah aktif, untuk What's New tiap versi naik
 const VERSION_KEY = 'httpme.version';
 let whatsNewPanel: vscode.WebviewPanel | undefined;
 
@@ -211,7 +211,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   const version: string = ctx.extension.packageJSON.version;
   const previous = ctx.globalState.get<string>(VERSION_KEY);
   void ctx.globalState.update(VERSION_KEY, version);
-  if (isNewerMinor(version, previous)) openWhatsNew(ctx);
+  if (isNewerVersion(version, previous)) openWhatsNew(ctx);
   return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt, scriptsCall, authCall, snippetCall,
     statusBar, layout: { get: getLayout, set: setLayout, outputKey, outputShown }, history: { list: () => listHistory(historyDir), action: (id, a) => historyAction(historyDir, id, a) }, activeBlock };
 }
