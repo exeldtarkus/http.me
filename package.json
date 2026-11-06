@@ -412,6 +412,16 @@
         "category": "http.me"
       },
       {
+        "command": "httpme.copySnippet",
+        "title": "Copy Request as Code Snippet",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.convertCurl",
+        "title": "Convert cURL to .http Format",
+        "category": "http.me"
+      },
+      {
         "command": "httpme.sendAll",
         "title": "Send All Requests in File",
         "category": "http.me"
@@ -773,6 +783,14 @@
         },
         {
           "command": "httpme.sendBlock",
+          "when": "false"
+        },
+        {
+          "command": "httpme.copySnippet",
+          "when": "false"
+        },
+        {
+          "command": "httpme.convertCurl",
           "when": "false"
         },
         {

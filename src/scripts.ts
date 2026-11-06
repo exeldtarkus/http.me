@@ -65,7 +65,7 @@ export function scriptPaths(text: string): PathRef[] {
     const l = lines[i];
     const t = l.trim();
     if (t.startsWith('###')) { afterRequest = false; continue; }
-    const m = /^(\s*)([<>])\s*(\S.*?)\s*$/.exec(l);
+    const m = /^(\s*)([<>])(?:\s+|(?=\{%))(\S.*?)\s*$/.exec(l);
     if (m && m[3].startsWith('{%')) {
       // inline {% … %}: lewati sampai penutup
       if (!m[3].includes('%}')) while (i + 1 < lines.length && !lines[++i].includes('%}'));

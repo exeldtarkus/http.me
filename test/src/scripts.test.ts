@@ -151,3 +151,8 @@ test('chainItems: daftar Runs in order (folder → baris < / > → This request)
       { file: join(root, 'a/r.pre-request.js'), source: 'own', exists: false },
     ]);
   }));
+
+test('scriptPaths: tag XML di body (<order id="7">, </order>, <?xml ?>) bukan path script', () => {
+  const text = ['POST http://x', 'Content-Type: application/xml', '', '<?xml version="1.0"?>', '<order id="7">', '  <item/>', '</order>', '> ./save.js'].join('\n');
+  assert.deepEqual(scriptPaths(text).map((p) => p.path), ['./save.js']);
+});

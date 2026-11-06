@@ -1,5 +1,5 @@
 // cURL dialek bash (tanpa vscode): tokenizer, perintah -> request (untuk paste / import, bukan format simpan), request -> perintah
-import { bodyTypeOf, emptyRequest, type ParsedRequest } from './httpFile';
+import { bodyTypeOf, emptyRequest, serializeRequest, type ParsedRequest } from './httpFile';
 import { sendsBody } from './http';
 import { cookiePairs, curlAuthOptions, curlFlags, type ExportOpts, isCmdCommand, isPowerShellRequest, isPsCurl, psToArgs, tokenizeCmd, tokenizePs } from './shellDialect';
 
@@ -235,4 +235,11 @@ export function quickRequest(text: string): ParsedRequest {
   const m = /^(?:([A-Za-z]+)\s+)?(https?:\/\/\S+)$/.exec(t);
   if (!m) throw new Error('Enter a curl command or a URL starting with http:// or https://');
   return { ...emptyRequest(), method: (m[1] ?? 'GET').toUpperCase(), url: m[2] };
+}
+
+/** curl yang dipaste ke editor teks .http -> teks request; undefined = bukan curl; curl tidak valid = melempar */
+export function curlPasteToHttp(text: string): string | undefined {
+  const t = text.trim();
+  if (!/^curl(\.exe)?\s+\S/i.test(t)) return undefined;
+  return serializeRequest(importCurl(t).request); // melempar bila curl tidak valid: pemanggil mencatat log
 }
