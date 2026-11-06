@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { importCurl, parseCurl, quickRequest, tokenize, toCurl } from '../../src/curl';
+import { curlPasteToHttp, importCurl, parseCurl, quickRequest, tokenize, toCurl } from '../../src/curl';
 import { parseRequest } from '../../src/httpFile';
 
 test('tokenize: kutip tunggal, ganda (escape), $\'…\' ANSI-C, backslash, sambungan baris', () => {
@@ -243,4 +243,16 @@ test('import --digest -u user:pass -> Authorization: Digest user pass (dihitung 
   const r = parseCurl(`curl --digest -u 'us:pa ss' https://a.test/x`).request;
   assert.deepEqual(r.headers.map((h) => [h.name, h.value]), [['Authorization', 'Digest us pa ss']]);
   assert.deepEqual(importCurl(toCurl(parseRequest('GET https://a.test/x\n# @auth digest username="u" password="p"\n'))).request.headers.map((h) => h.value), ['Digest u p']);
+});
+
+test('curlPasteToHttp: curl yang dipaste jadi teks .http; bukan curl / gagal parse = undefined', () => {
+  const out = curlPasteToHttp(`curl -X POST 'https://x.test/a' \\\n  -H 'Content-Type: application/json' \\\n  --data-raw '{"a":1}'`);
+  assert.ok(out);
+  const r = parseRequest(out);
+  assert.equal(r.method, 'POST');
+  assert.equal(r.url, 'https://x.test/a');
+  assert.equal(r.body.trim(), '{"a":1}');
+  assert.equal(curlPasteToHttp('GET https://x.test'), undefined);
+  assert.equal(curlPasteToHttp('curling is fun'), undefined);
+  assert.equal(curlPasteToHttp('curl'), undefined);
 });

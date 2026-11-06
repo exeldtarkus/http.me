@@ -15,7 +15,7 @@ test('review R39: grammar .http terdaftar untuk bahasa http, body JSON / XML mem
     embeddedLanguages: { 'meta.embedded.block.json': 'json', 'meta.embedded.block.xml': 'xml', 'meta.embedded.block.javascript': 'javascript' } },
   { scopeName: 'source.http.variables', path: './syntaxes/http.variables.tmLanguage.json', injectTo: ['source.http'] }]);
   assert.equal(g.scopeName, 'source.http');
-  assert.deepEqual(g.patterns.map((p) => p.include), ['#separator', '#comment', '#script-inline', '#script-file', '#file-variable', '#request-line', '#json-body', '#xml-body', '#header', '#variable']);
+  assert.deepEqual(g.patterns.map((p) => p.include), ['#separator', '#comment', '#script-inline', '#script-file', '#file-variable', '#curl-command', '#request-line', '#json-body', '#xml-body', '#header', '#variable']);
   assert.ok(g.repository['json-body'].patterns!.some((p) => p.include === 'source.json'));
   assert.ok(g.repository['xml-body'].patterns!.some((p) => p.include === 'text.xml'));
 });
@@ -67,4 +67,32 @@ test('review R50: {{variabel}} berwarna sendiri: kurung, variabel Environment, v
   const inj = JSON.parse(readFileSync(join(root, 'syntaxes', 'http.variables.tmLanguage.json'), 'utf8'));
   assert.equal(inj.injectionSelector, 'L:meta.embedded.block.json, L:meta.embedded.block.xml');
   assert.deepEqual(inj.patterns, [{ include: 'source.http#variable' }]);
+});
+
+test('grammar .http: perintah curl berwarna (perintah, opsi, string, URL) sampai baris tanpa \\ di ujung', () => {
+  const b = re('curl-command', 'begin');
+  const e = re('curl-command', 'end');
+  assert.equal(b.exec("curl --request POST \\")![1], 'curl');
+  assert.equal(b.exec('curl.exe -X GET https://a.test')![1], 'curl.exe');
+  assert.equal(b.test('curling'), false);
+  assert.equal(b.test('Curl-Header: x'), false);
+  assert.equal(e.test("  --url http://x \\\n"), false, 'sambungan baris: lanjut');
+  assert.ok(e.test("  --data '{}'\n"), 'tanpa \\: perintah selesai');
+  const opt = new RegExp(g.repository['curl-command'].patterns!.find((x) => x.match?.startsWith('(?<=\\s)--?'))!.match!);
+  assert.equal(opt.exec(' --header')![0], '--header');
+  assert.equal(opt.exec(' -X')![0], '-X');
+});
+
+test('grammar .http: curl --header (nama + nilai), --data (JSON), --url punya scope sendiri', () => {
+  const ps = g.repository['curl-command'].patterns!;
+  const h = new RegExp(ps[0].begin!);
+  assert.deepEqual(h.exec("  --header 'Accept: */*' \\")!.slice(1, 4), ['--header', ' ', "'"]);
+  assert.equal(h.exec('  -H "X-A: 1"')![1], '-H');
+  assert.equal(new RegExp(ps[0].patterns![0].match!.replace('\\G', '')).exec('Accept: */*')![1], 'Accept');
+  const dta = new RegExp(ps[1].begin!);
+  assert.equal(dta.exec(`  --data '{"a":1}'`)![1], '--data');
+  assert.equal(new RegExp(ps[2].begin!).exec('  --data-raw "x"')![1], '--data-raw');
+  assert.equal(dta.exec('  -d \'x\'')![1], '-d');
+  assert.ok(ps[1].patterns!.some((x) => x.include === 'source.json'));
+  assert.equal(new RegExp(ps[3].match!).exec('  --url http://localhost:8081/x \\')![3], 'http://localhost:8081/x');
 });

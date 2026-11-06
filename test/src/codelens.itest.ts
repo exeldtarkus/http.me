@@ -45,7 +45,7 @@ export const tests: ITests = {
     const srv = await startServer(async (req) => ({ status: req.url === '/b' ? 201 : 200, headers: { 'content-type': 'text/plain' }, body: 'ok' }));
     try {
       const doc = await openText(`### A\nGET ${srv.url}/a\n\n### B\nPOST ${srv.url}/b\n`);
-      assert.deepEqual(await titles(doc.uri), ['0:▶ Send All (2)', '0:▶ Send', '0:Open in http.me', '3:▶ Send', '3:Open in http.me']);
+      assert.deepEqual(await titles(doc.uri), ['0:▶ Send All (2)', '0:▶ Send', '0:Open in http.me', '0:Code snippet', '3:▶ Send', '3:Open in http.me', '3:Code snippet']);
       await vscode.commands.executeCommand('httpme.sendBlock', doc.uri, 1);
       await wait(100);
       const t = await titles(doc.uri);

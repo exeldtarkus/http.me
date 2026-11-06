@@ -3,7 +3,7 @@ import { isNewerVersion, whatsNewHtml } from './whatsNew';
 import { clearCacheFlow } from './cache';
 import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
-import { applyPanelEdit, handleAuthMessage, importCurlText, saveUntitled, setAuthHooks, setOAuthStore, handleSnippet, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, activeBlock, registerRequestEditor, runner, quickRun, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
+import { applyPanelEdit, handleAuthMessage, importCurlText, saveUntitled, setAuthHooks, setOAuthStore, handleSnippet, copyBlockSnippet, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, activeBlock, registerRequestEditor, runner, quickRun, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
 import { registerSidebar, type Sidebars } from './sidebar';
 import { historyAction, registerActivity, statusBar, type HistoryAction } from './activity';
@@ -19,7 +19,8 @@ import { hoverInfo } from './diagnostics';
 import { resolveRequest } from './vars';
 import { varize, varizeCandidates } from './varize';
 import { Cookies, registerCookieCommands, registerLoginStatus } from './cookies';
-import { cookieFlags, parseRequest } from './httpFile';
+import { cookieFlags, parseRequest, splitBlocks } from './httpFile';
+import { curlPasteToHttp } from './curl';
 import { sendUri, setSessionHooks } from './httpEditor';
 
 // versi terakhir yang pernah aktif, untuk What's New tiap versi naik
@@ -77,6 +78,29 @@ async function authCall(uri: vscode.Uri, m: Record<string, unknown>): Promise<un
   const out: unknown[] = [];
   await handleAuthMessage(await vscode.workspace.openTextDocument(uri), m, (x) => out.push(x));
   return out;
+}
+
+async function convertPastedCurl(doc: vscode.TextDocument, offset: number, pasted: string): Promise<void> {
+  const http = curlPasteToHttp(pasted);
+  if (http === undefined) return;
+  const range = new vscode.Range(doc.positionAt(offset), doc.positionAt(offset + pasted.length));
+  if (doc.getText(range) !== pasted) return; // dokumen sudah berubah lagi
+  const edit = new vscode.WorkspaceEdit();
+  edit.replace(doc.uri, range, http.replace(/\n$/, ''));
+  if (await vscode.workspace.applyEdit(edit)) void vscode.window.showInformationMessage('Converted pasted cURL to an HTTP request. Undo (Ctrl+Z) restores the cURL text.');
+}
+
+/** lens "Convert to .http format": baris curl pertama sampai akhir blok diganti request .http (judul ### / komentar di atasnya tetap) */
+async function convertBlockCurl(doc: vscode.TextDocument, index: number): Promise<void> {
+  const b = splitBlocks(doc.getText())[index];
+  if (!b) return;
+  const lines = b.text.split('\n');
+  const at = lines.findIndex((l) => /^\s*curl(\.exe)?\s/i.test(l));
+  const http = at < 0 ? undefined : curlPasteToHttp(lines.slice(at).join('\n'));
+  if (http === undefined) return;
+  const edit = new vscode.WorkspaceEdit();
+  edit.replace(doc.uri, new vscode.Range(b.start + at, 0, b.end, doc.lineAt(b.end).text.length), http.replace(/\n$/, ''));
+  await vscode.workspace.applyEdit(edit);
 }
 
 async function snippetCall(uri: vscode.Uri, opts: unknown, request?: import('./httpFile').ParsedRequest): Promise<unknown[]> {
@@ -188,6 +212,14 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
     lenses,
     vscode.languages.registerCodeLensProvider(HTTP_FILES, lenses),
     vscode.commands.registerCommand('httpme.sendBlock', (uri: vscode.Uri, i: number) => run('sendBlock', async () => sendBlock(await docOf(uri), i))),
+    vscode.commands.registerCommand('httpme.copySnippet', (uri: vscode.Uri, i: number) => run('copySnippet', async () => copyBlockSnippet(await docOf(uri), i))),
+    // curl dipaste ke editor teks .http -> otomatis jadi request (Ctrl+Z mengembalikan teks curl asli)
+    vscode.workspace.onDidChangeTextDocument((e) => {
+      const c = e.contentChanges[0];
+      if (e.document.languageId !== 'http' || e.reason !== undefined || e.contentChanges.length !== 1 || c.text.length < 8) return;
+      void convertPastedCurl(e.document, c.rangeOffset, c.text).catch((err) => log().error(errorLine('pasteCurl', err)));
+    }),
+    vscode.commands.registerCommand('httpme.convertCurl', (uri: vscode.Uri, i: number) => run('convertCurl', async () => convertBlockCurl(await docOf(uri), i))),
     vscode.commands.registerCommand('httpme.sendAll', (uri: vscode.Uri) => run('sendAll', async () => sendAll(await docOf(uri)))),
     vscode.commands.registerCommand('httpme.cancelBlock', (uri: vscode.Uri, i: number) => run('cancelBlock', async () => cancelBlock(await docOf(uri), i))),
     vscode.commands.registerCommand('httpme.cancelFile', (uri: vscode.Uri) => cancelFile(uri.toString())),

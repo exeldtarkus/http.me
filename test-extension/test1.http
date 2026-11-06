@@ -1,0 +1,8 @@
+# @disabled Accept-Encoding: gzip, deflate, br
+# @disabled Connection: keep-alive
+# @disabled User-Agent: EchoapiRuntime/1.1.0
+POST http://localhost:8081/api/auth/login
+Accept: */*
+Content-Type: application/json
+
+{"username": "admin", "password": "password"}

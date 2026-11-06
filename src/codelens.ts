@@ -32,6 +32,8 @@ export class RequestLenses implements vscode.CodeLensProvider {
       }
       out.push(lens(b.start, '▶ Send', 'httpme.sendBlock', doc.uri, i));
       out.push(lens(b.start, 'Open in http.me', 'httpme.openInPanel', doc.uri, i));
+      out.push(lens(b.start, 'Code snippet', 'httpme.copySnippet', doc.uri, i));
+      if (/^\s*curl(\.exe)?\s/im.test(b.text)) out.push(lens(b.start, 'Convert to .http format', 'httpme.convertCurl', doc.uri, i));
       if (v?.kind === 'response') out.push(lens(b.start, `${v.status} · ${v.time} · ${v.size}`, 'httpme.showResponse', keys[i]));
       else if (v?.kind === 'error') out.push(lens(b.start, `✕ ${v.message.slice(0, 80)}`, 'httpme.showLog'));
       else if (v?.kind === 'cancelled') out.push(lens(b.start, 'Cancelled', 'httpme.sendBlock', doc.uri, i));

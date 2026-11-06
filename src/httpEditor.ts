@@ -10,7 +10,7 @@ import { homedir } from 'node:os';
 import { fileBody, multipartBody } from './bodyStream';
 import { accessToken, tokenKey, type OAuthToken } from './oauth2';
 import { loopback, type Loopback } from './oauth2Loopback';
-import { generateSnippet, maskSecrets, usesSecrets, type SnippetOptions } from './snippet';
+import { DEFAULT_SNIPPET, generateSnippet, maskSecrets, usesSecrets, type SnippetOptions } from './snippet';
 import type { HttpRequest } from './http';
 import { applyAuth, headerAuth, parseAuth, sendWithDigest, type AuthConfig, type AuthType } from './auth';
 import { webviewPage } from './webviewPage';
@@ -570,6 +570,19 @@ export async function handleSnippet(doc: vscode.TextDocument, kind: 'snippet' | 
   }
   await vscode.env.clipboard.writeText(text);
   post({ type: 'snippetCopied' });
+  void vscode.window.showInformationMessage('Code snippet copied to the clipboard.');
+}
+
+/** Code snippet dari editor teks .http: pilih bahasa (cURL / cmd / PowerShell), salin dengan opsi bawaan panel */
+export async function copyBlockSnippet(doc: vscode.TextDocument, index: number): Promise<void> {
+  const blocks = splitBlocks(doc.getText());
+  const b = blocks[index];
+  if (!b) return;
+  const pick = await vscode.window.showQuickPick(
+    [{ label: 'cURL', language: 'curl' as const }, { label: 'cURL (cmd)', language: 'cmd' as const }, { label: 'PowerShell', language: 'powershell' as const }],
+    { title: 'Code snippet: copy as', placeHolder: 'Language' });
+  if (!pick) return;
+  await handleSnippet(doc, 'copySnippet', { ...DEFAULT_SNIPPET, language: pick.language }, parseRequest(blocks.length > 1 ? b.text : doc.getText()), () => {});
 }
 
 /** teks response untuk dokumen "Show Response": status, header, baris kosong, body (JSON dirapikan) */
