@@ -8,3 +8,13 @@ function parseProfile(argv, env) {
 const profileArgs = (profile) => (profile ? ['--profile', profile] : []);
 
 module.exports = { parseProfile, profileArgs };
+
+/** profile yang dipakai window VS Code untuk folder WSL ini, dari storage.json Windows (undefined = Default / tidak ketemu) */
+function detectProfile(storage, distro, folder) {
+  const want = `vscode-remote://wsl+${distro}${folder}`.toLowerCase();
+  const assoc = storage?.profileAssociations?.workspaces ?? {};
+  const key = Object.keys(assoc).find((k) => decodeURIComponent(k).toLowerCase() === want);
+  return (storage?.userDataProfiles ?? []).find((p) => p.location === assoc[key])?.name;
+}
+
+module.exports.detectProfile = detectProfile;
