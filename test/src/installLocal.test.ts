@@ -22,3 +22,25 @@ test('parseProfile: --profile <nama>, --profile=<nama>, lalu env, lalu kosong', 
   assert.equal(parseProfile(['--profile', 'a'], { HTTPME_PROFILE: 'b' }), 'a');
   assert.equal(parseProfile([], {}), undefined);
 });
+
+const { detectProfile } = require(path.join(__dirname, '../../../scripts/install-local-profile.js'));
+const storage = {
+  userDataProfiles: [{ location: '-58955e6b', name: 'http' }, { location: 'x1', name: 'DB' }],
+  profileAssociations: {
+    workspaces: {
+      'vscode-remote://wsl%2Bubuntu/home/u/ExelFiles/experiment/http.me': '-58955e6b',
+      'vscode-remote://wsl%2Bubuntu/home/u/other': '__default__profile__',
+      'file:///d%3A/proj': 'x1',
+    },
+  },
+};
+
+test('detectProfile: workspace WSL -> nama profile dari storage.json', () => {
+  assert.equal(detectProfile(storage, 'Ubuntu', '/home/u/ExelFiles/experiment/http.me'), 'http');
+});
+
+test('detectProfile: Default / tidak terdaftar / storage kosong = undefined', () => {
+  assert.equal(detectProfile(storage, 'Ubuntu', '/home/u/other'), undefined);
+  assert.equal(detectProfile(storage, 'Ubuntu', '/home/u/unknown'), undefined);
+  assert.equal(detectProfile({}, 'Ubuntu', '/home/u/other'), undefined);
+});

@@ -4,16 +4,32 @@
 const { execFileSync, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { parseProfile, profileArgs } = require('./install-local-profile');
+const { parseProfile, profileArgs, detectProfile } = require('./install-local-profile');
 
 const root = path.join(__dirname, '..');
 const pkg = require(path.join(root, 'package.json'));
 const id = `${pkg.publisher}.${pkg.name}`;
 const force = process.argv.includes('--force');
 // profile yang sama untuk WSL & Windows (CLI tidak tahu profile window yang aktif)
-const profile = parseProfile(process.argv.slice(2), process.env);
+const profile = parseProfile(process.argv.slice(2), process.env) ?? autoProfile();
 const pArgs = profileArgs(profile);
 const vsix = path.join(root, `${pkg.name}-${pkg.version}.vsix`);
+
+/** WSL: ambil profile window VS Code Windows untuk folder ini dari storage.json (tidak ada = Default) */
+function autoProfile() {
+  try {
+    const users = '/mnt/c/Users';
+    const f = (fs.existsSync(users) ? fs.readdirSync(users) : [])
+      .map((u) => path.join(users, u, 'AppData/Roaming/Code/User/globalStorage/storage.json')).find((p) => fs.existsSync(p));
+    if (!process.env.WSL_DISTRO_NAME || !f) return undefined;
+    const name = detectProfile(JSON.parse(fs.readFileSync(f, 'utf8')), process.env.WSL_DISTRO_NAME, root);
+    if (name) console.log(`[install-local] profile terdeteksi dari VS Code: ${name}`);
+    return name;
+  } catch (e) {
+    console.error(`[install-local] ERROR deteksi profile gagal, pakai Default: ${e.message}\n${e.stack}`);
+    return undefined;
+  }
+}
 
 const run = (cmd) => execSync(cmd, { cwd: root, stdio: 'inherit' });
 
