@@ -6,6 +6,14 @@ export type Release = { version: string; date: string; items: ReleaseItem[] };
 /** catatan rilis halaman What's New, terbaru di atas; wajib ada entri baru tiap rilis MINOR */
 export const RELEASES: Release[] = [
   {
+    version: '1.2.0', date: '2026-11-09', items: [
+      { kind: 'new', title: 'Reorder Collections', detail: 'Right-click a request or folder and choose Move Up / Move Down, or drag a request onto another one in the same folder. Works in the sidebar and in the Dashboard. The order is saved in .httpme/order.json, so your team shares it.' },
+      { kind: 'new', title: 'Copy a cookie', detail: 'Copy Value and Copy as name=value copy the real value, not the masked one.' },
+      { kind: 'new', title: 'Rename a cookie', detail: 'Change the key of a saved cookie. A name that already exists for the same domain and path is refused.' },
+      { kind: 'improved', title: 'Edit Value shows the current value', detail: 'The input box is filled with the saved value so you can change it instead of retyping it.' },
+    ],
+  },
+  {
     version: '1.1.0', date: '2026-11-09', items: [
       { kind: 'new', title: 'History in the Dashboard', detail: 'A History tab with filters by text and date. Click a request to open it with its saved response and the time it was executed; every entry opens in the same unsaved history.http tab.' },
       { kind: 'new', title: 'Backups of History and unsaved requests', detail: 'Saved automatically to exports/history-backup and exports/temp-backup (once a day, or when they grow by 2 MB). Use the Backups tab or "http.me: Back Up History and Temp Now" to back up, and "http.me: Import History or Temp Backup…" to restore.' },
