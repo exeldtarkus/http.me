@@ -184,3 +184,10 @@ test('tombol Back to Dashboard: ikon panah di title bar editor yang dibuka dari 
   assert.match(m.group, /^navigation/);
   assert.ok(pkg.contributes.menus.commandPalette.some((x: { command: string; when: string }) => x.command === 'httpme.backToDashboard' && x.when === 'false'));
 });
+
+test('Open Dashboard muncul di Command Palette (Ctrl+Shift+P): ada title + category dan tidak disembunyikan', () => {
+  const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
+  const c = pkg.contributes.commands.find((x: { command: string }) => x.command === 'httpme.openDashboard');
+  assert.deepEqual([c.title, c.category], ['Open Dashboard', 'http.me']);
+  assert.equal(pkg.contributes.menus.commandPalette.some((m: { command: string; when: string }) => m.command === 'httpme.openDashboard' && m.when === 'false'), false);
+});
