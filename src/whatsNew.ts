@@ -6,6 +6,13 @@ export type Release = { version: string; date: string; items: ReleaseItem[] };
 /** catatan rilis halaman What's New, terbaru di atas; wajib ada entri baru tiap rilis MINOR */
 export const RELEASES: Release[] = [
   {
+    version: '1.2.1', date: '2026-11-09', items: [
+      { kind: 'fixed', title: 'A new empty request no longer logs an Authorization error', detail: 'The Authorization tab asked for the auth source of a request that did not exist yet.' },
+      { kind: 'fixed', title: 'No more "Webview is disposed" errors when a request tab closes', detail: 'Cookies are no longer posted to a tab that was just closed.' },
+      { kind: 'fixed', title: 'Collections no longer tries to reveal a request hidden by the Filter' },
+    ],
+  },
+  {
     version: '1.2.0', date: '2026-11-09', items: [
       { kind: 'new', title: 'Reorder Collections', detail: 'Right-click a request or folder and choose Move Up / Move Down, or drag a request onto another one in the same folder. Works in the sidebar and in the Dashboard. The order is saved in .httpme/order.json, so your team shares it.' },
       { kind: 'new', title: 'Copy a cookie', detail: 'Copy Value and Copy as name=value copy the real value, not the masked one.' },
