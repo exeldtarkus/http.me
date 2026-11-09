@@ -2,6 +2,7 @@
 // tiap section punya judul & tombol aksinya sendiri. Satu class Sidebar per section (mode tetap). Logika murni di sidebarModel.ts.
 import * as vscode from 'vscode';
 import { reimport } from './importCommand';
+import { importableFiles } from './importFetch';
 import * as path from 'node:path';
 import {
   arrangeOpen, busyTracker, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED,
@@ -485,6 +486,9 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
       await this.state.update(OPEN_ORDER, moveInOrder(shown, uris.map(String), to));
       return this.redraw();
     }
+    // file spec / collection dari luar (Explorer, OS): diimpor, bukan dipindah
+    const specs = own ? [] : importableFiles(list).map((u) => vscode.Uri.parse(u));
+    if (specs.length) return void vscode.commands.executeCommand('httpme.import', 'file', specs); // tidak ditunggu: preview menunggu user
     const dest = target?.kind === 'folder' ? folderUri(target) : target?.kind === 'file' ? vscode.Uri.joinPath(target.uri, '..')
       : target?.kind === 'empty' ? folderUri(target.folder) : vscode.workspace.workspaceFolders?.[0]?.uri;
     if (!dest) return;

@@ -4,12 +4,13 @@ import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { promises as fs, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
+import { importAuth } from './importFetch';
 import { detectFormat, parseDoc, type ImportPlan, type ImportFile } from './importCommon';
 import { importPostman } from './postman';
 import { importOpenApi } from './openapi';
 import { fromJetBrainsEnv } from './jetbrainsEnv';
 import { applyPlan, conflictsOf, importQueue, reportMarkdown, summarize, undoImport, type ApplyResult, type Conflict } from './importer';
-import { parseSource, planResync, sourceFile, SOURCE_FILE, type Source } from './importSync';
+import { parseSource, planResync, sourceFile, SOURCE_FILE, type Source, type SyncItem } from './importSync';
 import { fromPostmanEnvironment, serializeEnvironment, parseEnvironment, createEnvironment, type EnvVar } from './environments';
 import { substitute } from './vars';
 import { webviewPage } from './webviewPage';
@@ -35,18 +36,25 @@ function defaultDir(): string | undefined {
 }
 
 async function fetchText(raw: string, envs: Environments): Promise<string> {
-  const url = substitute(raw.trim(), await envs.scopes([])).text;
+  const scopes = await envs.scopes([]);
+  const url = substitute(raw.trim(), scopes).text;
   if (/\{\{/.test(url)) throw new Error(`The URL still has unresolved variables: ${url}`);
-  const res = await fetch(url, { headers: { Accept: 'application/json, application/yaml, text/yaml, */*' } });
-  if (!res.ok) throw new Error(`Could not fetch ${url}: HTTP ${res.status}`);
+  // auth: `_auth.http` di root workspace, nilai {{variable}} dari Environment aktif / Globals
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const authText = root ? await fs.readFile(join(root, '_auth.http'), 'utf8').catch(() => undefined) : undefined; // tanpa _auth.http: tanpa auth
+  const values = new Map<string, string>();
+  for (const sc of [...scopes].reverse()) for (const [k, v] of sc.values) if (typeof v === 'string') values.set(k, v);
+  const a = importAuth(url, authText, values);
+  const res = await fetch(a.url, { headers: { Accept: 'application/json, application/yaml, text/yaml, */*', ...Object.fromEntries(a.headers) } });
+  if (!res.ok) throw new Error(`Could not fetch ${url}: HTTP ${res.status}${res.status === 401 || res.status === 403 ? ' (check the _auth.http in the workspace root)' : ''}`);
   const len = Number(res.headers.get('content-length') ?? 0);
   if (len > MAX_BYTES) throw new Error('The file is larger than 20 MB');
   return res.text();
 }
 
-async function load(kind: 'file' | 'url' | 'clipboard', envs: Environments): Promise<Loaded[]> {
+async function load(kind: 'file' | 'url' | 'clipboard', envs: Environments, dropped?: vscode.Uri[]): Promise<Loaded[]> {
   if (kind === 'file') {
-    const uris = await vscode.window.showOpenDialog({ title: 'Import', canSelectMany: true, filters: { 'Postman / OpenAPI / JetBrains': ['json', 'yaml', 'yml'] } });
+    const uris = dropped ?? await vscode.window.showOpenDialog({ title: 'Import', canSelectMany: true, filters: { 'Postman / OpenAPI / JetBrains': ['json', 'yaml', 'yml'] } });
     const out: Loaded[] = [];
     for (const u of uris ?? []) {
       const st = await fs.stat(u.fsPath);
@@ -220,7 +228,7 @@ async function undo(): Promise<void> {
   void vscode.window.showInformationMessage(`Removed ${u.removed} file${u.removed === 1 ? '' : 's'}${u.restored ? `, restored ${u.restored}` : ''}.${u.kept.length ? ` ${u.kept.length} changed file${u.kept.length === 1 ? ' was' : 's were'} kept.` : ''}`);
 }
 
-async function startImport(envs: Environments, refresh: () => void, kindArg?: 'file' | 'url' | 'clipboard'): Promise<void> {
+async function startImport(envs: Environments, refresh: () => void, kindArg?: 'file' | 'url' | 'clipboard', dropped?: vscode.Uri[]): Promise<void> {
   const dir = defaultDir();
   if (!dir) throw new Error('Open a folder first: imported requests are written into the workspace.');
   const kind = kindArg ?? (await vscode.window.showQuickPick([
@@ -231,7 +239,7 @@ async function startImport(envs: Environments, refresh: () => void, kindArg?: 'f
   if (!kind) return;
   let built: Awaited<ReturnType<typeof build>>;
   try {
-    const loaded = await load(kind, envs);
+    const loaded = await load(kind, envs, dropped);
     if (!loaded.length) return;
     built = await build(loaded, envs);
   } catch (e) {
@@ -263,6 +271,37 @@ async function scan(folder: string, parent: string): Promise<{ path: string; con
   return out;
 }
 
+
+const RESYNC_SCHEME = 'httpme-resync';
+/** isi dokumen virtual untuk vscode.diff (versi milik user vs hasil Update) */
+const resyncDocs = new Map<string, string>();
+let resyncProvider: vscode.Disposable | undefined;
+
+/** daftar centang Update / Keep mine: centang = tulis hasil merge, tidak dicentang = pertahankan; tombol diff membuka perbandingan */
+function pickResync(items: SyncItem[], root: string): Promise<SyncItem[]> {
+  resyncProvider ??= vscode.workspace.registerTextDocumentContentProvider(RESYNC_SCHEME, { provideTextDocumentContent: (u) => resyncDocs.get(u.toString()) ?? '' });
+  const label = { new: 'New', update: 'Update', removed: 'Removed in spec', unchanged: 'Unchanged' } as const;
+  return new Promise((resolve) => {
+    const qp = vscode.window.createQuickPick<vscode.QuickPickItem & { item: SyncItem }>();
+    qp.title = `Re-import from Source: ${root}`;
+    qp.placeholder = 'Checked = Update (apply spec, keep your scripts and extra headers); unchecked = Keep mine';
+    qp.canSelectMany = true;
+    const diff = { iconPath: new vscode.ThemeIcon('diff'), tooltip: 'Show diff' };
+    qp.items = items.map((item) => ({ label: `${label[item.kind]}: ${item.path}`, description: item.operation, item, buttons: item.kind === 'new' ? [] : [diff] }));
+    qp.selectedItems = qp.items.filter((x) => x.item.kind !== 'removed');
+    qp.onDidTriggerItemButton(async (e) => {
+      const i = e.item.item;
+      const mk = (side: string, text: string) => { const u = vscode.Uri.from({ scheme: RESYNC_SCHEME, path: `/${side}/${i.path}` }); resyncDocs.set(u.toString(), text); return u; };
+      await vscode.commands.executeCommand('vscode.diff', mk('mine', i.existing ?? ''), mk('after-update', i.merged ?? ''), `${i.path} (mine ↔ after Update)`, { preview: true });
+    });
+    let done = false;
+    const finish = (r: SyncItem[]) => { if (done) return; done = true; resyncDocs.clear(); qp.dispose(); resolve(r); };
+    qp.onDidAccept(() => finish(qp.selectedItems.map((x) => x.item)));
+    qp.onDidHide(() => finish([]));
+    qp.show();
+  });
+}
+
 export async function reimport(folder: vscode.Uri, envs: Environments, refresh: () => void): Promise<void> {
   const src = parseSource(await fs.readFile(join(folder.fsPath, SOURCE_FILE), 'utf8').catch(() => { throw new Error(`${basename(folder.fsPath)} has no ${SOURCE_FILE}: it was not imported from a file or URL`); }));
   if (src.type === 'clipboard') throw new Error('Clipboard sources cannot be re-imported');
@@ -275,24 +314,22 @@ export async function reimport(folder: vscode.Uri, envs: Environments, refresh: 
   const parent = dirname(folder.fsPath);
   const items = planResync(await scan(folder.fsPath, parent), plan).filter((i) => i.kind !== 'unchanged');
   if (!items.length) return void vscode.window.showInformationMessage('Already up to date with the source.');
-  const label = { new: 'New', update: 'Update', removed: 'Removed in spec' } as const;
-  const picks = await vscode.window.showQuickPick(items.map((i) => ({ label: `${label[i.kind as keyof typeof label]}: ${i.path}`, description: i.operation, picked: i.kind !== 'removed', item: i })), {
-    canPickMany: true, title: 'Re-import from Source', placeHolder: 'Checked items are written; unchecked items keep your version',
-  });
-  if (!picks?.length) return;
+  const picks = await pickResync(items, root);
+  if (!picks.length) return;
   for (const p of picks) {
-    const abs = join(parent, p.item.path);
+    const abs = join(parent, p.path);
     await fs.mkdir(dirname(abs), { recursive: true });
-    await fs.writeFile(abs, p.item.merged!);
+    await fs.writeFile(abs, p.merged!);
   }
   refresh();
-  void vscode.window.showInformationMessage(`Re-imported ${picks.length} item${picks.length === 1 ? '' : 's'} from ${basename(src.location)}.`);
+  void vscode.window.showInformationMessage(`Re-imported ${picks.length} item${picks.length === 1 ? '' : 's'} (the rest kept as yours) from ${basename(src.location)}.`);
 }
 
 export function registerImport(envs: Environments, refresh: () => void): vscode.Disposable[] {
   const run = (where: string, fn: () => Promise<void>) => fn().catch((e) => reportError(where, e, `http.me: ${errMsg(e)}`));
   return [
-    vscode.commands.registerCommand('httpme.import', (kind?: 'file' | 'url' | 'clipboard') => run('import', () => startImport(envs, refresh, typeof kind === 'string' ? kind : undefined))),
+    vscode.commands.registerCommand('httpme.import', (kind?: 'file' | 'url' | 'clipboard', files?: vscode.Uri[]) =>
+      run('import', () => startImport(envs, refresh, typeof kind === 'string' ? kind : undefined, Array.isArray(files) ? files : undefined))),
     vscode.commands.registerCommand('httpme.undoLastImport', () => run('undoLastImport', undo)),
   ];
 }

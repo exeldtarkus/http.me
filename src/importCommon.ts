@@ -37,6 +37,13 @@ export function parseDoc(text: string): unknown {
   return (require('yaml') as typeof import('yaml')).parse(t);
 }
 
+/** serialize untuk export (Fase 5c) dan uji round-trip: JSON bawaan, YAML lewat library `yaml` (lazy) */
+export function stringifyDoc(doc: unknown, format: 'json' | 'yaml'): string {
+  if (format === 'json') return `${JSON.stringify(doc, null, 2)}\n`;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy, lihat parseDoc
+  return (require('yaml') as typeof import('yaml')).stringify(doc);
+}
+
 const NOT_SUPPORTED = 'The content is not a supported format (expected a Postman collection / environment, an OpenAPI / Swagger spec, a JetBrains http-client.env.json, or a cURL command)';
 
 /** deteksi otomatis dari isi; melempar pesan siap tampil bila tidak dikenal / Collection v1 */

@@ -29,6 +29,21 @@ export const tests: ITests = {
     assert.equal((await vscode.workspace.findFiles('ItestShop/**')).length, before.length, 'preview belum menulis file');
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
   },
+  async 'drag & drop file JSON ke sidebar Collections membuka Import preview'() {
+    const root = vscode.workspace.workspaceFolders![0].uri;
+    const file = vscode.Uri.joinPath(root, 'itest-drop.postman_collection.json');
+    await vscode.workspace.fs.writeFile(file, Buffer.from(POSTMAN.replace('ItestShop', 'ItestDrop')));
+    try {
+      const dt = new vscode.DataTransfer();
+      dt.set('text/uri-list', new vscode.DataTransferItem(file.toString()));
+      await (vscode.extensions.getExtension<{ sidebar: { handleDrop(t: undefined, d: vscode.DataTransfer): Promise<void> } }>('exeltarkus.httpme')!.exports).sidebar.handleDrop(undefined, dt);
+      for (let i = 0; i < 50 && !tabLabels().includes('Import preview: ItestDrop'); i++) await wait(100);
+      assert.ok(tabLabels().includes('Import preview: ItestDrop'), tabLabels().join(', '));
+      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    } finally {
+      await vscode.workspace.fs.delete(file);
+    }
+  },
   async 'Undo Last Import tanpa import sebelumnya = pesan, bukan error'() {
     await vscode.commands.executeCommand('httpme.undoLastImport');
   },
