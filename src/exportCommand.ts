@@ -7,19 +7,12 @@ import type { Environments } from './envState';
 import { GLOBALS } from './envState';
 import { ExportCancelled, runExport, type ExportEnv, type ExportRunOptions, type ExportResult } from './exportRun';
 import { listHistory } from './history';
+import { openExportDialog } from './exportDialog';
+import type { HistoryResponse } from './exportOpenapi';
 import { errMsg } from './log';
 import { log, reportError } from './output';
 
 export const EXPORTS_DIR = 'exports';
-type Fmt = { label: string; description: string; format: ExportRunOptions['format']; yaml?: boolean; ext: string };
-const FORMATS: Fmt[] = [
-  { label: 'Postman Collection v2.1', description: 'JSON · folders, auth, scripts, variables', format: 'postman', ext: 'postman_collection.json' },
-  { label: 'OpenAPI 3.0.3 (JSON)', description: 'servers from Environments, tags, schemas from examples', format: '3.0.3', ext: 'openapi.json' },
-  { label: 'OpenAPI 3.1.0 (JSON)', description: '', format: '3.1.0', ext: 'openapi.json' },
-  { label: 'OpenAPI 3.0.3 (YAML)', description: '', format: '3.0.3', yaml: true, ext: 'openapi.yaml' },
-  { label: 'OpenAPI 3.1.0 (YAML)', description: '', format: '3.1.0', yaml: true, ext: 'openapi.yaml' },
-];
-
 /** pilihan lengkap (itest / pemanggil lain melewati dialog) */
 export type ExportChoice = Omit<ExportRunOptions, 'root' | 'environments' | 'envValues' | 'history'> & { environments?: { includeSecrets: boolean; jetbrains?: boolean } };
 
@@ -43,6 +36,18 @@ async function envData(envs: Environments, names: readonly string[]): Promise<Ex
   }));
 }
 
+/** Globals (bila berisi) untuk export Environments */
+async function globalsOf(envs: Environments): Promise<{ globals?: ExportEnv }> {
+  const vars = await envs.vars(GLOBALS).catch((e) => { log().error(`export.globals - ${errMsg(e)}`); return []; });
+  return vars.length ? { globals: (await envData(envs, [GLOBALS]))[0] } : {};
+}
+
+/** History -> contoh response untuk export OpenAPI (hanya entri dengan status) */
+async function historyResponses(historyDir: string): Promise<HistoryResponse[]> {
+  const list = await listHistory(historyDir).catch((e) => { log().error(`export.history - ${errMsg(e)}`); return []; });
+  return list.filter((h) => h.status !== undefined).map((h) => ({ method: h.method, url: h.url, status: h.status, ...(h.response?.contentType ? { contentType: h.response.contentType } : {}), ...(h.response?.body !== undefined ? { body: h.response.body } : {}) }));
+}
+
 /** jalur proses (dipakai tombol dan itest): progress + Cancel, tulis sekali di akhir */
 export async function exportApply(root: string, choice: ExportChoice, envs: Environments, historyDir: string): Promise<ExportResult> {
   return vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Exporting ${basename(root)}…`, cancellable: true }, async (progress, token) => {
@@ -51,10 +56,10 @@ export async function exportApply(root: string, choice: ExportChoice, envs: Envi
     const { environments: ev, ...rest } = choice;
     const names = await envs.names();
     const opts: ExportRunOptions = { ...rest, root };
-    if (ev) opts.environments = { list: await envData(envs, names), includeSecrets: ev.includeSecrets, ...(ev.jetbrains ? { jetbrains: true } : {}), ...((await envs.vars(GLOBALS).catch(() => [])).length ? { globals: (await envData(envs, [GLOBALS]))[0] } : {}) };
+    if (ev) opts.environments = { list: await envData(envs, names), includeSecrets: ev.includeSecrets, ...(ev.jetbrains ? { jetbrains: true } : {}), ...(await globalsOf(envs)) };
     if (choice.format !== 'postman') {
       opts.envValues = await Promise.all(names.map(async (name) => ({ name, values: await envs.values(name) })));
-      opts.history = (await listHistory(historyDir).catch((e) => { log().error(`export.history - ${errMsg(e)}`); return []; })).filter((h) => h.status !== undefined).map((h) => ({ method: h.method, url: h.url, ...(h.status !== undefined ? { status: h.status } : {}) }));
+      opts.history = await historyResponses(historyDir);
     }
     let prev = 0;
     return runExport(opts, ac.signal, (d, t, p) => { progress.report({ increment: ((d - prev) / t) * 100, message: `${d} / ${t} · ${p}` }); prev = d; });
@@ -75,32 +80,22 @@ async function pickCollection(dir: vscode.Uri): Promise<string | undefined> {
 }
 
 async function ask(root: string, envs: Environments, historyDir: string): Promise<void> {
-  const fmt = await vscode.window.showQuickPick(FORMATS.map((f) => ({ ...f })), { title: 'Export format' });
-  if (!fmt) return;
-  const children = (await fs.readdir(root, { withFileTypes: true })).filter((e) => !e.name.startsWith('.') && e.name !== EXPORTS_DIR && (e.isDirectory() || /\.http$/i.test(e.name)));
-  const incl = await vscode.window.showQuickPick(children.map((e) => ({ label: e.name, description: e.isDirectory() ? 'folder' : 'request', picked: true })), { title: 'Requests to include', canPickMany: true });
-  if (!incl) return;
-  const opt = fmt.format === 'postman' ? [
-    { label: 'Include Environments', id: 'env', picked: false }, { label: 'Translate scripts (httpme.* → pm.*)', id: 'scripts', picked: true },
-    { label: 'Export Environments as http-client.env.json (JetBrains)', id: 'jb', picked: false }, { label: 'Include secret values', id: 'secret', picked: false },
-  ] : [];
-  const chosen = opt.length ? await vscode.window.showQuickPick(opt, { title: 'Options', canPickMany: true }) : [];
-  if (!chosen) return;
-  const on = (id: string) => chosen.some((c) => c.id === id);
-  let includeSecrets = on('secret');
-  if (includeSecrets) {
-    const yes = await vscode.window.showWarningMessage('Export with secret values?', { modal: true, detail: 'Secret values will be written in plain text to the exported files. Add them to .gitignore.' }, 'Export with secrets');
-    includeSecrets = yes === 'Export with secrets';
-  }
   const ws = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? root;
-  const target = await vscode.window.showSaveDialog({ title: 'Save export as', defaultUri: vscode.Uri.file(join(ws, EXPORTS_DIR, `${basename(root)}.${fmt.ext}`)), filters: { Export: [fmt.ext.split('.').slice(-1)[0]] } });
-  if (!target) return;
-  const keep = new Set(incl.map((i) => i.label));
-  const choice: ExportChoice = {
-    format: fmt.format, ...(fmt.yaml ? { yaml: true } : {}), outFile: target.fsPath, translateScripts: on('scripts'),
-    include: (rel) => keep.has(rel.split('/')[0]) || !rel.includes('/') && !children.some((c) => c.name === rel),
-    ...(on('env') || on('jb') ? { environments: { includeSecrets, ...(on('jb') ? { jetbrains: true } : {}) } } : {}),
-  };
+  const res = await openExportDialog(root, ws, async () => {
+    const names = await envs.names();
+    const globals = (await globalsOf(envs)).globals;
+    return {
+      envs: await envData(envs, names), ...(globals ? { globals } : {}),
+      envValues: await Promise.all(names.map(async (name) => ({ name, values: await envs.values(name) }))),
+      history: await historyResponses(historyDir),
+    };
+  }, envs);
+  if (!res) return;
+  let { choice } = res;
+  if (res.confirmSecrets) {
+    const yes = await vscode.window.showWarningMessage('Export with secret values?', { modal: true, detail: 'Secret values will be written in plain text to the exported files. Add them to .gitignore.' }, 'Export with secrets');
+    if (yes !== 'Export with secrets') choice = { ...choice, environments: { ...choice.environments!, includeSecrets: false } };
+  }
   await runAndReport(root, choice, envs, historyDir, ws);
 }
 

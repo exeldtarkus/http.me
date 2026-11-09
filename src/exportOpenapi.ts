@@ -8,10 +8,23 @@ import type { VarValue } from './vars';
 type Obj = Record<string, any>;
 export type OpenApiVersion = '3.0.3' | '3.1.0';
 export type HistoryResponse = { method: string; url: string; status?: number; contentType?: string; body?: string };
+
+const OP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch'];
+const normPath = (p: string) => p.replace(/\{[^}]+\}/g, '{}');
+/** operationId -> operasi di spec asli */
+function indexOriginal(spec: Obj | undefined): Map<string, { m: string; path: string; op: Obj }> {
+  const out = new Map<string, { m: string; path: string; op: Obj }>();
+  for (const [path, item] of Object.entries(spec?.paths ?? {}) as [string, Obj][]) {
+    for (const m of OP_METHODS) if (item?.[m]?.operationId) out.set(item[m].operationId, { m, path: normPath(path), op: item[m] });
+  }
+  return out;
+}
 export type ExportOpenApiOptions = {
   version: OpenApiVersion;
   /** Environment: nilai base URL jadi `servers` */ envs: readonly { name: string; values: ReadonlyMap<string, VarValue> }[];
   history: readonly HistoryResponse[];
+  /** spec asal import (dari `_source.json`): tag, requestBody, responses, components asli dipertahankan untuk operasi yang method + path-nya sama */
+  original?: Obj;
 };
 
 const FORMATS: [RegExp, string][] = [
@@ -178,6 +191,9 @@ export function toOpenApi(c: ExportCollection, o: ExportOpenApiOptions): { doc: 
   const ids = new Set<string>();
   let scripts = 0;
   let count = 0;
+  const origIndex = indexOriginal(o.original);
+  const v3 = typeof o.original?.openapi === 'string';
+  let usedOriginal = false;
   const globalSec = rootAuth ? security(rootAuth, c.name) : undefined;
   if (globalSec?.length) doc.security = globalSec;
 
@@ -208,11 +224,16 @@ export function toOpenApi(c: ExportCollection, o: ExportOpenApiOptions): { doc: 
     const body = requestBody(r, o.version);
     const effective = r.auth !== undefined && r.auth.trim() !== '' ? r.auth : f.auth;
     const sec = effective !== undefined && effective !== rootAuth ? security(effective, f.where) : undefined;
+    const o1 = origIndex.get(id);
+    const orig = o1 && o1.m === m && o1.path === normPath(u.path) ? o1.op : undefined;
+    if (orig && v3) usedOriginal = true;
     const hist = o.history.filter((h) => h.method.toUpperCase() === r.method.toUpperCase() && h.url === r.url);
+    const origResponses = orig?.responses && !hist.length ? (v3 ? orig.responses : Object.fromEntries(Object.entries(orig.responses as Obj).map(([k, v]) => [k, { description: String((v as Obj)?.description ?? 'Response') }]))) : undefined;
+    const tag = orig?.tags?.[0] ?? f.tag;
     item[m] = {
-      ...(f.tag ? { tags: [f.tag] } : {}), ...(r.title ? { summary: r.title } : {}), ...(desc ? { description: desc } : {}), operationId: id,
-      ...(params.length ? { parameters: params } : {}), ...(body ? { requestBody: body } : {}), ...(sec ? { security: sec } : {}),
-      responses: responsesOf(hist, o.version),
+      ...(tag ? { tags: [tag] } : {}), ...(r.title ? { summary: r.title } : {}), ...(desc ? { description: desc } : {}), operationId: id,
+      ...(params.length ? { parameters: params } : {}), ...(orig && v3 && orig.requestBody ? { requestBody: orig.requestBody } : body ? { requestBody: body } : {}), ...(sec ? { security: sec } : {}),
+      responses: origResponses ?? responsesOf(hist, o.version),
     };
     count++;
   }
@@ -227,7 +248,8 @@ export function toOpenApi(c: ExportCollection, o: ExportOpenApiOptions): { doc: 
   }
   if (!servers.length) for (const origin of origins) servers.push({ url: origin });
   if (servers.length) doc.servers = servers;
-  if (schemes.size) doc.components = { securitySchemes: Object.fromEntries(schemes) };
+  const { securitySchemes: _drop, ...keptComponents } = usedOriginal ? (o.original?.components ?? {}) as Obj : {};
+  if (schemes.size || Object.keys(keptComponents).length) doc.components = { ...keptComponents, ...(schemes.size ? { securitySchemes: Object.fromEntries(schemes) } : {}) };
   return { doc, warnings, requests: count, skipped };
 }
 

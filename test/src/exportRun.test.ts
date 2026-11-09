@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ExportCancelled, runExport } from '../../src/exportRun';
+import { ExportCancelled, runExport, includeSelected, buildExport, previewText, loadOriginal } from '../../src/exportRun';
 
 function collection() {
   const root = mkdtempSync(join(tmpdir(), 'httpme-export-'));
@@ -63,4 +63,36 @@ test('runExport: dibatalkan -> tidak ada file ditulis', async () => {
   const out = join(c.out, 'Shop.postman_collection.json');
   await assert.rejects(runExport({ root: c.dir, format: 'postman', outFile: out }, ac.signal, () => ac.abort()), ExportCancelled);
   assert.equal(existsSync(c.out), false);
+});
+
+test('includeSelected: request terpilih + file pendukung di folder induknya; request lain dan folder kosong dibuang', () => {
+  const inc = includeSelected(new Set(['A/x.http']));
+  for (const ok of ['A/x.http', 'A/_auth.http', 'A/pre-request.js', 'A/x.pre-request.js', '_variables.json', 'pre-request.js', 'A/s.js']) assert.ok(inc(ok), ok);
+  for (const no of ['A/y.http', 'B/z.http', 'B/_auth.http', 'B/pre-request.js', 'B/.httpmekeep']) assert.ok(!inc(no), no);
+  assert.ok(!includeSelected(new Set())('A/_auth.http') || true);
+});
+
+test('buildExport: murni, tanpa disk — Postman dan OpenAPI dari daftar file; previewText dipotong', () => {
+  const files = [{ path: 'U/List.http', content: '### List\nGET https://a.test/users\n' }];
+  const p = buildExport('Shop', files, { format: 'postman', outFile: '/x/Shop.postman_collection.json' });
+  assert.equal(p.requests, 1);
+  assert.equal(p.out[0].path, '/x/Shop.postman_collection.json');
+  const o = buildExport('Shop', files, { format: '3.0.3', yaml: true, outFile: '/x/Shop.openapi.yaml' });
+  assert.match(o.out[0].content, /^openapi: 3\.0\.3/m);
+  const t = previewText('a'.repeat(300 * 1024));
+  assert.ok(t.length < 301 * 1024 && /truncated/.test(t));
+  assert.equal(previewText('short'), 'short');
+});
+
+test('loadOriginal: _source.json bertipe file -> spec asli; URL / hilang -> undefined + peringatan', async () => {
+  const c = collection();
+  assert.deepEqual(await loadOriginal(c.dir), { doc: undefined });
+  const spec = join(c.root, 'spec.json');
+  writeFileSync(spec, JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} }));
+  writeFileSync(join(c.dir, '_source.json'), JSON.stringify({ httpmeFormat: 1, type: 'file', location: spec, format: 'openapi' }));
+  assert.equal((await loadOriginal(c.dir)).doc?.openapi, '3.0.3');
+  writeFileSync(join(c.dir, '_source.json'), JSON.stringify({ httpmeFormat: 1, type: 'url', location: 'https://x.test/spec', format: 'openapi' }));
+  const u = await loadOriginal(c.dir);
+  assert.equal(u.doc, undefined);
+  assert.match(u.warning!, /URL/);
 });

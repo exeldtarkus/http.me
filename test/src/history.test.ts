@@ -36,3 +36,11 @@ test('historyId: urut waktu secara teks, unik per Send', () => {
   assert.ok(historyId(999, 1) < historyId(1000, 0));
   assert.notEqual(historyId(5, 1), historyId(5, 2));
 });
+
+test('historyEntry: response (contentType + body) disimpan; body response > 64 KB dibuang, contentType tetap', () => {
+  const r = parseRequest('GET https://a.test/x\n');
+  const ok = historyEntry({ id: 'i', time: 1, request: r, status: 200, file: 'f', response: { contentType: 'application/json', body: '{"a":1}' } });
+  assert.deepEqual(ok.response, { contentType: 'application/json', body: '{"a":1}' });
+  const big = historyEntry({ id: 'i', time: 1, request: r, status: 200, file: 'f', response: { contentType: 'text/plain', body: 'x'.repeat(65 * 1024) } });
+  assert.deepEqual(big.response, { contentType: 'text/plain' });
+});

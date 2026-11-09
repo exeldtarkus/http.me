@@ -106,3 +106,39 @@ test('export OpenAPI: ROUND-TRIP import Petstore -> export -> import (operationI
     assert.deepEqual(ops(doc, withId), ops(orig), name);
   }
 });
+
+test('export OpenAPI: spec asli (_source.json) mempertahankan tag, requestBody, responses, components bila method + path sama', () => {
+  const orig = parseDoc(fx('petstore3.yaml')) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const p = importOpenApi(parseDoc(fx('petstore3.yaml')));
+  const c = col(p.files.map((f) => ({ path: f.path.slice(p.name.length + 1), content: f.content })), p.name);
+  const plain = toOpenApi(c, { version: '3.0.3', envs: [], history: [] }).doc;
+  const kept = toOpenApi(c, { version: '3.0.3', envs: [], history: [], original: orig });
+  assert.deepEqual(validateOpenApi(kept.doc), []);
+  assert.deepEqual(kept.doc.components.schemas, orig.components.schemas);
+  const upd = kept.doc.paths['/pet'].put;
+  assert.deepEqual(upd.requestBody, orig.paths['/pet'].put.requestBody);
+  assert.deepEqual(upd.tags, orig.paths['/pet'].put.tags);
+  assert.notDeepEqual(plain.paths['/pet'].put.requestBody, orig.paths['/pet'].put.requestBody, 'tanpa spec asli: diturunkan dari contoh');
+});
+
+test('export OpenAPI: path / method berubah dari spec asli -> tidak memakai schema asli; History lebih utama dari responses asli', () => {
+  const orig = { openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: { '/a': { get: { operationId: 'getA', tags: ['t'], responses: { 200: { description: 'orig', content: { 'application/json': { schema: { $ref: '#/components/schemas/A' } } } } } } } }, components: { schemas: { A: { type: 'object' } } } };
+  const f = (path: string, extra = '') => [{ path: 'a.http', content: `### A\n# @operation getA\nGET ${path}\n${extra}` }];
+  const same = toOpenApi(col(f('/a')), { version: '3.0.3', envs: [], history: [], original: orig }).doc;
+  assert.equal(same.paths['/a'].get.responses[200].description, 'orig');
+  const moved = toOpenApi(col(f('/b')), { version: '3.0.3', envs: [], history: [], original: orig }).doc;
+  assert.equal(moved.paths['/b'].get.responses[200].description, 'OK');
+  assert.equal(moved.paths['/b'].get.tags, undefined);
+  const hist = toOpenApi(col(f('/a')), { version: '3.0.3', envs: [], history: [{ method: 'GET', url: '/a', status: 201 }], original: orig }).doc;
+  assert.deepEqual(Object.keys(hist.paths['/a'].get.responses), ['201']);
+});
+
+test('export OpenAPI: spec asli Swagger 2.0 -> tag dipertahankan saja', () => {
+  const orig = parseDoc(fx('petstore2.json')) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const p = importOpenApi(orig);
+  const c = col(p.files.map((f) => ({ path: f.path.slice(p.name.length + 1), content: f.content })), p.name);
+  const { doc } = toOpenApi(c, { version: '3.0.3', envs: [], history: [], original: orig });
+  assert.deepEqual(validateOpenApi(doc), []);
+  assert.deepEqual(doc.paths['/pet'].post.tags, ['pet']);
+  assert.equal(doc.components?.schemas, undefined);
+});

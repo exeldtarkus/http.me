@@ -53,6 +53,7 @@ export const tests: ITests = {
       await vscode.commands.executeCommand('httpme.sendBlock', doc.uri, 0);
       const e = await until('entri History', async () => (await mine())[0]);
       assert.equal(e.status, 404);
+      assert.equal((e as { response?: { body?: string } }).response?.body, 'ok', 'body response disimpan untuk contoh export OpenAPI');
       assert.equal(e.text, `GET ${srv.url}/missing\nX-A: 1\n`, 'header Authorization tidak disimpan');
 
       await api().history.action(e.id, 'curl');

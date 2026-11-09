@@ -9,8 +9,9 @@ export const HISTORY_MAX = 200;
 const MAX_BODY = 64 * 1024;
 const SECRET_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie', 'set-cookie']);
 
-export type HistoryEntry = HistorySummary & { title?: string; /** blok ke-n di file multi-request */ block?: number; /** request sebagai teks .http */ text: string; note?: string };
-export type HistoryInput = Omit<HistorySummary, 'method' | 'url'> & { request: ParsedRequest; block?: number };
+export type HistoryResponse = { contentType?: string; /** body teks, maks 64 KB */ body?: string };
+export type HistoryEntry = HistorySummary & { title?: string; /** response terakhir (untuk contoh / schema saat export OpenAPI) */ response?: HistoryResponse; /** blok ke-n di file multi-request */ block?: number; /** request sebagai teks .http */ text: string; note?: string };
+export type HistoryInput = Omit<HistorySummary, 'method' | 'url'> & { request: ParsedRequest; block?: number; response?: HistoryResponse };
 
 /** id = waktu (15 digit) + urutan: urutan teks = urutan waktu */
 export const historyId = (time: number, seq: number): string => `${String(time).padStart(15, '0')}-${String(seq).padStart(6, '0')}`;
@@ -18,9 +19,10 @@ export const historyId = (time: number, seq: number): string => `${String(time).
 export function historyEntry(i: HistoryInput): HistoryEntry {
   const big = Buffer.byteLength(i.request.body) > MAX_BODY;
   const r: ParsedRequest = { ...i.request, headers: i.request.headers.filter((h) => !SECRET_HEADERS.has(h.name.toLowerCase())), ...(big ? { body: '' } : {}) };
-  const { request: _r, ...rest } = i;
+  const { request: _r, response, ...rest } = i;
+  const keep = response && (response.body === undefined || Buffer.byteLength(response.body) <= MAX_BODY) ? response : response && { ...(response.contentType ? { contentType: response.contentType } : {}) };
   return {
-    ...rest, method: r.method, url: r.url, ...(r.title ? { title: r.title } : {}),
+    ...rest, ...(keep && Object.keys(keep).length ? { response: keep } : {}), method: r.method, url: r.url, ...(r.title ? { title: r.title } : {}),
     text: serializeRequest(r), ...(big ? { note: 'Body not saved (larger than 64 KB).' } : {}),
   };
 }
