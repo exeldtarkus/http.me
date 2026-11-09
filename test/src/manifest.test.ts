@@ -156,3 +156,11 @@ test('tiap section punya flag "loaded" sendiri (flag bersama membuat section lai
   const src = (require('node:fs') as typeof import('node:fs')).readFileSync(join(__dirname, '..', '..', '..', 'src', 'sidebar.ts'), 'utf8');
   assert.doesNotMatch(src, /'httpme\.loaded'/);
 });
+
+test('tombol Delete di Collections menjalankan httpme.delete (hanya saat view fokus)', () => {
+  const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
+  const k = pkg.contributes.keybindings.find((x: { command: string; key: string }) => x.command === 'httpme.delete' && x.key === 'delete');
+  assert.ok(k, 'keybinding delete');
+  assert.match(k.when, /focusedView == httpme\.sidebar/);
+  assert.match(k.when, /!inputFocus/);
+});

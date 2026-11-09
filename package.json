@@ -1290,6 +1290,12 @@
         "command": "httpme.editActiveEnvironment",
         "key": "ctrl+alt+shift+e",
         "mac": "cmd+alt+shift+e"
+      },
+      {
+        "command": "httpme.delete",
+        "key": "delete",
+        "mac": "cmd+backspace",
+        "when": "focusedView == httpme.sidebar && !inputFocus"
       }
     ],
     "viewsWelcome": [
