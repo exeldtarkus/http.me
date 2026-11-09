@@ -13,6 +13,7 @@ HTTP client ringan untuk VS Code, ala Postman, dengan fokus **hemat RAM**: reque
 - **Collection = file `.http`** – satu request per file (kompatibel REST Client / JetBrains), folder = folder biasa, jadi semuanya bisa di-review di Git. Sidebar dengan drag & drop, rename, duplicate, Copy as cURL / PowerShell, dan **Dashboard** yang menggabungkan Collections, Environments, dan Cookies dalam satu halaman.
 - **Environment** – dev / uat / prod dengan key yang sama, `NULL` untuk nilai yang belum diisi, Globals, variable collection, nilai rahasia disimpan di SecretStorage VS Code (tidak pernah di file), serta import / export `http-client.env.json`.
 - **Cookie dan sesi login** – cookie jar per Environment, login ulang otomatis saat sesi habis.
+- **Request timeout** – default 10 menit; ubah lewat setting `httpme.request.timeout` (detik) atau `http.me: Set Request Timeout…`, atau timpa per request dengan `# @timeout <detik>`. Berlaku untuk request, request login, dan request token OAuth 2.0.
 - **Script** – `pre-request.js` dan `post-request.js` per folder atau request dengan helper `httpme.*` dan test.
 - **Import** – cURL, Postman Collection v2.0 / v2.1 (script ikut diterjemahkan), Postman Environment, OpenAPI 3.x / Swagger 2.0 (JSON atau YAML, dari file atau URL), dengan preview dan re-import dari sumbernya.
 - **Export** – ke Postman Collection v2.1 atau OpenAPI 3.0.3 / 3.1.0 dengan pratinjau langsung, pilihan request, dan Environment sebagai file Postman atau JetBrains. Nilai rahasia tidak pernah ditulis kecuali Anda konfirmasi.
@@ -54,6 +55,7 @@ Content-Type: application/json
 | http.me: Open Dashboard | `Ctrl+Alt+D` |
 | http.me: Select Environment | `Ctrl+Alt+E` |
 | http.me: Next / Previous Environment | `Ctrl+Alt+]` / `Ctrl+Alt+[` |
+| http.me: Set Request Timeout… | Command Palette |
 | http.me: Import… / Export… | Command Palette |
 
 Semua command ada di kategori **http.me** pada Command Palette.

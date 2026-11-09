@@ -13,6 +13,7 @@ A lightweight HTTP client for VS Code, in the spirit of Postman, built to stay *
 - **Collections are `.http` files** – one request per file (REST Client / JetBrains compatible), folders are normal folders, so everything is reviewable in Git. Sidebar with drag & drop, rename, duplicate, Copy as cURL / PowerShell, and a **Dashboard** with Collections, Environments and Cookies in one page.
 - **Environments** – dev / uat / prod with the same keys, `NULL` for values that are not filled yet, Globals, collection variables, secret values kept in VS Code SecretStorage (never in the file), and import / export of `http-client.env.json`.
 - **Cookies and login sessions** – a cookie jar per Environment, automatic re-login when a session expires.
+- **Request timeout** – 10 minutes by default; change it with the `httpme.request.timeout` setting (seconds) or `http.me: Set Request Timeout…`, or override per request with `# @timeout <seconds>`. Applies to requests, login requests and OAuth 2.0 token requests.
 - **Scripts** – `pre-request.js` and `post-request.js` per folder or request with `httpme.*` helpers and tests.
 - **Import** – cURL, Postman Collection v2.0 / v2.1 (with scripts translated), Postman Environments, OpenAPI 3.x / Swagger 2.0 (JSON or YAML, from a file or a URL), with a preview and re-import from the source.
 - **Export** – to Postman Collection v2.1 or OpenAPI 3.0.3 / 3.1.0 with a live preview, request selection, and Environments as Postman or JetBrains files. Secrets are never written unless you confirm.
@@ -54,6 +55,7 @@ Content-Type: application/json
 | http.me: Open Dashboard | `Ctrl+Alt+D` |
 | http.me: Select Environment | `Ctrl+Alt+E` |
 | http.me: Next / Previous Environment | `Ctrl+Alt+]` / `Ctrl+Alt+[` |
+| http.me: Set Request Timeout… | Command Palette |
 | http.me: Import… / Export… | Command Palette |
 
 All commands are under the **http.me** category in the Command Palette.
