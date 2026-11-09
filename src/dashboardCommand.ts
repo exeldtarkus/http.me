@@ -11,6 +11,7 @@ import { errMsg } from './log';
 import { log, reportError } from './output';
 import { maskCookie } from './httpEditor';
 import { moveInto } from './sidebar';
+import { COMPARE_KEY, markOpened, pruneOpened } from './backBar';
 import type { Environments } from './envState';
 import type { Cookies } from './cookies';
 
@@ -59,22 +60,6 @@ const exec = (cmd: string, ...args: unknown[]) => vscode.commands.executeCommand
 type Args = Record<string, unknown>;
 type Handler = (a: Args) => unknown;
 
-/** path editor yang dibuka dari Dashboard: tombol Back (title bar) hanya tampil di editor ini (context key httpme.dashboardOpened) */
-const opened = new Set<string>();
-const publish = () => void vscode.commands.executeCommand('setContext', 'httpme.dashboardOpened', [...opened]);
-function markOpened(uri: vscode.Uri | undefined): void {
-  if (uri?.scheme !== 'file') return;
-  opened.add(uri.fsPath);
-  publish();
-}
-/** tab yang sudah ditutup dilepas dari daftar */
-function pruneOpened(): void {
-  const open = new Set(vscode.window.tabGroups.all.flatMap((g) => g.tabs.map((t) => (t.input as { uri?: vscode.Uri } | undefined)?.uri?.fsPath).filter((x): x is string => !!x)));
-  let changed = false;
-  for (const p of [...opened]) if (!open.has(p)) { opened.delete(p); changed = true; }
-  if (changed) publish();
-}
-
 function handlers(envs: Environments, cookies: Cookies): Record<string, Handler> {
   const file = (cmd: string): Handler => (a) => exec(cmd, uriOf(a.path));
   const opens = (cmd: string): Handler => (a) => { const u = uriOf(a.path); markOpened(u); return exec(cmd, u); };
@@ -113,7 +98,7 @@ function handlers(envs: Environments, cookies: Cookies): Record<string, Handler>
     // Environments
     'env.setActive': env('httpme.setActiveEnvironment'), 'env.open': envOpens('httpme.openEnvironment'), 'env.openAsText': envOpens('httpme.openEnvironmentAsText'), 'env.rename': env('httpme.renameEnvironment'),
     'env.duplicate': env('httpme.duplicateEnvironment'), 'env.delete': env('httpme.deleteEnvironment'), 'env.reveal': env('httpme.revealEnvironment'),
-    'env.new': () => exec('httpme.newEnvironment'), 'env.import': () => exec('httpme.importEnvironment'), 'env.compare': () => exec('httpme.compareEnvironments'), 'env.sync': () => exec('httpme.syncEnvironments'),
+    'env.new': () => exec('httpme.newEnvironment'), 'env.import': () => exec('httpme.importEnvironment'), 'env.compare': () => { markOpened(COMPARE_KEY); return exec('httpme.compareEnvironments'); }, 'env.sync': () => exec('httpme.syncEnvironments'),
     'env.openGlobals': () => { markOpened(envs.globalsUri); return exec('httpme.openGlobals'); }, 'env.openGlobalsText': () => { markOpened(envs.globalsUri); return exec('httpme.openEnvironmentAsText', { kind: 'eglobals' }); },
     'env.addVariable': async () => {
       const name = await vscode.window.showInputBox({ title: 'Add Variable to Every Environment', prompt: 'Variable name (NULL in every Environment until you fill it)', validateInput: (v) => (/^[\w.-]+$/.test(v.trim()) || !v ? undefined : 'Use letters, digits, _ . -') });

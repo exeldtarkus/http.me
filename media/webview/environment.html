@@ -62,6 +62,7 @@
 </style>
 </head>
 <body>
+<!--include:backbar-->
 <div class="head">
   <button class="title" id="title" type="button" title="Rename Environment"></button>
   <span class="badge" id="activeBadge" hidden>Active</span>
@@ -88,6 +89,7 @@
   <p class="na">Initial values are saved in the file (commit them). Current values stay on this computer. Secret values are kept in VS Code SecretStorage, never in the file.</p>
 </div>
 <div class="foot"><button class="btn pri" id="save" type="button" title="Save (Ctrl+S)" disabled>Save</button></div>
+<script nonce="{{nonce}}" src="backbar.js"></script>
 <script nonce="{{nonce}}" src="environment.js"></script>
 </body>
 </html>

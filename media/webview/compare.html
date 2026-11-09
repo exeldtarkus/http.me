@@ -33,11 +33,13 @@
 </style>
 </head>
 <body>
+<!--include:backbar-->
 <h1>All Environments</h1>
 <p>Rows are variables, columns are Environments. NULL cells (no value yet) are highlighted: type to fill them in.</p>
 <label><input type="checkbox" id="nullOnly"> Rows with NULL only</label>
 <div class="wrap"><table><thead id="head"></thead><tbody id="rows"></tbody></table></div>
 <p class="empty" id="empty" hidden>No Environments yet.</p>
+<script nonce="{{nonce}}" src="backbar.js"></script>
 <script nonce="{{nonce}}" src="compare.js"></script>
 </body>
 </html>

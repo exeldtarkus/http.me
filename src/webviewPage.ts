@@ -12,7 +12,10 @@ export function webviewPage(name: string, vars: Record<string, string | number>)
   let tpl = cache.get(name);
   if (tpl === undefined) {
     // <script nonce="{{nonce}}" src="x.js"></script> -> isi x.js di-inline (webview butuh nonce, screenshot/test tanpa URI webview)
-    tpl = read(`${name}.html`).replace(/<script nonce="\{\{nonce\}\}" src="([\w.-]+\.js)"><\/script>/g,
+    tpl = read(`${name}.html`)
+      // <!--include:x--> diganti isi media/webview/x.html (potongan bersama, mis. bar Back to Dashboard)
+      .replace(/<!--include:([\w-]+)-->/g, (_m, part: string) => read(`${part}.html`))
+      .replace(/<script nonce="\{\{nonce\}\}" src="([\w.-]+\.js)"><\/script>/g,
       (_m, file: string) => `<script nonce="{{nonce}}">\n${read(file)}</script>`);
     cache.set(name, tpl);
   }

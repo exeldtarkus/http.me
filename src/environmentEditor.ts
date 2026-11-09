@@ -1,6 +1,7 @@
 // editor Environment = custom editor tabel di atas file JSON (.httpme/environments/<nama>.json / Globals): dirty/undo/save oleh VS Code.
 // Perubahan struktur key (tambah / rename / hapus / secret) ikut ke semua Environment lain (Globals berdiri sendiri).
 import * as vscode from 'vscode';
+import { attachBackBar, COMPARE_KEY, forgetOpened } from './backBar';
 import { randomBytes } from 'node:crypto';
 import { clearedKey, parseEnvironment, persistAll, renamedKey, serializeEnvironment, validateVars, withKey, withoutKey, withSecret, type EnvVar } from './environments';
 import { GLOBALS, type Environments } from './envState';
@@ -155,6 +156,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
     void panel.webview.postMessage({ type: 'focus', ...f });
   };
   const subs = [
+    attachBackBar(panel, () => (doc.uri.scheme === 'file' ? doc.uri.fsPath : undefined)),
     panel.webview.onDidReceiveMessage(async (m: { type: string; key?: string; env?: string } & Record<string, unknown>) => {
       try {
         if (m.type === 'ready') { await post(); takeFocus(); } else if (m.type === 'setActive') await envs.setActive(nameOf(doc));
@@ -233,8 +235,9 @@ export async function openCompare(): Promise<vscode.WebviewPanel> {
       }
     }),
     envs.onDidChange(() => void post()),
+    attachBackBar(panel, () => COMPARE_KEY),
   ];
-  panel.onDidDispose(() => { subs.forEach((s) => s.dispose()); compare = undefined; });
+  panel.onDidDispose(() => { subs.forEach((s) => s.dispose()); compare = undefined; forgetOpened(COMPARE_KEY); });
   return panel;
 }
 

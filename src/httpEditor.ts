@@ -2,6 +2,7 @@
 // Panel mengirim request terurai ('edit'), host menulisnya ke dokumen; perubahan dokumen dari luar dikirim balik ('state').
 // Request berjalan di extension host: state (running / response) per dokumen bertahan saat webview tersembunyi dilepas.
 import * as vscode from 'vscode';
+import { attachBackBar } from './backBar';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
@@ -839,6 +840,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   };
   blockPickers.set(doc.uri.toString(), picker);
   const subs = [
+    attachBackBar(panel, () => (doc.uri.scheme === 'file' ? doc.uri.fsPath : undefined)),
     onRunnerChange(postOthers),
     onRunnerChange(postBlocks),
     panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown; layout?: unknown; message?: unknown; index?: unknown; opts?: unknown }) => {
