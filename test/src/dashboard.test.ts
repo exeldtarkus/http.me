@@ -143,3 +143,11 @@ test('Dashboard: tombol Export… dan menu Export… memakai httpme.export; Dele
   assert.match(js, /document\.addEventListener\('keydown', [\s\S]{0,300}deleteAction\(/);
   assert.doesNotMatch(js, /ev\.key === 'Delete'/, 'Delete tidak lagi per-baris (hilang saat render ulang)');
 });
+
+test('Open Dashboard menutup panel bawah http.me hanya bila view Response terlihat', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const ed = fs.readFileSync(join(__dirname, '../../../src/httpEditor.ts'), 'utf8');
+  const cmd = fs.readFileSync(join(__dirname, '../../../src/dashboardCommand.ts'), 'utf8');
+  assert.match(ed, /export async function closeOutputPanel\(\)[\s\S]{0,200}output\.view\?\.visible[\s\S]{0,120}workbench\.action\.closePanel/);
+  assert.match(cmd, /registerCommand\('httpme\.openDashboard', async \(\) => \{\s*await closeOutputPanel\(\);/);
+});

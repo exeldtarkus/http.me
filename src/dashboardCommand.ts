@@ -9,7 +9,7 @@ import { KEEP_FILE } from './store';
 import { webviewPage } from './webviewPage';
 import { errMsg } from './log';
 import { log, reportError } from './output';
-import { maskCookie } from './httpEditor';
+import { closeOutputPanel, maskCookie } from './httpEditor';
 import { moveInto } from './sidebar';
 import { COMPARE_KEY, markOpened, pruneOpened } from './backBar';
 import type { Environments } from './envState';
@@ -119,7 +119,8 @@ export function registerDashboard(envs: Environments, cookies: Cookies): vscode.
   const table = handlers(envs, cookies);
   const back = vscode.commands.registerCommand('httpme.backToDashboard', () => vscode.commands.executeCommand('httpme.openDashboard'));
   const tabs = vscode.window.tabGroups.onDidChangeTabs(pruneOpened);
-  const open = vscode.commands.registerCommand('httpme.openDashboard', () => {
+  const open = vscode.commands.registerCommand('httpme.openDashboard', async () => {
+    await closeOutputPanel();
     if (panel) return panel.reveal();
     const p = vscode.window.createWebviewPanel('httpme.dashboard', 'http.me Dashboard', vscode.ViewColumn.Active, { enableScripts: true });
     panel = p;

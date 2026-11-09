@@ -102,6 +102,10 @@ async function revealOutput(): Promise<void> {
   if (output.view) output.view.show(true);
   else await vscode.commands.executeCommand(`${OUTPUT_VIEW}.focus`); // view belum pernah dibuka: resolveWebviewView yang menggambar
 }
+/** tutup panel bawah hanya bila yang terlihat adalah view Response http.me (Terminal / Output milik user tidak disentuh) */
+export async function closeOutputPanel(): Promise<void> {
+  if (output.view?.visible) await vscode.commands.executeCommand('workbench.action.closePanel');
+}
 export const outputKey = (): string | undefined => output.key;
 export const outputShown = (): boolean => !!output.view;
 const isLayout = (x: unknown): x is Layout => x === 'single' || x === 'two' || x === 'panel';
