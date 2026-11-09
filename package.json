@@ -275,6 +275,22 @@
         "icon": "$(clippy)"
       },
       {
+        "command": "httpme.import",
+        "title": "Import…",
+        "category": "http.me",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "httpme.undoLastImport",
+        "title": "Undo Last Import",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.reimportFromSource",
+        "title": "Re-import from Source",
+        "category": "http.me"
+      },
+      {
         "command": "httpme.selectEnvironment",
         "title": "Select Environment",
         "category": "http.me",
@@ -910,9 +926,14 @@
           "group": "more@1"
         },
         {
-          "command": "httpme.importFromClipboard",
+          "command": "httpme.import",
           "when": "view == httpme.sidebar",
           "group": "more@2"
+        },
+        {
+          "command": "httpme.importFromClipboard",
+          "when": "view == httpme.sidebar",
+          "group": "more@3"
         },
         {
           "command": "httpme.newEnvironment",
@@ -1185,6 +1206,11 @@
           "command": "httpme.openTabInPanel",
           "when": "view == httpme.open && viewItem =~ /^httpmeOpenTab/ && resourceExtname == .http",
           "group": "0_open@2"
+        },
+        {
+          "command": "httpme.reimportFromSource",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpme(Folder|Root)$/",
+          "group": "1_new@9"
         }
       ]
     },
@@ -1368,5 +1394,8 @@
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
   }
 }

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src 'nonce-{{nonce}}';">
+<style>
+  :root { --fg: var(--vscode-foreground); --muted: var(--vscode-descriptionForeground); --line: var(--vscode-panel-border, #8884); --warn: var(--vscode-editorWarning-foreground, #cca700); --mono: var(--vscode-editor-font-family, monospace); }
+  * { box-sizing: border-box; }
+  body { margin: 0 auto; padding: 20px 24px 80px; color: var(--fg); background: var(--vscode-editor-background); font-family: var(--vscode-font-family); font-size: 13px; max-width: 900px; }
+  h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; }
+  .sub { margin: 0 0 14px; color: var(--muted); }
+  .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+  input[type=text] { flex: 1; min-width: 200px; padding: 3px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--line)); }
+  button { padding: 4px 12px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0; cursor: pointer; }
+  button.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+  button:disabled { opacity: .5; cursor: default; }
+  ul { list-style: none; margin: 0; padding-left: 18px; }
+  #tree { padding-left: 0; border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; max-height: 60vh; overflow: auto; }
+  li { padding: 2px 0; }
+  .folder { font-weight: 600; }
+  .item { font-family: var(--mono); }
+  .warn { color: var(--warn); font-size: 12px; margin-left: 24px; }
+  .conflict select { margin-left: 8px; }
+  .count { color: var(--muted); }
+  footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 24px; background: var(--vscode-editor-background); border-top: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
+  footer .count { margin-right: auto; }
+</style>
+</head>
+<body>
+<h1>Import preview</h1>
+<p class="sub" id="sub"></p>
+<div class="row"><label for="dir">Destination folder</label><input type="text" id="dir" readonly><button type="button" class="secondary" id="browse">Browse…</button></div>
+<ul id="tree"></ul>
+<footer><span class="count" id="count"></span><button type="button" class="secondary" id="cancel">Cancel</button><button type="button" id="go">Import</button></footer>
+<script nonce="{{nonce}}" src="importPreview.js"></script>
+</body>
+</html>

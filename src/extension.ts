@@ -20,6 +20,7 @@ import { resolveRequest } from './vars';
 import { varize, varizeCandidates } from './varize';
 import { Cookies, registerCookieCommands, registerLoginStatus } from './cookies';
 import { cookieFlags, parseRequest, splitBlocks } from './httpFile';
+import { importApply, registerImport } from './importCommand';
 import { curlPasteToHttp } from './curl';
 import { sendUri, setSessionHooks } from './httpEditor';
 
@@ -68,6 +69,7 @@ export type HttpmeApi = {
   layout: { get: typeof getLayout; set: typeof setLayout; outputKey: typeof outputKey; outputShown: typeof outputShown };
   history: { list(): ReturnType<typeof listHistory>; action(id: string, a: HistoryAction): Promise<void> };
   /** tab request aktif panel file multi-request */ activeBlock: typeof activeBlock;
+  /** tulis rencana import lewat antrean import (itest) */ importApply(plan: import('./importCommon').ImportPlan, dir: string): Promise<import('./importer').ApplyResult>;
 };
 async function scriptsCall(uri: vscode.Uri, m: ScriptsMessage): Promise<unknown[]> {
   const out: unknown[] = [];
@@ -201,7 +203,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
     values: () => cookies.values(),
     paste: (domain, text) => cookies.paste(cookies.env, domain, text),
   }));
-  ctx.subscriptions.push(sidebarDisposable, registerEnvironmentCommands(envs, () => sidebar.redraw()), registerVariables(envs), variableHooks(envs), registerScriptLinks());
+  ctx.subscriptions.push(sidebarDisposable, registerEnvironmentCommands(envs, () => sidebar.redraw()), registerVariables(envs), variableHooks(envs), registerScriptLinks(), ...registerImport(envs, () => sidebar.refresh()));
   void envs.checkKeys().catch((e) => log().error(errorLine('checkKeys', e)));
   const run = (name: string, fn: () => Promise<unknown> | unknown) => Promise.resolve().then(fn).catch((e) => reportError(name, e, `http.me: ${errMsg(e)}`));
   const docOf = (uri: vscode.Uri) => vscode.workspace.openTextDocument(uri);
@@ -245,7 +247,8 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   void ctx.globalState.update(VERSION_KEY, version);
   if (isNewerVersion(version, previous)) openWhatsNew(ctx);
   return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt, scriptsCall, authCall, snippetCall,
-    statusBar, layout: { get: getLayout, set: setLayout, outputKey, outputShown }, history: { list: () => listHistory(historyDir), action: (id, a) => historyAction(historyDir, id, a) }, activeBlock };
+    statusBar, layout: { get: getLayout, set: setLayout, outputKey, outputShown }, history: { list: () => listHistory(historyDir), action: (id, a) => historyAction(historyDir, id, a) }, activeBlock,
+    importApply: (plan, dir) => importApply(plan, dir, envs, () => sidebar.refresh()) };
 }
 
 export function deactivate(): void {}

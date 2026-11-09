@@ -1,6 +1,7 @@
 // sidebar http.me: 4 section TreeView native (Collections, Environments, Open, Cookies) seperti Explorer VS Code,
 // tiap section punya judul & tombol aksinya sendiri. Satu class Sidebar per section (mode tetap). Logika murni di sidebarModel.ts.
 import * as vscode from 'vscode';
+import { reimport } from './importCommand';
 import * as path from 'node:path';
 import {
   arrangeOpen, busyTracker, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED,
@@ -654,7 +655,7 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
         { label: '$(repo) New Collection', id: 'httpme.newCollection' },
         { label: '$(new-folder) New Folder', id: 'httpme.newFolder' },
         { label: '$(add) New Request', id: 'httpme.newRequest' },
-        { label: '$(clippy) Import…', description: 'cURL command from the clipboard', id: 'httpme.importFromClipboard' },
+        { label: '$(cloud-download) Import…', description: 'Postman, OpenAPI / Swagger, cURL, URL', id: 'httpme.import' },
       ], { placeHolder: 'Add to Collections' });
       if (pick) await vscode.commands.executeCommand(pick.id, view.selection[0]);
     }),
@@ -675,6 +676,10 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
       sidebar.refresh();
     }),
     cmd('httpme.newRequestIn', async (a?: Arg) => newRequest(await targetDir(a))),
+    cmd('httpme.reimportFromSource', async (a?: Arg) => {
+      const dir = await targetDir(a);
+      if (dir) await reimport(dir, envs, () => sidebar.refresh());
+    }),
     cmd('httpme.openRequest', (uri: vscode.Uri) => openRequest(uri)),
     cmd('httpme.rename', async (a?: Arg, input?: string) => {
       const uri = uriOf(a ?? view.selection[0]);
