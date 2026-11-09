@@ -6,6 +6,19 @@ export type Release = { version: string; date: string; items: ReleaseItem[] };
 /** catatan rilis halaman What's New, terbaru di atas; wajib ada entri baru tiap rilis MINOR */
 export const RELEASES: Release[] = [
   {
+    version: '1.0.0', date: '2026-11-09', items: [
+      { kind: 'new', title: 'Dashboard', detail: 'Collections, Environments and Cookies on one page. Open it with Ctrl+Alt+D (Cmd+Alt+D on macOS).' },
+      { kind: 'new', title: 'Environments and variables', detail: 'NULL for unfilled values, Globals, collection variables, secret values in SecretStorage, and import / export of http-client.env.json.' },
+      { kind: 'new', title: 'Authorization', detail: '12 types, including OAuth 2.0, Digest and AWS Signature.' },
+      { kind: 'new', title: 'Cookies and login sessions', detail: 'A cookie jar per Environment and automatic re-login when a session expires.' },
+      { kind: 'new', title: 'Scripts', detail: 'pre-request.js and post-request.js per folder or request, with tests and console output.' },
+      { kind: 'new', title: 'Import', detail: 'cURL, Postman Collection and Environment, OpenAPI / Swagger (JSON or YAML) from a file or URL, with a preview and re-import from the source.' },
+      { kind: 'new', title: 'Export', detail: 'To Postman Collection v2.1 or OpenAPI 3.0.3 / 3.1.0 with a live preview and request selection. Secrets are never written unless you confirm.' },
+      { kind: 'new', title: 'History with response bodies', detail: 'The last 200 requests, used to fill response examples when you export OpenAPI.' },
+      { kind: 'improved', title: 'Keyboard and sidebar', detail: 'Delete works on the selected item, Close All Unpinned in Open, and a Back to Dashboard bar.' },
+    ],
+  },
+  {
     version: '0.2.0', date: '2026-11-05', items: [
       { kind: 'new', title: 'Code snippet panel' },
       { kind: 'new', title: 'Open: choose Text Editor or http.me UI', detail: 'Hover icon and right-click menu.' },

@@ -61,3 +61,9 @@ test("command http.me: What's New terdaftar", () => {
   assert.equal(cmd.title, "What's New");
   assert.equal(cmd.category, 'http.me');
 });
+
+test('RELEASES: tiap rilis MAJOR / MINOR (patch = 0) punya entri What\'s New', () => {
+  const [, , patch] = pkg.version.split('.').map(Number);
+  if (patch === 0) assert.ok(RELEASES.some((r) => r.version === pkg.version), `belum ada entri What's New untuk v${pkg.version}`);
+  assert.ok(RELEASES.some((r) => r.version === '1.0.0'), 'rilis stable pertama');
+});
