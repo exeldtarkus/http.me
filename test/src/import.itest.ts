@@ -81,4 +81,31 @@ export const tests: ITests = {
       rmSync(dir, { recursive: true, force: true });
     }
   },
+  async 'parse spec besar tidak memblokir event loop dan Send yang berjalan'() {
+    const paths: Record<string, unknown> = {};
+    for (let i = 0; i < 3000; i++) paths[`/r${i % 30}/{id}/i${i}`] = { get: { tags: [`t${i % 30}`], operationId: `op${i}` }, post: { operationId: `p${i}`, requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { a: { type: 'string' } } } } } } } };
+    const text = JSON.stringify({ openapi: '3.0.0', info: { title: 'ItestBig' }, servers: [{ url: 'https://x.test' }], paths });
+    const srv = await startServer(async () => { await wait(800); return { body: 'ok' }; });
+    try {
+      await vscode.commands.executeCommand('httpme.newRequest');
+      const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input as vscode.TabInputCustom;
+      const doc = await vscode.workspace.openTextDocument(input.uri);
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), `GET ${srv.url}/slow\n`);
+      await vscode.workspace.applyEdit(edit);
+      void vscode.commands.executeCommand('httpme.sendRequest');
+      for (let i = 0; i < 60 && api().viewOf(input.uri.toString())?.kind !== 'running'; i++) await wait(50);
+      let last = Date.now();
+      let worst = 0;
+      const timer = setInterval(() => { const n = Date.now(); worst = Math.max(worst, n - last); last = n; }, 10);
+      try {
+        void vscode.commands.executeCommand('httpme.import', 'text', [{ name: 'big.json', text }]);
+        for (let i = 0; i < 100 && !tabLabels().includes('Import preview: ItestBig'); i++) await wait(100);
+        assert.ok(tabLabels().includes('Import preview: ItestBig'), tabLabels().join(', '));
+      } finally { clearInterval(timer); }
+      assert.ok(worst < 250, `event loop extension host terblokir ${worst} ms saat parse`);
+      assert.equal(api().viewOf(input.uri.toString())?.kind === 'cancelled', false, 'request yang berjalan tidak terganggu');
+      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    } finally { await srv.close(); }
+  },
 };

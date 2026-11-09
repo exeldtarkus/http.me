@@ -2,18 +2,16 @@
 // Logika murni ada di importCommon / postman / openapi / jetbrainsEnv / importer / importSync.
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
-import { promises as fs, readFileSync } from 'node:fs';
+import { promises as fs } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { importAuth, localPath, specUrlCandidates } from './importFetch';
-import { detectFormat, parseDoc, type ImportPlan, type ImportFile } from './importCommon';
-import { importPostman } from './postman';
-import { importOpenApi } from './openapi';
+import { type ImportPlan, type ImportFile } from './importCommon';
+import { describe, runInWorker } from './importBuild';
 import { fromJetBrainsEnv } from './jetbrainsEnv';
 import { applyPlan, conflictsOf, importQueue, reportMarkdown, summarize, undoImport, type ApplyResult, type Conflict } from './importer';
 import { parseSource, planResync, sourceFile, SOURCE_FILE, type Source, type SyncItem } from './importSync';
 import { fromPostmanEnvironment, serializeEnvironment, parseEnvironment, createEnvironment, type EnvVar } from './environments';
 import { substitute } from './vars';
-import { parseRequest } from './httpFile';
 import { webviewPage } from './webviewPage';
 import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
@@ -37,18 +35,19 @@ function defaultDir(): string | undefined {
 }
 
 /** satu URL; halaman Swagger UI dicoba ke kandidat URL spec (v3/api-docs, …) sampai ada yang berupa spec */
-async function fetchText(raw: string, envs: Environments): Promise<string> {
+async function fetchText(raw: string, envs: Environments, signal?: AbortSignal): Promise<string> {
   const url = substitute(raw.trim(), await envs.scopes([])).text;
   const cands = specUrlCandidates(url);
-  if (!cands) return fetchOne(raw, envs);
+  if (!cands) return fetchOne(raw, envs, signal);
   const tried: string[] = [];
   for (const c of cands) {
     try {
-      const text = await fetchOne(c, envs);
-      detectFormat(text);
+      const text = await fetchOne(c, envs, signal);
+      if (!/^\s*[{[]|^\s*(openapi|swagger)\s*:/i.test(text.slice(0, 200))) throw new Error('not a spec'); // cek ringan: parse penuh terjadi di worker
       log().info(`import: ${url} is a Swagger UI page, using ${c}`);
       return text;
     } catch (e) {
+      if (signal?.aborted) throw e; // dibatalkan user: berhenti, bukan kandidat berikutnya
       log().warn(`import: ${c} is not usable: ${errMsg(e)}`);
       tried.push(c);
     }
@@ -56,7 +55,7 @@ async function fetchText(raw: string, envs: Environments): Promise<string> {
   throw new Error(`${url} is a Swagger UI page and no spec was found. Tried: ${tried.join(', ')}. Paste the spec URL shown in the Explore box instead.`);
 }
 
-async function fetchOne(raw: string, envs: Environments): Promise<string> {
+async function fetchOne(raw: string, envs: Environments, signal?: AbortSignal): Promise<string> {
   const scopes = await envs.scopes([]);
   const url = substitute(raw.trim(), scopes).text;
   if (/\{\{/.test(url)) throw new Error(`The URL still has unresolved variables: ${url}`);
@@ -66,7 +65,7 @@ async function fetchOne(raw: string, envs: Environments): Promise<string> {
   const values = new Map<string, string>();
   for (const sc of [...scopes].reverse()) for (const [k, v] of sc.values) if (typeof v === 'string') values.set(k, v);
   const a = importAuth(url, authText, values);
-  const res = await fetch(a.url, { headers: { Accept: 'application/json, application/yaml, text/yaml, */*', ...Object.fromEntries(a.headers) } });
+  const res = await fetch(a.url, { headers: { Accept: 'application/json, application/yaml, text/yaml, */*', ...Object.fromEntries(a.headers) }, ...(signal ? { signal } : {}) });
   if (!res.ok) throw new Error(`Could not fetch ${url}: HTTP ${res.status}${res.status === 401 || res.status === 403 ? ' (check the _auth.http in the workspace root)' : ''}`);
   const len = Number(res.headers.get('content-length') ?? 0);
   if (len > MAX_BYTES) throw new Error('The file is larger than 20 MB');
@@ -77,12 +76,14 @@ async function fetchOne(raw: string, envs: Environments): Promise<string> {
 type Dropped = { name: string; text: string };
 const isDropped = (x: unknown): x is Dropped[] => Array.isArray(x) && x.every((i) => !!i && typeof i.name === 'string' && typeof i.text === 'string');
 
-async function load(kind: 'file' | 'url' | 'clipboard' | 'text', envs: Environments, dropped?: vscode.Uri[], texts?: Dropped[]): Promise<Loaded[]> {
-  if (kind === 'text') return (texts ?? []).filter((t) => t.text.length <= MAX_BYTES).map((t) => ({ label: t.name, text: t.text, source: { type: 'clipboard' as const, location: '', format: '' } }));
+/** pilihan user (dialog) sebelum progress dimulai */
+type Picked = { uris?: vscode.Uri[]; url?: string; texts?: Dropped[] };
+
+async function load(kind: 'file' | 'url' | 'clipboard' | 'text', envs: Environments, picked: Picked, signal?: AbortSignal): Promise<Loaded[]> {
+  if (kind === 'text') return (picked.texts ?? []).filter((t) => t.text.length <= MAX_BYTES).map((t) => ({ label: t.name, text: t.text, source: { type: 'clipboard' as const, location: '', format: '' } }));
   if (kind === 'file') {
-    const uris = dropped ?? await vscode.window.showOpenDialog({ title: 'Import', canSelectMany: true, filters: { 'Postman / OpenAPI / JetBrains': ['json', 'yaml', 'yml'] } });
     const out: Loaded[] = [];
-    for (const u of uris ?? []) {
+    for (const u of picked.uris ?? []) {
       const path = localPath(u.fsPath); // extension host WSL + file dari Windows (d:/…) → /mnt/d/…
       const st = await fs.stat(path).catch((e: NodeJS.ErrnoException) => { throw new Error(`Cannot read ${u.fsPath}: ${e.code ?? e.message}${path !== u.fsPath ? ` (tried ${path})` : ''}`); });
       if (st.size > MAX_BYTES) throw new Error(`${basename(path)} is larger than 20 MB`);
@@ -90,10 +91,7 @@ async function load(kind: 'file' | 'url' | 'clipboard' | 'text', envs: Environme
     }
     return out;
   }
-  if (kind === 'url') {
-    const url = await vscode.window.showInputBox({ title: 'Import from URL', prompt: 'Postman collection or OpenAPI / Swagger spec (variables like {{baseUrl}} are allowed)', placeHolder: '{{baseUrl}}/v3/api-docs' });
-    return url ? [{ label: url, text: await fetchText(url, envs), source: { type: 'url', location: url, format: '' } }] : [];
-  }
+  if (kind === 'url') return picked.url ? [{ label: picked.url, text: await fetchText(picked.url, envs, signal), source: { type: 'url', location: picked.url, format: '' } }] : [];
   const text = await vscode.env.clipboard.readText();
   return text.trim() ? [{ label: 'Clipboard', text, source: { type: 'clipboard', location: '', format: '' } }] : [];
 }
@@ -103,7 +101,7 @@ async function envList(envs: Environments) {
 }
 
 /** deteksi + bangun rencana; Environment / Globals dikumpulkan terpisah, cURL langsung diteruskan ke import cURL */
-async function build(loaded: Loaded[], envs: Environments): Promise<{ plan?: ImportPlan; envImports: EnvImport[]; curl: boolean }> {
+async function build(loaded: Loaded[], envs: Environments, signal?: AbortSignal): Promise<{ plan?: ImportPlan; envImports: EnvImport[]; curl: boolean }> {
   const files: ImportFile[] = [];
   const names: string[] = [];
   const warnings: string[] = [];
@@ -112,8 +110,11 @@ async function build(loaded: Loaded[], envs: Environments): Promise<{ plan?: Imp
   let format: ImportPlan['format'] = 'postman';
   let curl = false;
   const known = await envList(envs);
+  const job = known.map((e) => ({ name: e.name, values: [...e.values] as [string, string | null][] }));
   for (const l of loaded) {
-    const d = detectFormat(l.text);
+    // deteksi + parse + generate di worker thread: event loop extension host (request yang sedang berjalan) tidak terblokir
+    const r = await runInWorker({ text: l.text, envs: job, ...(l.file ? { baseDir: dirname(l.file) } : {}) }, signal);
+    const d = { format: r.format! };
     if (d.format === 'curl') { await importCurlText(l.text); curl = true; continue; }
     if (d.format === 'postman-environment' || d.format === 'postman-globals') {
       const e = fromPostmanEnvironment(l.text);
@@ -122,13 +123,7 @@ async function build(loaded: Loaded[], envs: Environments): Promise<{ plan?: Imp
       const priv = l.file && basename(l.file) === 'http-client.env.json' ? await fs.readFile(join(dirname(l.file), 'http-client.private.env.json'), 'utf8').catch(() => undefined) : undefined; // tanpa file private: hanya nilai publik
       for (const e of fromJetBrainsEnv(l.text, priv)) envImports.push({ kind: 'env', ...e });
     } else {
-      const plan = d.format === 'postman-collection' ? importPostman(d.data) : importOpenApi(d.data, {
-        envs: known,
-        loadFile: (rel) => {
-          if (!l.file) throw new Error(`external $ref "${rel}" needs a spec imported from a file`);
-          return parseDoc(readFileSync(join(dirname(l.file), rel), 'utf8'));
-        },
-      });
+      const plan = r.plan!;
       format = plan.format;
       names.push(plan.name);
       warnings.push(...plan.warnings);
@@ -150,16 +145,6 @@ async function build(loaded: Loaded[], envs: Environments): Promise<{ plan?: Imp
   return { plan: { name: names.join(', '), format, files, warnings, ...(environmentVars.length ? { environmentVars } : {}) }, envImports, curl };
 }
 
-/** method + judul untuk baris preview (hanya file request); selain itu jenis file */
-function describe(f: ImportFile): { method?: string; title?: string; kind: string } {
-  const base = f.path.split('/').pop() ?? '';
-  if (/\.http$/i.test(base) && !base.startsWith('_')) { const r = parseRequest(f.content); return { method: r.method, ...(r.title ? { title: r.title } : {}), kind: 'request' }; }
-  if (base === '_auth.http') return { kind: 'auth' };
-  if (/\.js$/i.test(base)) return { kind: 'script' };
-  if (base === '_variables.json') return { kind: 'variables' };
-  return { kind: 'file' };
-}
-
 type Choice = { selected: Set<string>; conflicts: Map<string, Conflict>; dir: string };
 
 /** tab Import preview; selesai dengan pilihan user atau undefined (Cancel / tab ditutup) */
@@ -172,7 +157,7 @@ function preview(plan: ImportPlan, initialDir: string): Promise<Choice | undefin
     const finish = (c: Choice | undefined) => { if (settled) return; settled = true; resolve(c); panel.dispose(); };
     const state = async () => {
       const exist = new Set(await conflictsOf(plan, dir));
-      return { items: plan.files.map((f) => ({ path: f.path, warnings: f.warnings, exists: exist.has(f.path), ...describe(f) })), name: plan.name, dir, format: plan.format === 'postman' ? 'Postman' : 'OpenAPI' };
+      return { items: plan.files.map((f) => ({ path: f.path, warnings: f.warnings, exists: exist.has(f.path), ...(f.info ?? describe(f)) })), name: plan.name, dir, format: plan.format === 'postman' ? 'Postman' : 'OpenAPI' };
     };
     panel.webview.onDidReceiveMessage(async (m: { type: string; selected?: string[]; conflicts?: Record<string, Conflict> }) => {
       try {
@@ -274,14 +259,32 @@ async function startImport(envs: Environments, refresh: () => void, kindArg?: 'f
     { label: '$(clippy) Clipboard', description: 'cURL, Postman JSON or an OpenAPI spec', id: 'clipboard' as const },
   ], { placeHolder: 'Import from' }))?.id;
   if (!kind) return;
-  let built: Awaited<ReturnType<typeof build>>;
+  const picked: Picked = { ...(dropped ? { uris: dropped } : {}), ...(texts ? { texts } : {}) };
+  if (kind === 'file' && !picked.uris) {
+    picked.uris = await vscode.window.showOpenDialog({ title: 'Import', canSelectMany: true, filters: { 'Postman / OpenAPI / JetBrains': ['json', 'yaml', 'yml'] } });
+    if (!picked.uris?.length) return;
+  } else if (kind === 'url') {
+    picked.url = await vscode.window.showInputBox({ title: 'Import from URL', prompt: 'Postman collection, OpenAPI / Swagger spec or a Swagger UI page (variables like {{baseUrl}} are allowed)', placeHolder: '{{baseUrl}}/v3/api-docs' });
+    if (!picked.url) return;
+  }
+  let built: Awaited<ReturnType<typeof build>> | undefined;
   try {
-    const loaded = await load(kind, envs, dropped, texts);
-    if (!loaded.length) return;
-    built = await build(loaded, envs);
+    // popup progress sejak membaca / mengambil sampai parse selesai; Cancel menghentikan fetch dan worker
+    built = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Import', cancellable: true }, async (progress, token) => {
+      const ac = new AbortController();
+      token.onCancellationRequested(() => ac.abort());
+      progress.report({ message: kind === 'url' ? 'Fetching…' : 'Reading…' });
+      const loaded = await load(kind, envs, picked, ac.signal);
+      if (!loaded.length) return undefined;
+      progress.report({ message: 'Parsing and generating requests…' });
+      return build(loaded, envs, ac.signal);
+    });
   } catch (e) {
+    if (e instanceof Error && /cancel|abort/i.test(e.message)) return void log().info('import: cancelled while reading / parsing');
+    if (e instanceof Error && typeof e.cause === 'string') log().error(`import.worker - stack-trace: ${e.cause}`); // stack dari worker thread
     return reportError('import.read', e, `Import failed: ${errMsg(e)}`);
   }
+  if (!built) return;
   if (built.curl && !built.plan && !built.envImports.length) return;
   if (built.envImports.length) {
     const names = await applyEnvImports(built.envImports, envs);

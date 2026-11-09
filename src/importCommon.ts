@@ -1,5 +1,6 @@
 // bagian bersama import Postman / OpenAPI / JetBrains (tanpa vscode): rencana file, deteksi format, nama aman, baris auth
-export type ImportFile = { /** relatif ke folder tujuan, pemisah `/` */ path: string; content: string; warnings: string[]; /** operationId asal OpenAPI (sinkron ulang) */ operation?: string };
+export type ImportFile = { /** relatif ke folder tujuan, pemisah `/` */ path: string; content: string; warnings: string[]; /** operationId asal OpenAPI (sinkron ulang) */ operation?: string;
+  /** untuk baris Import preview (dihitung di worker): method, judul, jenis file */ info?: { method?: string; title?: string; kind: string } };
 export type ImportPlan = {
   name: string; format: 'postman' | 'openapi'; files: ImportFile[]; warnings: string[];
   /** variable Environment yang dibutuhkan (mis. `<NAMA>_BASE_URL`): Environment aktif terisi, lainnya NULL */
