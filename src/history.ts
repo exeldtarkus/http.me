@@ -2,6 +2,7 @@
 // teks .http asli ({{var}} belum diganti) tanpa header secret / cookie, body > 64 KB tidak disimpan
 import { promises as fs } from 'node:fs';
 import { clearCache, prune, readChunks, remove, writeChunk } from './cache';
+import { responseView, type ResponseView } from './response';
 import { serializeRequest, type ParsedRequest } from './httpFile';
 import type { HistorySummary } from './runningStatus';
 
@@ -41,3 +42,20 @@ export async function addHistory(dir: string, e: HistoryEntry): Promise<void> {
 
 export const removeHistory = (dir: string, id: string) => remove(dir, id);
 export const clearHistory = (dir: string) => clearCache(dir);
+
+export type HistoryView = ({ kind: 'response' } & ResponseView) | { kind: 'error'; message: string } | { kind: 'cancelled' };
+
+const two = (n: number) => String(n).padStart(2, '0');
+/** waktu lokal `YYYY-MM-DD HH:mm:ss` */
+const stamp = (t: number): string => { const d = new Date(t); return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`; };
+
+/** tampilan response sebuah entri History (headers tidak disimpan; body hanya bila <= 64 KB) */
+export function historyView(e: HistoryEntry): HistoryView {
+  if (e.cancelled) return { kind: 'cancelled' };
+  if (e.error) return { kind: 'error', message: `${e.error} (from History: executed ${stamp(e.time)})` };
+  const body = Buffer.from(e.response?.body ?? '', 'utf8');
+  const headers: [string, string][] = e.response?.contentType ? [['content-type', e.response.contentType]] : [];
+  const v = responseView({ status: e.status ?? 0, statusText: '', headers, body, size: body.length, timeMs: e.ms ?? 0, url: e.url }, e.method);
+  const note = `From History: executed ${stamp(e.time)}. ${e.response?.body === undefined ? 'Response body and headers were not saved.' : 'Headers were not saved.'}`;
+  return { kind: 'response', ...v, note: v.note ? `${note} ${v.note}` : note };
+}

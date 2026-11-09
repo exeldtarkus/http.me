@@ -7,7 +7,7 @@ import type { ITests } from './it/index';
 
 type Entry = { id: string; time: number; method: string; url: string; status?: number; cancelled?: boolean; error?: string; file?: string; text: string };
 type Api = {
-  viewOf(uri: string): { kind: string } | undefined;
+  viewOf(uri: string): { kind: string; status?: string } | undefined;
   statusBar(): { running?: { text: string; tooltip: string }; history: string } | undefined;
   history: { list(): Promise<Entry[]>; action(id: string, a: 'open' | 'send' | 'curl' | 'remove'): Promise<void> };
 };
@@ -40,7 +40,7 @@ export const tests: ITests = {
       await srv.close();
     }
   },
-  async 'History: Send dicatat (tanpa Authorization), buka file asal / untitled, Send again, Copy as cURL, Remove'() {
+  async 'History: Send dicatat (tanpa Authorization), buka entri (request + response), Send again, Copy as cURL, Remove'() {
     const srv = await startServer(async (req) => ({ status: req.url === '/missing' ? 404 : 200, body: 'ok' }));
     const dir = join(vscode.workspace.workspaceFolders![0].uri.fsPath, 'tmp-hist-it');
     try {
@@ -59,7 +59,11 @@ export const tests: ITests = {
       await api().history.action(e.id, 'curl');
       assert.match(await vscode.env.clipboard.readText(), /^curl /);
       await api().history.action(e.id, 'open');
-      await until('panel file asal', () => (vscode.window.tabGroups.activeTabGroup.activeTab?.input as { uri?: vscode.Uri })?.uri?.fsPath === file);
+      const opened = await until('tab entri History', () => {
+        const u = (vscode.window.tabGroups.activeTabGroup.activeTab?.input as { uri?: vscode.Uri })?.uri;
+        return u?.scheme === 'untitled' ? u : undefined;
+      });
+      assert.equal(api().viewOf(opened.toString())?.status, '404', 'response entri History tampil di tab-nya');
 
       await api().history.action(e.id, 'send');
       await until('Send again tercatat', async () => (await mine()).length === 2);

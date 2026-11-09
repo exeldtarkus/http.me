@@ -25,6 +25,7 @@ import { dropKeepIfUsed, requestFileName } from './store';
 import { RequestError, resolveTimeoutMs, send } from './http';
 import { responseView, tabStatus, type ResponseView } from './response';
 import { createRunner } from './runner';
+import { historyView, type HistoryEntry } from './history';
 import { stageText, type Stage } from './runningStatus';
 import { errMsg, errorLine, maskValues } from './log';
 import { log, reportError } from './output';
@@ -1233,6 +1234,15 @@ export async function quickRun(): Promise<void> {
   });
   if (!text?.trim()) return;
   await sendUri(await newRequest(undefined, serializeRequest(quickRequest(text))));
+}
+
+/** klik entri History: request-nya dibuka di tab baru (untitled) beserta response yang tersimpan, juga di Response panel bawah */
+export async function openHistoryEntry(e: HistoryEntry): Promise<void> {
+  const key = (await newRequest(undefined, e.text)).toString();
+  const s = stateFor(key);
+  s.view = historyView(e);
+  postView(s);
+  if (getLayout() === 'panel') { await revealOutput(); showInOutput(key); }
 }
 
 /** Send file tertentu (status bar Login): tampil di panel / CodeLens file itu */

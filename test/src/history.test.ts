@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { readdirSync, statSync } from 'node:fs';
-import { addHistory, clearHistory, historyEntry, historyId, listHistory, removeHistory, HISTORY_MAX } from '../../src/history';
+import { addHistory, clearHistory, historyEntry, historyView, historyId, listHistory, removeHistory, HISTORY_MAX } from '../../src/history';
 import { parseRequest } from '../../src/httpFile';
 import { withTempDir } from './helpers/tmp';
 
@@ -43,4 +43,22 @@ test('historyEntry: response (contentType + body) disimpan; body response > 64 K
   assert.deepEqual(ok.response, { contentType: 'application/json', body: '{"a":1}' });
   const big = historyEntry({ id: 'i', time: 1, request: r, status: 200, file: 'f', response: { contentType: 'text/plain', body: 'x'.repeat(65 * 1024) } });
   assert.deepEqual(big.response, { contentType: 'text/plain' });
+});
+
+test('historyView: response dari entri History (body JSON dirapikan, status & waktu), error, cancelled, tanpa body', () => {
+  const r = parseRequest('GET http://x/a\n');
+  const ok = historyView(historyEntry({ id: 'i', time: 1, request: r, status: 200, ms: 25, response: { contentType: 'application/json', body: '{"a":1}' } }));
+  assert.equal(ok.kind, 'response');
+  if (ok.kind !== 'response') return;
+  assert.equal(ok.status, '200');
+  assert.equal(ok.time, '25 ms');
+  assert.equal(ok.format, 'JSON');
+  assert.match(ok.bodyHtml, /&quot;a&quot;/);
+  assert.match(ok.note ?? '', /^From History: executed \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\./, 'note memuat tanggal & jam eksekusi');
+  const nobody = historyView(historyEntry({ id: 'j', time: 1, request: r, status: 500, ms: 3 }));
+  assert.equal(nobody.kind, 'response');
+  const err = historyView(historyEntry({ id: 'k', time: 1, request: r, error: 'ECONNRESET' }));
+  assert.equal(err.kind, 'error');
+  assert.match(err.kind === 'error' ? err.message : '', /^ECONNRESET \(from History: executed \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\)$/);
+  assert.deepEqual(historyView(historyEntry({ id: 'l', time: 1, request: r, cancelled: true })), { kind: 'cancelled' });
 });

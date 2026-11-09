@@ -1,6 +1,6 @@
 // status bar request berjalan + Quick Pick Cancel, status bar History + Quick Pick (lem tipis VS Code; teks di runningStatus.ts)
 import * as vscode from 'vscode';
-import { newRequest, onRunnerChange, REQUEST_VIEW, runner, sendBlock, sendUri, setHistoryHook } from './httpEditor';
+import { newRequest, onRunnerChange, REQUEST_VIEW, runner, sendBlock, sendUri, setHistoryHook, openHistoryEntry } from './httpEditor';
 import { historyItems, runningItems, runningText, runningTooltip } from './runningStatus';
 import { addHistory, clearHistory, historyEntry, historyId, listHistory, removeHistory, type HistoryEntry } from './history';
 import { parseRequest, splitBlocks } from './httpFile';
@@ -46,7 +46,7 @@ async function origin(e: HistoryEntry): Promise<vscode.TextDocument | undefined>
   return ok ? vscode.workspace.openTextDocument(uri) : undefined;
 }
 
-/** aksi satu entri History: buka (file asal / untitled .http), Send again, Copy as cURL, Remove */
+/** aksi satu entri History: buka (tab baru: request + response tersimpan), Send again, Copy as cURL, Remove */
 export async function historyAction(dir: string, id: string, action: HistoryAction): Promise<void> {
   const e = (await listHistory(dir)).find((x) => x.id === id);
   if (!e) return;
@@ -55,15 +55,9 @@ export async function historyAction(dir: string, id: string, action: HistoryActi
     await vscode.env.clipboard.writeText(toCurl(parseRequest(e.text)));
     return void vscode.window.showInformationMessage('Copied as cURL (without cookies).');
   }
+  if (action === 'open') return openHistoryEntry(e);
   const doc = await origin(e);
   const multi = doc ? splitBlocks(doc.getText()).length > 1 : false;
-  if (action === 'open') {
-    if (!doc) return void (await newRequest(undefined, e.text));
-    if (!multi) return void (await vscode.commands.executeCommand('vscode.openWith', doc.uri, REQUEST_VIEW));
-    const b = splitBlocks(doc.getText())[e.block ?? 0];
-    await vscode.window.showTextDocument(doc, { selection: b ? new vscode.Range(b.start, 0, b.start, 0) : undefined });
-    return;
-  }
   // Send again: file asal bila masih ada, selain itu tab untitled baru berisi request itu
   if (doc && multi) return sendBlock(doc, e.block ?? 0);
   return sendUri(doc ? doc.uri : await newRequest(undefined, e.text));
