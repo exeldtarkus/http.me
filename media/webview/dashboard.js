@@ -220,6 +220,8 @@
   // ---------- Environments ----------
   const envMenu = (e) => [{ label: e.active ? 'Active' : 'Set Active', id: 'env.setActive', args: { name: e.name } }, { label: 'Open', id: 'env.open', args: { name: e.name } }, { label: 'Open as Text', id: 'env.openAsText', args: { name: e.name } }, '-',
     { label: 'Rename', id: 'env.rename', args: { name: e.name } }, { label: 'Duplicate', id: 'env.duplicate', args: { name: e.name } }, { label: 'Delete', id: 'env.delete', args: { name: e.name }, danger: true }, '-', { label: 'Reveal in Explorer', id: 'env.reveal', args: { name: e.name } }];
+  /** tombol Set Active selalu terlihat (bukan hanya saat hover) */
+  const setActiveBtn = (name) => el('button', { type: 'button', className: 'btn ghost sm', textContent: 'Set Active', title: name ? `Use "${name}" for variables and requests` : 'Use no Environment', onclick: (ev) => { ev.stopPropagation(); act('env.setActive', { name }); } });
   function renderEnvironments(box) {
     const d = data.environments;
     box.append(el('div', { className: 'toolbar' }, [
@@ -236,14 +238,14 @@
         el('span', { className: 'acts' }, [small('Open', () => act('env.openGlobals')), small('Open as Text', () => act('env.openGlobalsText'))])]),
       el('div', { className: 'row', tabIndex: 0, onclick: () => act('env.setActive', { name: undefined }) }, [
         el('span', { className: `dot${d.active ? '' : ' on'}` }), el('span', { className: 'grow' }, [el('span', { className: 'name', textContent: 'No Environment' })]),
-        d.active ? el('span', { className: 'acts' }, [small('Set Active', () => act('env.setActive', { name: undefined }))]) : el('span', { className: 'pill', textContent: 'active' })]),
+        d.active ? setActiveBtn(undefined) : el('span', { className: 'pill', textContent: 'active' })]),
       ...d.environments.map((e) => {
         const row = el('div', { className: `row${sel.has(`env:${e.name}`) ? ' sel' : ''}`, tabIndex: 0, title: e.name }, [
           el('span', { className: `dot${e.active ? ' on' : ''}`, title: e.active ? 'Active' : 'Click to set active', onclick: (ev) => { ev.stopPropagation(); act('env.setActive', { name: e.name }); } }),
           el('span', { className: 'grow' }, [el('span', { className: 'name folder', textContent: e.name }), el('span', { className: 'muted', textContent: `${plural(e.variables, 'variable')}${e.secrets ? ` · ${e.secrets} secret` : ''}` })]),
           e.nulls ? el('span', { className: 'pill warn', textContent: `${e.nulls} NULL` }) : el('span', { className: 'pill ok', textContent: 'complete' }),
-          e.active ? el('span', { className: 'pill', textContent: 'active' }) : null,
-          el('span', { className: 'acts' }, [e.active ? null : small('Set Active', () => act('env.setActive', { name: e.name })), small('Open', () => act('env.open', { name: e.name })), dots(envMenu(e))])]);
+          e.active ? el('span', { className: 'pill', textContent: 'active' }) : setActiveBtn(e.name),
+          el('span', { className: 'acts' }, [small('Open', () => act('env.open', { name: e.name })), dots(envMenu(e))])]);
         row.onclick = () => { sel = new Set([`env:${e.name}`]); render(); };
         row.ondblclick = () => act('env.open', { name: e.name });
         row.oncontextmenu = (ev) => { ev.preventDefault(); sel = new Set([`env:${e.name}`]); showMenu(envMenu(e), ev.clientX, ev.clientY); };
@@ -252,7 +254,7 @@
       }),
     ];
     box.append(el('div', { className: 'list' }, d.environments.length ? rows : [...rows, el('div', { className: 'empty', textContent: 'No Environments yet. Create one to use variables in requests.' })]),
-      el('p', { className: 'hint', textContent: 'Click the dot to set the active Environment · double-click opens the editor · right-click for rename, duplicate and delete.' }));
+      el('p', { className: 'hint', textContent: 'Set Active (or click the dot) switches the Environment used for variables · double-click opens the editor · right-click for rename, duplicate and delete.' }));
   }
 
   // ---------- Cookies ----------

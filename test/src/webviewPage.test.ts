@@ -53,3 +53,8 @@ test('webviewPage: <script nonce src="panel.js"> diganti isi panel.js (inline, n
   assert.match(html, /<script nonce="N">\n\/\/ panel request http\.me/);
   assert.match(html, /script-src 'nonce-N'/);
 });
+
+test('webviewPage: dashboard (html + dashboard.js digabung) tidak berisi placeholder {{…}} yang tak terisi', () => {
+  const html = webviewPage('dashboard', { cspSource: 'CSP', nonce: 'N' });
+  assert.doesNotMatch(html, /\{\{\w+\}\}/);
+});
