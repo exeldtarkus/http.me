@@ -4,34 +4,86 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src 'nonce-{{nonce}}';">
 <style>
-  :root { --fg: var(--vscode-foreground); --muted: var(--vscode-descriptionForeground); --line: var(--vscode-panel-border, #8884); --warn: var(--vscode-editorWarning-foreground, #cca700); --mono: var(--vscode-editor-font-family, monospace); }
+  :root {
+    --fg: var(--vscode-foreground); --muted: var(--vscode-descriptionForeground); --line: var(--vscode-panel-border, #8884);
+    --bg: var(--vscode-editor-background); --raise: var(--vscode-sideBar-background, var(--bg)); --input: var(--vscode-input-background); --input-fg: var(--vscode-input-foreground);
+    --hover: var(--vscode-toolbar-hoverBackground, #8882); --accent: var(--vscode-button-background); --accent-fg: var(--vscode-button-foreground);
+    --focus: var(--vscode-focusBorder); --mono: var(--vscode-editor-font-family, monospace);
+    --ok: var(--vscode-charts-green, #4ec27a); --warn: var(--vscode-editorWarning-foreground, #e2b34a); --err: var(--vscode-errorForeground, #f2676b);
+    --blue: var(--vscode-charts-blue, #3794ff); --orange: var(--vscode-charts-orange, #d18616); --purple: var(--vscode-charts-purple, #b180d7);
+  }
   * { box-sizing: border-box; }
-  body { margin: 0 auto; padding: 20px 24px 80px; color: var(--fg); background: var(--vscode-editor-background); font-family: var(--vscode-font-family); font-size: 13px; max-width: 900px; }
-  h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; }
-  .sub { margin: 0 0 14px; color: var(--muted); }
-  .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
-  input[type=text] { flex: 1; min-width: 200px; padding: 3px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--line)); }
-  button { padding: 4px 12px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0; cursor: pointer; }
-  button.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
-  button:disabled { opacity: .5; cursor: default; }
-  ul { list-style: none; margin: 0; padding-left: 18px; }
-  #tree { padding-left: 0; border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; max-height: 60vh; overflow: auto; }
-  li { padding: 2px 0; }
+  body { margin: 0; padding: 14px 18px 76px; color: var(--fg); background: var(--bg); font-family: var(--vscode-font-family); font-size: 13px; line-height: 1.45; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
+  input[type=text], input[type=search], select { background: var(--input); color: var(--input-fg); border: 1px solid var(--line); border-radius: 3px; padding: 3px 6px; }
+  .head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 4px; }
+  .title { font-size: 18px; font-weight: 600; margin: 0; }
+  .badge { font-size: 11px; border-radius: 10px; padding: 1px 8px; background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+  .sub { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+  .chip { font-size: 12px; padding: 1px 9px; border: 1px solid var(--line); border-radius: 10px; background: var(--raise); color: var(--muted); }
+  .chip b { color: var(--fg); font-weight: 600; }
+  .chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+  .chip.exists { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 45%, transparent); }
+  .card { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--raise); }
+  .card label { color: var(--muted); font-size: 12px; }
+  .card input[type=text] { flex: 1; min-width: 180px; font-family: var(--mono); font-size: 12px; }
+  .btn { border: 1px solid transparent; border-radius: 4px; padding: 3px 12px; background: var(--hover); }
+  .btn:hover { background: color-mix(in srgb, var(--fg) 14%, transparent); }
+  .btn.pri { background: var(--accent); color: var(--accent-fg); }
+  .btn.pri:hover { background: var(--vscode-button-hoverBackground, var(--accent)); }
+  .btn.ghost { background: transparent; border-color: var(--line); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 8px; }
+  .toolbar input[type=search] { flex: 1; min-width: 160px; }
+  .toolbar .conf { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
+  .toolbar .conf[hidden] { display: none; }
+  #tree { margin: 0; padding: 4px 6px; list-style: none; border: 1px solid var(--line); border-radius: 6px; background: var(--raise); }
+  #tree ul { list-style: none; margin: 0; padding-left: 18px; border-left: 1px solid color-mix(in srgb, var(--line) 70%, transparent); margin-left: 8px; }
+  details > summary { list-style: none; display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 3px; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: '\203A'; width: 10px; color: var(--muted); transition: transform .12s; }
+  details[open] > summary::before { transform: rotate(90deg); }
+  summary:hover, .item:hover { background: var(--hover); }
   .folder { font-weight: 600; }
-  .item { font-family: var(--mono); }
-  .warn { color: var(--warn); font-size: 12px; margin-left: 24px; }
-  .conflict select { margin-left: 8px; }
-  .count { color: var(--muted); }
-  footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 24px; background: var(--vscode-editor-background); border-top: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
-  footer .count { margin-right: auto; }
+  .n { color: var(--muted); font-size: 12px; font-weight: 400; }
+  .item { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 3px; flex-wrap: wrap; }
+  .item .name { font-family: var(--mono); font-size: 12px; }
+  .item .name.dim { color: var(--muted); }
+  .method { min-width: 52px; text-align: center; font: 600 10px var(--mono); padding: 1px 4px; border-radius: 3px; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); }
+  .GET { --c: var(--blue); } .POST { --c: var(--ok); } .PUT { --c: var(--orange); } .PATCH { --c: var(--purple); } .DELETE { --c: var(--err); }
+  .method.other { --c: var(--muted); }
+  .tag { font-size: 11px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--line); color: var(--muted); }
+  .tag.exists { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 45%, transparent); }
+  .tag.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+  .item select { font-size: 12px; padding: 0 4px; }
+  .warns { flex-basis: 100%; margin: 0 0 2px 84px; color: var(--warn); font-size: 12px; }
+  .empty { padding: 16px; color: var(--muted); text-align: center; }
+  footer { position: fixed; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 10px 18px; background: var(--bg); border-top: 1px solid var(--line); }
+  footer .count { margin-right: auto; color: var(--muted); font-size: 12px; }
+  footer .note { color: var(--muted); font-size: 12px; }
+  @media (max-width: 560px) { .warns { margin-left: 24px; } footer .note { display: none; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
-<h1>Import preview</h1>
+<div class="head"><h1 class="title">Import preview</h1><span class="badge" id="format"></span></div>
 <p class="sub" id="sub"></p>
-<div class="row"><label for="dir">Destination folder</label><input type="text" id="dir" readonly><button type="button" class="secondary" id="browse">Browse…</button></div>
+<div class="chips" id="chips"></div>
+<div class="card"><label for="dir">Destination folder</label><input type="text" id="dir" readonly><button type="button" class="btn ghost" id="browse">Browse…</button></div>
+<div class="toolbar">
+  <input type="search" id="filter" placeholder="Filter by name, method or warning" aria-label="Filter">
+  <button type="button" class="btn ghost" id="all">Select all</button>
+  <button type="button" class="btn ghost" id="none">Select none</button>
+  <button type="button" class="btn ghost" id="expand">Expand all</button>
+  <button type="button" class="btn ghost" id="collapse">Collapse all</button>
+  <span class="conf" id="confBox" hidden>When a file exists
+    <select id="confAll" aria-label="When a file already exists"><option value="skip">Skip</option><option value="overwrite">Overwrite</option><option value="keep">Keep both</option></select></span>
+</div>
 <ul id="tree"></ul>
-<footer><span class="count" id="count"></span><button type="button" class="secondary" id="cancel">Cancel</button><button type="button" id="go">Import</button></footer>
+<footer><span class="count" id="count"></span><span class="note">Nothing is written until you click Import.</span><button type="button" class="btn ghost" id="cancel">Cancel</button><button type="button" class="btn pri" id="go">Import</button></footer>
 <script nonce="{{nonce}}" src="importPreview.js"></script>
 </body>
 </html>

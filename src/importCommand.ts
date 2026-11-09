@@ -13,6 +13,7 @@ import { applyPlan, conflictsOf, importQueue, reportMarkdown, summarize, undoImp
 import { parseSource, planResync, sourceFile, SOURCE_FILE, type Source, type SyncItem } from './importSync';
 import { fromPostmanEnvironment, serializeEnvironment, parseEnvironment, createEnvironment, type EnvVar } from './environments';
 import { substitute } from './vars';
+import { parseRequest } from './httpFile';
 import { webviewPage } from './webviewPage';
 import { errMsg, errorLine } from './log';
 import { log, reportError } from './output';
@@ -143,6 +144,16 @@ async function build(loaded: Loaded[], envs: Environments): Promise<{ plan?: Imp
   return { plan: { name: names.join(', '), format, files, warnings, ...(environmentVars.length ? { environmentVars } : {}) }, envImports, curl };
 }
 
+/** method + judul untuk baris preview (hanya file request); selain itu jenis file */
+function describe(f: ImportFile): { method?: string; title?: string; kind: string } {
+  const base = f.path.split('/').pop() ?? '';
+  if (/\.http$/i.test(base) && !base.startsWith('_')) { const r = parseRequest(f.content); return { method: r.method, ...(r.title ? { title: r.title } : {}), kind: 'request' }; }
+  if (base === '_auth.http') return { kind: 'auth' };
+  if (/\.js$/i.test(base)) return { kind: 'script' };
+  if (base === '_variables.json') return { kind: 'variables' };
+  return { kind: 'file' };
+}
+
 type Choice = { selected: Set<string>; conflicts: Map<string, Conflict>; dir: string };
 
 /** tab Import preview; selesai dengan pilihan user atau undefined (Cancel / tab ditutup) */
@@ -155,7 +166,7 @@ function preview(plan: ImportPlan, initialDir: string): Promise<Choice | undefin
     const finish = (c: Choice | undefined) => { if (settled) return; settled = true; resolve(c); panel.dispose(); };
     const state = async () => {
       const exist = new Set(await conflictsOf(plan, dir));
-      return { items: plan.files.map((f) => ({ path: f.path, warnings: f.warnings, exists: exist.has(f.path) })), name: plan.name, dir };
+      return { items: plan.files.map((f) => ({ path: f.path, warnings: f.warnings, exists: exist.has(f.path), ...describe(f) })), name: plan.name, dir, format: plan.format === 'postman' ? 'Postman' : 'OpenAPI' };
     };
     panel.webview.onDidReceiveMessage(async (m: { type: string; selected?: string[]; conflicts?: Record<string, Conflict> }) => {
       try {
