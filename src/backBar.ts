@@ -11,9 +11,12 @@ const opened = new OpenedSet((list) => {
 /** key All Environments (webview, bukan file) */
 export const COMPARE_KEY = 'httpme:compare';
 
-/** editor ini dibuka dari Dashboard: tombol Back tampil (file: pakai fsPath) */
+/** key tombol Back per dokumen: file = fsPath, untitled (mis. tab history.http) = uri; lainnya tidak punya */
+export const backKey = (uri: vscode.Uri | undefined): string | undefined => (uri?.scheme === 'file' ? uri.fsPath : uri?.scheme === 'untitled' ? uri.toString() : undefined);
+
+/** editor ini dibuka dari Dashboard: tombol Back tampil */
 export function markOpened(key: string | vscode.Uri | undefined): void {
-  const k = typeof key === 'string' ? key : key?.scheme === 'file' ? key.fsPath : undefined;
+  const k = typeof key === 'string' ? key : backKey(key);
   if (k) opened.add(k);
 }
 
@@ -22,7 +25,7 @@ export const forgetOpened = (key: string): void => opened.delete(key);
 
 /** tab yang sudah ditutup dilepas dari daftar */
 export function pruneOpened(): void {
-  const open = new Set(vscode.window.tabGroups.all.flatMap((g) => g.tabs.map((t) => (t.input as { uri?: vscode.Uri } | undefined)?.uri?.fsPath).filter((x): x is string => !!x)));
+  const open = new Set(vscode.window.tabGroups.all.flatMap((g) => g.tabs.map((t) => backKey((t.input as { uri?: vscode.Uri } | undefined)?.uri)).filter((x): x is string => !!x)));
   open.add(COMPARE_KEY); // tab webview tanpa uri: dilepas lewat onDidDispose panelnya
   opened.prune(open);
 }

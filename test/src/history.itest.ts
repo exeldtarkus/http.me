@@ -88,4 +88,37 @@ export const tests: ITests = {
       await srv.close();
     }
   },
+  async 'History: klik entri membuka satu tab history.http (belum disimpan); entri lain ditampilkan di tab yang sama, bukan tab baru'() {
+    const srv = await startServer(async (req) => ({ status: req.url === '/b' ? 404 : 200, body: 'ok' }));
+    const dir = join(vscode.workspace.workspaceFolders![0].uri.fsPath, 'tmp-hist-one');
+    try {
+      mkdirSync(dir, { recursive: true });
+      const start = Date.now();
+      for (const n of ['a', 'b']) {
+        writeFileSync(join(dir, `${n}.http`), `GET ${srv.url}/${n}\n`);
+        await vscode.commands.executeCommand('httpme.sendBlock', (await vscode.workspace.openTextDocument(join(dir, `${n}.http`))).uri, 0);
+      }
+      const entry = async (n: string) => until(`entri ${n}`, async () => (await api().history.list()).find((x) => x.time >= start && x.url.endsWith(`/${n}`)));
+      const ea = await entry('a');
+      const eb = await entry('b');
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      const historyTabs = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.label === 'history.http');
+      await api().history.action(ea.id, 'open');
+      await until('tab history.http', () => historyTabs().length === 1);
+      const uri = (historyTabs()[0].input as { uri: vscode.Uri }).uri;
+      assert.equal(uri.scheme, 'untitled');
+      assert.equal(api().viewOf(uri.toString())?.status, '200');
+      await api().history.action(eb.id, 'open');
+      await wait(300);
+      assert.equal(historyTabs().length, 1, 'tetap satu tab history.http');
+      assert.equal(vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => /^New Request/.test(t.label)).length, 0, 'tidak ada tab New Request baru');
+      assert.match((await vscode.workspace.openTextDocument(uri)).getText(), new RegExp(`GET ${srv.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/b\n`));
+      assert.equal(api().viewOf(uri.toString())?.status, '404', 'response entri kedua tampil di tab yang sama');
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      rmSync(dir, { recursive: true, force: true });
+      await srv.close();
+    }
+  },
 };

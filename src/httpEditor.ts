@@ -2,7 +2,7 @@
 // Panel mengirim request terurai ('edit'), host menulisnya ke dokumen; perubahan dokumen dari luar dikirim balik ('state').
 // Request berjalan di extension host: state (running / response) per dokumen bertahan saat webview tersembunyi dilepas.
 import * as vscode from 'vscode';
-import { attachBackBar } from './backBar';
+import { attachBackBar, backKey } from './backBar';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
@@ -847,7 +847,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
   };
   blockPickers.set(doc.uri.toString(), picker);
   const subs = [
-    attachBackBar(panel, () => (doc.uri.scheme === 'file' ? doc.uri.fsPath : undefined)),
+    attachBackBar(panel, () => backKey(doc.uri)),
     onRunnerChange(postOthers),
     onRunnerChange(postBlocks),
     panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown; layout?: unknown; message?: unknown; index?: unknown; opts?: unknown }) => {
@@ -1010,9 +1010,9 @@ export const registerRequestEditor = (cacheDir: string, state: vscode.Memento): 
 const untitledFolder = new Map<string, vscode.Uri>();
 
 /** New Request: tab .http untitled (GET kosong atau `text`), langsung di panel request; `folder` = tujuan default saat Save */
-export async function newRequest(folder?: vscode.Uri, text = NEW_REQUEST_TEXT): Promise<vscode.Uri> {
+export async function newRequest(folder?: vscode.Uri, text = NEW_REQUEST_TEXT, name?: string): Promise<vscode.Uri> {
   const open = vscode.workspace.textDocuments.filter((d) => d.uri.scheme === 'untitled').map((d) => d.uri.path.split('/').pop() ?? '');
-  const uri = vscode.Uri.from({ scheme: 'untitled', path: newRequestName(open) });
+  const uri = vscode.Uri.from({ scheme: 'untitled', path: name ?? newRequestName(open) });
   await vscode.workspace.openTextDocument(uri);
   const edit = new vscode.WorkspaceEdit();
   edit.insert(uri, new vscode.Position(0, 0), text);
@@ -1236,12 +1236,32 @@ export async function quickRun(): Promise<void> {
   await sendUri(await newRequest(undefined, serializeRequest(quickRequest(text))));
 }
 
-/** klik entri History: request-nya dibuka di tab baru (untitled) beserta response yang tersimpan, juga di Response panel bawah */
+/** satu-satunya tab untuk entri History: belum disimpan, dipakai ulang oleh entri berikutnya */
+export const HISTORY_TAB = 'history.http';
+let historyTab: vscode.Uri | undefined;
+export const historyTabUri = (): vscode.Uri | undefined => historyTab;
+
+/** klik entri History: request + response tersimpan tampil di tab history.http (belum disimpan); entri lain menimpa isi tab itu, tidak membuka tab baru */
 export async function openHistoryEntry(e: HistoryEntry): Promise<void> {
-  const key = (await newRequest(undefined, historyRequestText(e))).toString();
-  const s = stateFor(key);
-  s.view = historyView(e);
-  postView(s);
+  const text = historyRequestText(e);
+  const have = historyTab && vscode.workspace.textDocuments.find((d) => d.uri.toString() === historyTab!.toString());
+  let key: string;
+  if (have) {
+    key = have.uri.toString();
+    runner.cancel(key); // Send yang masih jalan dari tab ini tidak menimpa tampilan entri
+    const s = stateFor(key);
+    s.token = undefined;
+    s.view = historyView(e); // sebelum teks ditulis: panel membaca view ini saat dokumen berubah
+    await writeDocument(have, text);
+    postView(s);
+    await vscode.commands.executeCommand('vscode.openWith', have.uri, REQUEST_VIEW);
+  } else {
+    historyTab = await newRequest(undefined, text, HISTORY_TAB);
+    key = historyTab.toString();
+    const s = stateFor(key);
+    s.view = historyView(e);
+    postView(s);
+  }
   if (getLayout() === 'panel') { await revealOutput(); showInOutput(key); }
 }
 

@@ -9,7 +9,7 @@ import { KEEP_FILE } from './store';
 import { webviewPage } from './webviewPage';
 import { errMsg } from './log';
 import { log, reportError } from './output';
-import { closeOutputPanel, maskCookie, onRunnerChange } from './httpEditor';
+import { closeOutputPanel, historyTabUri, maskCookie, onRunnerChange } from './httpEditor';
 import { clearHistory, listHistory } from './history';
 import { historyAction } from './activity';
 import { listBackups } from './backup';
@@ -113,7 +113,7 @@ function handlers(envs: Environments, cookies: Cookies, historyDir: string): Rec
       if (name?.trim()) await exec('httpme.addVariableToAll', name.trim());
     },
     // History: aksi yang sama dengan Quick Pick History (id hanya dipakai untuk mencari entri)
-    'history.open': (a) => historyAction(historyDir, str(a.id) ?? '', 'open'), 'history.send': (a) => historyAction(historyDir, str(a.id) ?? '', 'send'),
+    'history.open': async (a) => { await historyAction(historyDir, str(a.id) ?? '', 'open'); markOpened(historyTabUri()); }, 'history.send': (a) => historyAction(historyDir, str(a.id) ?? '', 'send'),
     'history.curl': (a) => historyAction(historyDir, str(a.id) ?? '', 'curl'), 'history.remove': (a) => historyAction(historyDir, str(a.id) ?? '', 'remove'),
     'history.clear': async () => {
       if ((await vscode.window.showWarningMessage('Clear all request history?', { modal: true }, 'Clear All')) === 'Clear All') await clearHistory(historyDir);
