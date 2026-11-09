@@ -588,6 +588,16 @@
         "title": "View as Tree",
         "category": "http.me",
         "icon": "$(list-tree)"
+      },
+      {
+        "command": "httpme.deleteSelectedEnvironment",
+        "title": "Delete Selected Environment",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.deleteSelectedCookie",
+        "title": "Delete Selected Cookie",
+        "category": "http.me"
       }
     ],
     "customEditors": [
@@ -891,6 +901,14 @@
         },
         {
           "command": "httpme.openTabInPanel",
+          "when": "false"
+        },
+        {
+          "command": "httpme.deleteSelectedEnvironment",
+          "when": "false"
+        },
+        {
+          "command": "httpme.deleteSelectedCookie",
           "when": "false"
         }
       ],
@@ -1296,6 +1314,18 @@
         "key": "delete",
         "mac": "cmd+backspace",
         "when": "focusedView == httpme.sidebar && !inputFocus"
+      },
+      {
+        "command": "httpme.deleteSelectedEnvironment",
+        "key": "delete",
+        "mac": "cmd+backspace",
+        "when": "focusedView == httpme.environments && !inputFocus"
+      },
+      {
+        "command": "httpme.deleteSelectedCookie",
+        "key": "delete",
+        "mac": "cmd+backspace",
+        "when": "focusedView == httpme.cookies && !inputFocus"
       }
     ],
     "viewsWelcome": [

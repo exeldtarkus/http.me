@@ -719,6 +719,18 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
       }
       sidebar.refresh();
     }),
+    // tombol Delete di view Environments / Cookies: item terpilih diteruskan ke command Delete masing-masing (yang menampilkan konfirmasi)
+    cmd('httpme.deleteSelectedEnvironment', () => {
+      const n = sections.environments.view.selection[0];
+      return n?.kind === 'env' ? vscode.commands.executeCommand('httpme.deleteEnvironment', n) : undefined;
+    }),
+    cmd('httpme.deleteSelectedCookie', () => {
+      const n = sections.cookies.view.selection[0] as { kind: string; env?: string; domain?: string; cookie?: unknown } | undefined;
+      if (!n) return undefined;
+      if (n.cookie) return vscode.commands.executeCommand('httpme.deleteCookie', n);
+      if (n.domain) return vscode.commands.executeCommand('httpme.deleteCookieDomain', n);
+      return n.env !== undefined ? vscode.commands.executeCommand('httpme.clearCookies', n) : undefined;
+    }),
     cmd('httpme.revealInExplorer', (a?: Arg) => vscode.commands.executeCommand('revealInExplorer', uriOf(a ?? view.selection[0]))),
     // Copy as cURL (bash / cmd) dan PowerShell: tanpa cookie; varian "with Cookies" menyertakan header Cookie + cookie jar Environment aktif
     ...([

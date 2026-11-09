@@ -159,9 +159,11 @@ export function registerCookieCommands(cookies: Cookies, run: (uri: vscode.Uri) 
       if (value === undefined) return;
       await cookies.edit(envOf(n), n.cookie, value);
     }),
-    cmd('httpme.deleteCookie', async (n?: CookieNode) => {
+    cmd('httpme.deleteCookie', async (n?: CookieNode, confirmed?: boolean) => {
       const c = n?.cookie;
-      if (c) await cookies.remove(envOf(n), (x) => x.name === c.name && x.domain === c.domain && x.path === c.path);
+      if (!c) return;
+      if (!confirmed && (await vscode.window.showWarningMessage(`Delete cookie ${c.name} (${c.domain})?`, { modal: true, detail: 'You may have to log in again.' }, 'Delete')) !== 'Delete') return;
+      await cookies.remove(envOf(n), (x) => x.name === c.name && x.domain === c.domain && x.path === c.path);
     }),
     cmd('httpme.deleteCookieDomain', async (n?: CookieNode, confirmed?: boolean) => {
       if (!n?.domain) return;

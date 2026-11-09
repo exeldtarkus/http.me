@@ -164,3 +164,12 @@ test('tombol Delete di Collections menjalankan httpme.delete (hanya saat view fo
   assert.match(k.when, /focusedView == httpme\.sidebar/);
   assert.match(k.when, /!inputFocus/);
 });
+
+test('tombol Delete di Environments dan Cookies memakai command Delete terpilih (tersembunyi dari palette)', () => {
+  const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
+  for (const [cmd, view] of [['httpme.deleteSelectedEnvironment', 'httpme.environments'], ['httpme.deleteSelectedCookie', 'httpme.cookies']]) {
+    const k = pkg.contributes.keybindings.find((x: { command: string }) => x.command === cmd);
+    assert.match(k.when, new RegExp(`focusedView == ${view.replace('.', '\\.')}`));
+    assert.ok(pkg.contributes.menus.commandPalette.some((m: { command: string; when: string }) => m.command === cmd && m.when === 'false'));
+  }
+});

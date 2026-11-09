@@ -70,7 +70,7 @@ export const tests: ITests = {
 
       await cmd('httpme.editCookie', list[1], 'light');
       assert.equal((await api().cookies.jar('')).find((c) => c.name === 'theme')!.value, 'light');
-      await cmd('httpme.deleteCookie', list[1]);
+      await cmd('httpme.deleteCookie', list[1], true);
       await cmd('httpme.deleteCookieDomain', domains[1], true);
       assert.deepEqual((await api().cookies.jar('')).map((c) => c.name), ['JSESSIONID']);
       await cmd('httpme.pasteCookies', { kind: 'cenv', env: 'dev' }, 'bima.test', 'JSESSIONID=DEV1');
