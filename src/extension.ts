@@ -6,6 +6,7 @@ import { log, reportError } from './output';
 import { applyPanelEdit, handleAuthMessage, importCurlText, saveUntitled, setAuthHooks, setOAuthStore, handleSnippet, copyBlockSnippet, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, activeBlock, registerRequestEditor, runner, quickRun, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
 import { registerSidebar, type Sidebars } from './sidebar';
+import { backupNow, registerBackup } from './backupCommand';
 import { historyAction, registerActivity, statusBar, type HistoryAction } from './activity';
 import { listHistory } from './history';
 import { Environments } from './envState';
@@ -69,6 +70,7 @@ export type HttpmeApi = {
   statusBar: typeof statusBar;
   /** layout response (single / two pane / panel bawah) + view Response panel bawah */
   layout: { get: typeof getLayout; set: typeof setLayout; outputKey: typeof outputKey; outputShown: typeof outputShown };
+  /** backup History / temp ke exports/ sekarang (itest); `now` mengatur jam */ backupNow(now?: number): Promise<string[]>;
   history: { list(): ReturnType<typeof listHistory>; action(id: string, a: HistoryAction): Promise<void> };
   /** tab request aktif panel file multi-request */ activeBlock: typeof activeBlock;
   /** export lewat jalur yang sama dengan command Export… (itest) */ exportApply(root: string, choice: import('./exportCommand').ExportChoice): Promise<import('./exportRun').ExportResult>;
@@ -190,7 +192,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.cancelRequest', () =>
     cancelActive().catch((e) => reportError('cancelRequest', e, `Cancel failed: ${errMsg(e)}`))));
   const historyDir = vscode.Uri.joinPath(ctx.globalStorageUri, 'httpme-cache', 'history').fsPath;
-  ctx.subscriptions.push(registerActivity(historyDir));
+  ctx.subscriptions.push(registerActivity(historyDir), registerBackup(ctx, historyDir));
   const envs = new Environments(ctx);
   setOAuthStore(ctx.secrets);
   ctx.subscriptions.push(envs.watch(), registerEnvironmentEditor(envs), authEnvironmentHooks(envs));
@@ -258,7 +260,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   void ctx.globalState.update(VERSION_KEY, version);
   if (isNewerVersion(version, previous)) openWhatsNew(ctx);
   return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt, scriptsCall, authCall, snippetCall,
-    statusBar, layout: { get: getLayout, set: setLayout, outputKey, outputShown }, history: { list: () => listHistory(historyDir), action: (id, a) => historyAction(historyDir, id, a) }, activeBlock,
+    statusBar, layout: { get: getLayout, set: setLayout, outputKey, outputShown }, backupNow: (now) => backupNow(historyDir, ctx.globalState, now), history: { list: () => listHistory(historyDir), action: (id, a) => historyAction(historyDir, id, a) }, activeBlock,
     importApply: (plan, dir) => importApply(plan, dir, envs, () => sidebar.refresh()),
     exportApply: (root, choice) => exportApply(root, choice, envs, historyDir) };
 }

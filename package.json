@@ -71,6 +71,11 @@
         "category": "http.me"
       },
       {
+        "command": "httpme.importBackup",
+        "title": "Import History or Temp Backup…",
+        "category": "http.me"
+      },
+      {
         "command": "httpme.showRunning",
         "title": "Show Running Requests",
         "category": "http.me"
