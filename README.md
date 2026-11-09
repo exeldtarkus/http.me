@@ -9,9 +9,11 @@ A lightweight HTTP client for VS Code, in the spirit of Postman, built to stay *
 ## Features
 
 - **Request editor** – method, URL with `{{variables}}`, query params, headers, body (JSON, text, XML, form, multipart with files, binary), 12 authorization types (Basic, Bearer, API key, OAuth 2.0, Digest, AWS Signature, …). Send with `Ctrl+Enter`, cancel any time, up to 6 requests in parallel.
-- **Response viewer** – JSON / XML / HTML / CSV, search, headers, cookies, redirect timeline, test results and console output. Large responses (> 1 MB) are not kept in memory: open them in an editor instead.
-- **Collections are `.http` files** – one request per file (REST Client / JetBrains compatible), folders are normal folders, so everything is reviewable in Git. Sidebar with drag & drop, rename, duplicate, Copy as cURL / PowerShell, and a **Dashboard** with Collections, Environments and Cookies in one page.
-- **Environments** – dev / uat / prod with the same keys, `NULL` for values that are not filled yet, Globals, collection variables, secret values kept in VS Code SecretStorage (never in the file), and import / export of `http-client.env.json`.
+- **Response viewer** – JSON / XML / HTML / CSV, search, headers, cookies, redirect timeline, test results and console output. Large responses (> 1 MB) are not kept in memory: open them in an editor instead. A slow request that finishes after you switched to another request moves the Response panel to its result; responses are not lost when switching tabs.
+- **Collections are `.http` files** – one request per file (REST Client / JetBrains compatible), folders are normal folders, so everything is reviewable in Git. Sidebar with drag & drop, rename, duplicate, Copy as cURL / PowerShell, and a **Dashboard** with Collections, Environments, Cookies, History and Backups in one page. Close All / Close All Unpinned / the close button in Open ask to save when a request has unsaved changes.
+- **Environments** – dev / uat / prod with the same keys (the Set Active button is always visible in Dashboard › Environments), `NULL` for values that are not filled yet, Globals, collection variables, secret values kept in VS Code SecretStorage (never in the file), and import / export of `http-client.env.json`.
+- **History** – in the Dashboard, filter by text and date (From / To, Today, All dates). Click an entry to open the request with its saved response (status, headers, body up to 64 KB), marked "From History: executed <date time> (n min ago)". All entries open in one untitled `history.http` tab that the next entry overwrites. Actions: Send again, Copy cURL, Remove, Clear All.
+- **Backups** – History and temporary requests (unsaved New Request tabs) are backed up automatically to `<workspace>/exports/history-backup/` and `exports/temp-backup/` (once a day when changed, or when the content grows by >= 2 MB; the 30 newest files per kind are kept). Use **Back Up Now** / **Import** in the Backups tab. Backups contain requests and responses, so add `exports/` to `.gitignore`.
 - **Cookies and login sessions** – a cookie jar per Environment, automatic re-login when a session expires.
 - **Request timeout** – 10 minutes by default; change it with the `httpme.request.timeout` setting (seconds) or `http.me: Set Request Timeout…`, or override per request with `# @timeout <seconds>`. Applies to requests, login requests and OAuth 2.0 token requests.
 - **Scripts** – `pre-request.js` and `post-request.js` per folder or request with `httpme.*` helpers and tests.
@@ -57,12 +59,14 @@ Content-Type: application/json
 | http.me: Next / Previous Environment | `Ctrl+Alt+]` / `Ctrl+Alt+[` |
 | http.me: Set Request Timeout… | Command Palette |
 | http.me: Import… / Export… | Command Palette |
+| http.me: Back Up History and Temp Now | Command Palette |
+| http.me: Import History or Temp Backup… | Command Palette |
 
 All commands are under the **http.me** category in the Command Palette.
 
 ## Privacy
 
-http.me has no telemetry and sends requests only where you tell it to. Secret values stay in VS Code SecretStorage; the `Authorization` header and cookies are not saved in History.
+http.me has no telemetry and sends requests only where you tell it to. Secret values stay in VS Code SecretStorage; History stores response headers, but `Set-Cookie`, `Authorization` and `Cookie` headers are not saved.
 
 ## Feedback
 
