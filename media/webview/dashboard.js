@@ -43,18 +43,25 @@
     }
     return tab === 'cookies' ? cookie || undefined : undefined; // History / Backups: tombol Delete tidak menghapus apa pun
   }
-  const api = { segments, flatten, canDrop, parentOf, deleteAction };
+  /** filter History: teks (URL / method / status / Environment / file) + rentang tanggal lokal `YYYY-MM-DD` (From dan To inklusif) */
+  function filterHistory(list, f) {
+    const q = (f.q || '').trim().toLowerCase();
+    const from = f.from ? new Date(`${f.from}T00:00:00`).getTime() : -Infinity;
+    const to = f.to ? new Date(`${f.to}T23:59:59.999`).getTime() : Infinity;
+    return list.filter((e) => e.time >= from && e.time <= to && (!q || `${e.method} ${e.url} ${e.status ?? ''} ${e.env ?? ''} ${e.file ?? ''}`.toLowerCase().includes(q)));
+  }
+  const api = { segments, flatten, canDrop, parentOf, deleteAction, filterHistory };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
   const vscode = acquireVsCodeApi();
   const saved = vscode.getState() || {};
-  const ui = { tab: saved.tab || 'collections', open: new Set(saved.open || []), copen: new Set(saved.copen || []), filter: saved.filter || '', hfilter: saved.hfilter || '' };
+  const ui = { tab: saved.tab || 'collections', open: new Set(saved.open || []), copen: new Set(saved.copen || []), filter: saved.filter || '', hfilter: saved.hfilter || '', hfrom: saved.hfrom || '', hto: saved.hto || '' };
   let data = null;
   let sel = new Set();
   let cdel = null; // aksi Delete baris cookie yang terakhir difokus / diklik (tab Cookies)
   let dragging = null;
-  const persist = () => vscode.setState({ tab: ui.tab, open: [...ui.open], copen: [...ui.copen], filter: ui.filter, hfilter: ui.hfilter });
+  const persist = () => vscode.setState({ tab: ui.tab, open: [...ui.open], copen: [...ui.copen], filter: ui.filter, hfilter: ui.hfilter, hfrom: ui.hfrom, hto: ui.hto });
   const $ = (id) => document.getElementById(id);
   const el = (tag, props, children) => { const e = Object.assign(document.createElement(tag), props || {}); for (const c of children || []) if (c) e.append(c); return e; };
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -308,13 +315,19 @@
   function renderHistory(box) {
     const all = data.history.list;
     const filter = el('input', { type: 'search', placeholder: 'Filter by URL, method, status or Environment', value: ui.hfilter, 'aria-label': 'Filter', oninput: (e) => { ui.hfilter = e.target.value; persist(); renderList(); } });
-    box.append(el('div', { className: 'toolbar' }, [filter, el('button', { type: 'button', className: 'btn ghost', textContent: 'Clear All', onclick: () => act('history.clear') })]));
-    box.append(el('p', { className: 'summary', textContent: `${plural(all.length, 'request')} in History (the latest 200 are kept)` }));
+    const date = (label, key) => el('label', { className: 'muted' }, [`${label} `, el('input', { type: 'date', value: ui[key], 'aria-label': label, oninput: (e) => { ui[key] = e.target.value; persist(); renderList(); } })]);
+    const range = el('button', { type: 'button', className: 'btn ghost', textContent: 'Today', onclick: () => { const t = new Date(); ui.hfrom = ui.hto = `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())}`; persist(); render(); } });
+    const reset = el('button', { type: 'button', className: 'btn ghost', textContent: 'All dates', onclick: () => { ui.hfrom = ui.hto = ''; persist(); render(); } });
+    box.append(el('div', { className: 'toolbar' }, [filter, date('From', 'hfrom'), date('To', 'hto'), range, reset, el('span', { className: 'spacer' }), el('button', { type: 'button', className: 'btn ghost', textContent: 'Clear All', onclick: () => act('history.clear') })]));
+    const summary = el('p', { className: 'summary' });
+    box.append(summary);
     const list = el('div', { className: 'list', tabIndex: 0 });
     box.append(list, el('p', { className: 'hint', textContent: 'Click a request to open it with its saved response and the time it was executed · Send again repeats it · Backups keep older History.' }));
     function renderList() {
-      const q = ui.hfilter.trim().toLowerCase();
-      const rows = all.filter((e) => !q || `${e.method} ${e.url} ${e.status ?? ''} ${e.env ?? ''} ${e.file ?? ''}`.toLowerCase().includes(q)).map((e) => {
+      const shown = filterHistory(all, { q: ui.hfilter, from: ui.hfrom, to: ui.hto });
+      const filtered = !!(ui.hfilter.trim() || ui.hfrom || ui.hto);
+      summary.textContent = filtered ? `${shown.length} of ${plural(all.length, 'request')} match the filter (the latest 200 are kept)` : `${plural(all.length, 'request')} in History (the latest 200 are kept)`;
+      const rows = shown.map((e) => {
         const bad = e.error || (e.status ?? 0) >= 400;
         const head = e.cancelled ? 'Cancelled' : e.error ? 'Error' : String(e.status ?? '');
         const m = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(e.method) ? e.method : 'other';
@@ -327,7 +340,7 @@
           el('span', { className: 'muted', textContent: ago(e.time), title: stamp(e.time) }),
           el('span', { className: 'acts' }, [small('Open', () => act('history.open', args)), small('Send again', () => act('history.send', args)), small('Copy cURL', () => act('history.curl', args)), small('Remove', () => act('history.remove', args))])]);
       });
-      list.replaceChildren(...(rows.length ? rows : [el('div', { className: 'empty', textContent: q ? 'Nothing matches the filter.' : 'No requests yet. Send a request and it shows up here.' })]));
+      list.replaceChildren(...(rows.length ? rows : [el('div', { className: 'empty', textContent: filtered ? 'Nothing matches the filter.' : 'No requests yet. Send a request and it shows up here.' })]));
     }
     renderList();
   }

@@ -155,3 +155,23 @@ test('Open Dashboard menutup panel bawah http.me hanya bila view Response terlih
   assert.match(ed, /export async function closeOutputPanel\(\)[\s\S]{0,200}output\.view\?\.visible[\s\S]{0,120}workbench\.action\.closePanel/);
   assert.match(cmd, /registerCommand\('httpme\.openDashboard', async \(\) => \{\s*await closeOutputPanel\(\);/);
 });
+
+test('dashboard.js filterHistory: teks (URL / method / status / Environment / file) + rentang tanggal lokal From / To inklusif', () => {
+  const { filterHistory } = createRequire(__filename)(join(__dirname, '../../../media/webview/dashboard.js')) as {
+    filterHistory(list: { id: string; time: number; method: string; url: string; status?: number; env?: string }[], f: { q?: string; from?: string; to?: string }): { id: string }[];
+  };
+  const at = (d: string, h = 12) => new Date(`${d}T${String(h).padStart(2, '0')}:00:00`).getTime(); // waktu lokal
+  const list = [
+    { id: 'a', time: at('2026-11-07', 0), method: 'GET', url: 'http://x/a', status: 200, env: 'dev' },
+    { id: 'b', time: at('2026-11-08', 23), method: 'POST', url: 'http://x/b', status: 500, env: 'uat' },
+    { id: 'c', time: at('2026-11-09', 9), method: 'GET', url: 'http://x/c', status: 200 },
+  ];
+  const ids = (f: object) => filterHistory(list, f).map((x) => x.id);
+  assert.deepEqual(ids({}), ['a', 'b', 'c']);
+  assert.deepEqual(ids({ from: '2026-11-08' }), ['b', 'c'], 'From inklusif (mulai 00:00)');
+  assert.deepEqual(ids({ to: '2026-11-08' }), ['a', 'b'], 'To inklusif (sampai 23:59:59)');
+  assert.deepEqual(ids({ from: '2026-11-08', to: '2026-11-08' }), ['b']);
+  assert.deepEqual(ids({ from: '2026-11-09', to: '2026-11-07' }), [], 'rentang terbalik: kosong');
+  assert.deepEqual(ids({ q: 'post', from: '2026-11-07' }), ['b'], 'teks + tanggal digabung');
+  assert.deepEqual(ids({ q: 'uat' }), ['b']);
+});
