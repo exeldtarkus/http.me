@@ -70,7 +70,14 @@ export const tests: ITests = {
 
       await cmd('httpme.editCookie', list[1], 'light');
       assert.equal((await api().cookies.jar('')).find((c) => c.name === 'theme')!.value, 'light');
-      await cmd('httpme.deleteCookie', list[1], true);
+      const edited = (await api().sidebar.getChildren(domains[0]))[1]; // tree diambil ulang seperti di UI
+      await cmd('httpme.copyCookieValue', edited);
+      assert.equal(await vscode.env.clipboard.readText(), 'light');
+      await cmd('httpme.copyCookie', edited);
+      assert.equal(await vscode.env.clipboard.readText(), 'theme=light');
+      await cmd('httpme.renameCookie', edited, 'mode');
+      assert.deepEqual((await api().cookies.jar('')).filter((c) => c.domain === 'bima.test').map((c) => `${c.name}=${c.value}`).sort(), ['JSESSIONID=ABCDEF123', 'mode=light']);
+      await cmd('httpme.deleteCookie', (await api().sidebar.getChildren(domains[0]))[1], true);
       await cmd('httpme.deleteCookieDomain', domains[1], true);
       assert.deepEqual((await api().cookies.jar('')).map((c) => c.name), ['JSESSIONID']);
       await cmd('httpme.pasteCookies', { kind: 'cenv', env: 'dev' }, 'bima.test', 'JSESSIONID=DEV1');

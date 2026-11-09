@@ -91,6 +91,21 @@ export function parseCookiePaste(text: string, domain: string, now: number): Coo
   return out;
 }
 
+/** `name=value` untuk di-copy / header Cookie */
+export const cookiePair = (c: Pick<Cookie, 'name' | 'value'>): string => `${c.name}=${c.value}`;
+
+/** ganti name dan / atau value satu cookie (kunci = name + domain + path); name baru yang bentrok dengan cookie lain ditolak */
+export function updateCookie(jar: readonly Cookie[], target: Cookie, patch: { name?: string; value?: string }): Cookie[] {
+  const is = (c: Cookie, t: Cookie) => c.name === t.name && c.domain === t.domain && c.path === t.path;
+  if (!jar.some((c) => is(c, target))) throw new Error('The cookie no longer exists.');
+  if (patch.name !== undefined) {
+    if (!/^[^=;\s]+$/.test(patch.name)) throw new Error('Invalid cookie name (no spaces, "=" or ";").');
+    const to = { ...target, name: patch.name };
+    if (!is(to, target) && jar.some((c) => is(c, to))) throw new Error(`A cookie named ${patch.name} already exists for ${target.domain} ${target.path}.`);
+  }
+  return jar.map((c) => (is(c, target) ? { ...c, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.value !== undefined ? { value: patch.value } : {}) } : c));
+}
+
 /** nilai semua cookie (di-mask di log) */
 export const jarCookieValues = (jar: readonly Cookie[]): string[] => jar.map((c) => c.value).filter((v) => v.length >= 2);
 

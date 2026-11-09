@@ -61,3 +61,26 @@ test('saveJar / loadJar: chunk per Environment + domain di httpme-cache/cookies 
     assert.deepEqual(jarCookieValues(await loadJar(dir, 'dev')), ['tok2'], 'nilai 1 karakter tidak di-mask (log jadi rusak)');
   });
 });
+
+import { cookiePair, updateCookie } from '../../src/cookieJar';
+const ck = (name: string, value: string, domain = 'a.test', path = '/'): Cookie => ({ name, value, domain, hostOnly: true, path, secure: false, httpOnly: false, created: 1 });
+
+test('updateCookie: ganti value atau name satu cookie (domain + path sama), cookie lain tetap', () => {
+  const jar = [ck('sid', 'x'), ck('theme', 'dark'), ck('sid', 'y', 'b.test')];
+  assert.deepEqual(updateCookie(jar, jar[0], { value: 'new' }).map((c) => `${c.domain}:${c.name}=${c.value}`), ['a.test:sid=new', 'a.test:theme=dark', 'b.test:sid=y']);
+  assert.deepEqual(updateCookie(jar, jar[0], { name: 'JSESSIONID' }).map((c) => `${c.domain}:${c.name}=${c.value}`), ['a.test:JSESSIONID=x', 'a.test:theme=dark', 'b.test:sid=y']);
+  assert.deepEqual(updateCookie(jar, jar[1], { name: 'mode', value: 'light' }).map((c) => `${c.name}=${c.value}`), ['sid=x', 'mode=light', 'sid=y']);
+});
+
+test('updateCookie: name bentrok dengan cookie lain (domain + path sama) ditolak; name tidak sah ditolak; cookie tak ada ditolak', () => {
+  const jar = [ck('sid', 'x'), ck('theme', 'dark'), ck('theme', 'p', 'a.test', '/api')];
+  assert.throws(() => updateCookie(jar, jar[0], { name: 'theme' }), /already exists/);
+  assert.doesNotThrow(() => updateCookie(jar, jar[0], { name: 'theme2' }));
+  assert.doesNotThrow(() => updateCookie(jar, jar[2], { name: 'sid' }), 'path berbeda = bukan bentrok');
+  for (const bad of ['', 'a b', 'a=b', 'a;b']) assert.throws(() => updateCookie(jar, jar[0], { name: bad }), /Invalid cookie name/);
+  assert.throws(() => updateCookie(jar, ck('zzz', '1'), { value: '2' }), /no longer exists/);
+});
+
+test('cookiePair: name=value untuk di-copy', () => {
+  assert.equal(cookiePair(ck('JSESSIONID', 'ABC')), 'JSESSIONID=ABC');
+});

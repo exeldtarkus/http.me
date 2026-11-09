@@ -299,11 +299,11 @@
         if (!dopen) continue;
         for (const c of dm.cookies) {
           const args = { env: e.env, domain: dm.domain, name: c.name, path: c.path };
-          const cmenu = [{ label: 'Edit Value…', id: 'cookie.edit', args }, { label: 'Delete', id: 'cookie.delete', args, danger: true }];
+          const cmenu = [{ label: 'Edit Value…', id: 'cookie.edit', args }, { label: 'Rename…', id: 'cookie.rename', args }, '-', { label: 'Copy Value', id: 'cookie.copyValue', args }, { label: 'Copy as name=value', id: 'cookie.copyPair', args }, '-', { label: 'Delete', id: 'cookie.delete', args, danger: true }];
           const row = el('div', { className: 'row', tabIndex: 0, style: 'padding-left:50px', title: `${c.name} · ${c.path}`, ondblclick: () => act('cookie.edit', args), oncontextmenu: (ev) => { ev.preventDefault(); showMenu(cmenu, ev.clientX, ev.clientY); } }, [
             el('span', { className: 'grow' }, [el('span', { className: 'name', textContent: c.name }), el('span', { className: 'muted name', textContent: c.value }), el('span', { className: 'muted', textContent: c.path })]),
             c.secure ? el('span', { className: 'pill', textContent: 'secure' }) : null, c.httpOnly ? el('span', { className: 'pill', textContent: 'httpOnly' }) : null, c.expired ? el('span', { className: 'pill err', textContent: 'expired' }) : null,
-            el('span', { className: 'acts' }, [small('Edit', () => act('cookie.edit', args), 'Edit Value'), small('Delete', () => act('cookie.delete', args))])]);
+            el('span', { className: 'acts' }, [small('Copy', () => act('cookie.copyValue', args), 'Copy Value'), small('Edit', () => act('cookie.edit', args), 'Edit Value'), small('Delete', () => act('cookie.delete', args))])]);
           row.onkeydown = (ev) => { if (ev.key === 'Enter') act('cookie.edit', args); };
           row.onfocus = row.onclick = () => { cdel = { id: 'cookie.delete', args }; };
           rows.push(row);

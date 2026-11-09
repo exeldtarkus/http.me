@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import { join } from 'node:path';
 import { readChunks } from './cache';
-import { cookieHeader, jarCookieValues, loadJar, parseCookiePaste, saveJar, storeCookies, type Cookie } from './cookieJar';
+import { cookieHeader, jarCookieValues, loadJar, parseCookiePaste, saveJar, storeCookies, cookiePair, updateCookie, type Cookie } from './cookieJar';
 import type { SendOptions } from './http';
 import type { Environments } from './envState';
 import { errMsg, errorLine } from './log';
@@ -96,8 +96,8 @@ export class Cookies {
   async remove(env: string, match: (c: Cookie) => boolean): Promise<void> {
     await this.setJar(env, (await this.jar(env)).filter((c) => !match(c)));
   }
-  async edit(env: string, target: Cookie, value: string): Promise<void> {
-    await this.setJar(env, (await this.jar(env)).map((c) => (c.name === target.name && c.domain === target.domain && c.path === target.path ? { ...c, value } : c)));
+  async edit(env: string, target: Cookie, patch: { name?: string; value?: string }): Promise<void> {
+    await this.setJar(env, updateCookie(await this.jar(env), target, patch));
   }
 
   // ---------- Login request per Environment ----------
@@ -155,10 +155,18 @@ export function registerCookieCommands(cookies: Cookies, run: (uri: vscode.Uri) 
     }),
     cmd('httpme.editCookie', async (n?: CookieNode, value?: string) => {
       if (!n?.cookie) return;
-      value ??= await vscode.window.showInputBox({ title: `Edit cookie ${n.cookie.name} (${n.cookie.domain})`, password: true, prompt: 'New value (the current value stays hidden)' });
+      value ??= await vscode.window.showInputBox({ title: `Edit value of ${n.cookie.name} (${n.cookie.domain})`, value: n.cookie.value, prompt: 'New value' });
       if (value === undefined) return;
-      await cookies.edit(envOf(n), n.cookie, value);
+      await cookies.edit(envOf(n), n.cookie, { value });
     }),
+    cmd('httpme.renameCookie', async (n?: CookieNode, name?: string) => {
+      if (!n?.cookie) return;
+      name ??= await vscode.window.showInputBox({ title: `Rename cookie ${n.cookie.name} (${n.cookie.domain})`, value: n.cookie.name, validateInput: (v) => (/^[^=;\s]+$/.test(v) ? undefined : 'No spaces, "=" or ";"') });
+      if (name === undefined || name === n.cookie.name) return;
+      await cookies.edit(envOf(n), n.cookie, { name });
+    }),
+    cmd('httpme.copyCookieValue', async (n?: CookieNode) => { if (n?.cookie) await vscode.env.clipboard.writeText(n.cookie.value); }),
+    cmd('httpme.copyCookie', async (n?: CookieNode) => { if (n?.cookie) await vscode.env.clipboard.writeText(cookiePair(n.cookie)); }),
     cmd('httpme.deleteCookie', async (n?: CookieNode, confirmed?: boolean) => {
       const c = n?.cookie;
       if (!c) return;

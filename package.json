@@ -557,6 +557,21 @@
         "category": "http.me"
       },
       {
+        "command": "httpme.renameCookie",
+        "title": "Rename Cookie…",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.copyCookieValue",
+        "title": "Copy Value",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.copyCookie",
+        "title": "Copy as name=value",
+        "category": "http.me"
+      },
+      {
         "command": "httpme.deleteCookie",
         "title": "Delete",
         "category": "http.me",
@@ -924,6 +939,18 @@
           "when": "false"
         },
         {
+          "command": "httpme.renameCookie",
+          "when": "false"
+        },
+        {
+          "command": "httpme.copyCookieValue",
+          "when": "false"
+        },
+        {
+          "command": "httpme.copyCookie",
+          "when": "false"
+        },
+        {
           "command": "httpme.deleteCookie",
           "when": "false"
         },
@@ -1246,6 +1273,21 @@
           "command": "httpme.editCookie",
           "when": "view == httpme.cookies && viewItem == httpmeCookie",
           "group": "1_edit@1"
+        },
+        {
+          "command": "httpme.renameCookie",
+          "when": "view == httpme.cookies && viewItem == httpmeCookie",
+          "group": "1_edit@2"
+        },
+        {
+          "command": "httpme.copyCookieValue",
+          "when": "view == httpme.cookies && viewItem == httpmeCookie",
+          "group": "2_copy@1"
+        },
+        {
+          "command": "httpme.copyCookie",
+          "when": "view == httpme.cookies && viewItem == httpmeCookie",
+          "group": "2_copy@2"
         },
         {
           "command": "httpme.deleteCookie",

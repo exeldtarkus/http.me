@@ -140,7 +140,7 @@ function handlers(envs: Environments, cookies: Cookies, historyDir: string): Rec
     // Cookies
     'cookie.add': (a) => exec('httpme.addCookie', { kind: 'cdomain', env: str(a.env) ?? cookies.env, domain: str(a.domain) }),
     'cookie.paste': (a) => exec('httpme.pasteCookies', { kind: 'cdomain', env: str(a.env) ?? cookies.env, domain: str(a.domain) }),
-    'cookie.edit': async (a) => exec('httpme.editCookie', await node(a)), 'cookie.delete': async (a) => exec('httpme.deleteCookie', await node(a)),
+    'cookie.edit': async (a) => exec('httpme.editCookie', await node(a)), 'cookie.rename': async (a) => exec('httpme.renameCookie', await node(a)), 'cookie.copyValue': async (a) => exec('httpme.copyCookieValue', await node(a)), 'cookie.copyPair': async (a) => exec('httpme.copyCookie', await node(a)), 'cookie.delete': async (a) => exec('httpme.deleteCookie', await node(a)),
     'cookie.deleteDomain': (a) => exec('httpme.deleteCookieDomain', { kind: 'cdomain', env: str(a.env) ?? '', domain: str(a.domain) }),
     'cookie.clearEnv': (a) => exec('httpme.clearCookies', { kind: 'cenv', env: str(a.env) ?? '' }), 'cookie.clearAll': () => exec('httpme.clearCookies'),
   };
