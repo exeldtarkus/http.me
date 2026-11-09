@@ -33,7 +33,12 @@ export class RequestError extends Error {
   constructor(message: string, readonly kind: ErrorKind, options?: { cause?: unknown }) { super(message, options); }
 }
 
-export const DEFAULT_TIMEOUT_MS = 30_000;
+export const DEFAULT_TIMEOUT_MS = 600_000;
+/** batas waktu request: `# @timeout` (detik) > setting `httpme.request.timeout` (detik) > default 600 s (10 menit); nilai <= 0 / bukan angka diabaikan */
+export function resolveTimeoutMs(requestSec: number | undefined, settingSec: number | undefined): number {
+  const sec = [requestSec, settingSec].find((n) => typeof n === 'number' && Number.isFinite(n) && n > 0);
+  return sec === undefined ? DEFAULT_TIMEOUT_MS : sec * 1000;
+}
 export const MAX_BODY_MEMORY = 1024 * 1024;
 
 const TEXT_TYPE = /^(text\/|application\/(json|xml|javascript|ecmascript|x-www-form-urlencoded|graphql|yaml|x-yaml|x-ndjson)\b)|[+/](json|xml)\b/i;

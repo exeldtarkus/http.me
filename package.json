@@ -618,6 +618,11 @@
         "category": "http.me"
       },
       {
+        "command": "httpme.setRequestTimeout",
+        "title": "Set Request Timeout…",
+        "category": "http.me"
+      },
+      {
         "command": "httpme.openDashboard",
         "title": "Open Dashboard",
         "category": "http.me",
@@ -1462,6 +1467,12 @@
             "Never replace values."
           ],
           "markdownDescription": "When a cURL command is pasted or imported, replace values that equal an Environment or Globals value (URL prefix, query, headers, Bearer token, cookies, JSON / form body) with `{{VARIABLE}}`."
+        },
+        "httpme.request.timeout": {
+          "type": "number",
+          "default": 600,
+          "exclusiveMinimum": 0,
+          "markdownDescription": "Seconds before a request times out. A `# @timeout <seconds>` line in a request overrides this."
         },
         "httpme.login.autoRelogin": {
           "type": "boolean",

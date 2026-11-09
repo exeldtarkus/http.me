@@ -22,7 +22,7 @@ import { beautifyBody } from './beautify';
 import { importCurl, quickRequest } from './curl';
 import { defaultFileName } from './sidebarModel';
 import { dropKeepIfUsed, requestFileName } from './store';
-import { DEFAULT_TIMEOUT_MS, RequestError, send } from './http';
+import { RequestError, resolveTimeoutMs, send } from './http';
 import { responseView, tabStatus, type ResponseView } from './response';
 import { createRunner } from './runner';
 import { stageText, type Stage } from './runningStatus';
@@ -267,7 +267,7 @@ async function sendLogin(uri: string): Promise<HttpResponse> {
   const req = await toHttpRequestWithFile(parsed, (p) => readBodyFile(doc, p));
   const res = await send(req, {
     cookies: await session?.cookies({ ...parsed, noSaveCookies: false, noCookieJar: false }), followRedirects: parsed.followRedirects, insecure: parsed.insecure,
-    timeoutMs: parsed.timeoutSec !== undefined ? parsed.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS, onError: (where, e) => log().error(errorLine(where, e)),
+    timeoutMs: timeoutMs(parsed.timeoutSec), onError: (where, e) => log().error(errorLine(where, e)),
   });
   log().info(`login ${loginLabel(parsed)} -> ${res.status} ${res.url.replace(/\?.*$/, '')}`);
   return res;
@@ -495,7 +495,7 @@ function oauthToken(fields: Readonly<Record<string, string>>, env: string | unde
   let lb: Loopback | undefined;
   const flow = accessToken(fields, {
     now: Date.now,
-    send: async (r) => { const res = await send({ ...r }, { ...(signal ? { signal } : {}), timeoutMs: DEFAULT_TIMEOUT_MS }); return { status: res.status, body: res.body.toString('utf8') }; },
+    send: async (r) => { const res = await send({ ...r }, { ...(signal ? { signal } : {}), timeoutMs: timeoutMs(undefined) }); return { status: res.status, body: res.body.toString('utf8') }; },
     load: async () => {
       const raw = await store.get(key);
       try { return raw ? (JSON.parse(raw) as OAuthToken) : undefined; } catch (e) {
@@ -725,7 +725,7 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
         signal, bodyFile: bodyPath(key), followRedirects: parsed.followRedirects, insecure: parsed.insecure, cookies,
         onRedirect: (n) => setStage({ kind: 'redirect', n }),
         onError: (where, e) => log().error(errorLine(where, e)),
-        timeoutMs: parsed.timeoutSec !== undefined ? parsed.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS,
+        timeoutMs: timeoutMs(parsed.timeoutSec),
       });
       const once = () => sendWithDigest(auth, r, sendOnce, async (x) => { if (x.bodyFile) await fs.rm(x.bodyFile, { force: true }); }); // body 401 dibuang: dikirim ulang
       // session habis (redirect ke /login, 401/403): login sekali lalu kirim ulang, tidak pernah loop
@@ -1085,6 +1085,7 @@ async function closeUntitled(uri: vscode.Uri): Promise<void> {
 }
 
 /** setting httpme.import.matchEnvironment: always / ask / never */
+const timeoutMs = (requestSec: number | undefined) => resolveTimeoutMs(requestSec, vscode.workspace.getConfiguration('httpme').get<number>('request.timeout'));
 const matchMode = () => vscode.workspace.getConfiguration('httpme').get<string>('import.matchEnvironment', 'always');
 
 /** nilai yang sama dengan nilai Environment → {{VARIABLE}}; loading di kolom URL panel selama mencocokkan */

@@ -171,6 +171,14 @@ function variableHooks(envs: Environments): vscode.Disposable {
 export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   ctx.subscriptions.push(log());
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.whatsNew', () => openWhatsNew(ctx)));
+  ctx.subscriptions.push(vscode.commands.registerCommand('httpme.setRequestTimeout', () => run('setRequestTimeout', async () => {
+    const cfg = vscode.workspace.getConfiguration('httpme');
+    const v = await vscode.window.showInputBox({
+      title: 'Request Timeout', prompt: 'Seconds before a request times out (default 600 = 10 minutes). A "# @timeout" line in a request overrides this.',
+      value: String(cfg.get<number>('request.timeout', 600)), validateInput: (t) => (Number(t) > 0 ? undefined : 'Enter a number greater than 0'),
+    });
+    if (v !== undefined) await cfg.update('request.timeout', Number(v), vscode.ConfigurationTarget.Global);
+  })));
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.clearCache', () => clearCacheCommand(ctx)));
   ctx.subscriptions.push(registerRequestEditor(vscode.Uri.joinPath(ctx.globalStorageUri, 'httpme-cache').fsPath, ctx.globalState));
   ctx.subscriptions.push(vscode.commands.registerCommand('httpme.newRequest', () =>

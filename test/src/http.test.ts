@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { allowedMethods, isBinaryType, MAX_BODY_MEMORY, send } from '../../src/http';
+import { allowedMethods, DEFAULT_TIMEOUT_MS, isBinaryType, MAX_BODY_MEMORY, resolveTimeoutMs, send } from '../../src/http';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { withTempDir } from './helpers/tmp';
@@ -278,4 +278,11 @@ test('onRedirect: dipanggil tiap hop berurutan (n/10) sebelum hop berikutnya', a
   } finally {
     await srv.close();
   }
+});
+
+test('resolveTimeoutMs: # @timeout menimpa setting, setting menimpa default, nilai tidak valid diabaikan', () => {
+  assert.equal(resolveTimeoutMs(5, 60), 5_000);
+  assert.equal(resolveTimeoutMs(undefined, 60), 60_000);
+  assert.equal(resolveTimeoutMs(undefined, undefined), DEFAULT_TIMEOUT_MS);
+  for (const bad of [0, -3, NaN, Infinity]) assert.equal(resolveTimeoutMs(undefined, bad), DEFAULT_TIMEOUT_MS);
 });
