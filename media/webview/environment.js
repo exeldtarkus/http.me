@@ -128,6 +128,7 @@
     $('save').disabled = !st.dirty || saving;
     $('save').textContent = saving ? 'Saving…' : 'Save';
     $('title').disabled = !!st.globals;
+    $('deleteEnv').hidden = !!st.globals;
     $('activeBadge').hidden = !st.active;
     $('setActive').hidden = !!st.active || !!st.globals;
     $('reset').hidden = $('persist').hidden = !!st.globals;
@@ -228,6 +229,7 @@
   $('title').onclick = () => post({ type: 'rename' });
   $('setActive').onclick = () => post({ type: 'setActive' });
   $('compare').onclick = () => post({ type: 'compare' });
+  $('deleteEnv').onclick = () => post({ type: 'deleteEnv' });
   $('openAsText').onclick = () => post({ type: 'openAsText' });
   $('save').onclick = () => { saving = true; render(); post({ type: 'save' }); };
   $('reset').onclick = () => post({ type: 'resetCurrent' });

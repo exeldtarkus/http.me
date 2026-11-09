@@ -74,7 +74,7 @@ function handlers(envs: Environments, cookies: Cookies): Record<string, Handler>
   };
   return {
     // Collections
-    'coll.newRequest': () => exec('httpme.newRequest'), 'coll.newCollection': () => exec('httpme.newCollection'), 'coll.newFolder': () => exec('httpme.newFolder'), 'coll.import': () => exec('httpme.import'),
+    'coll.newRequest': () => exec('httpme.newRequest'), 'coll.newCollection': () => exec('httpme.newCollection'), 'coll.newFolder': () => exec('httpme.newFolder'), 'coll.import': () => exec('httpme.import'), 'coll.export': () => exec('httpme.export'),
     'coll.importText': (a) => exec('httpme.import', 'text', a.items),
     'file.open': opens('httpme.openRequest'), 'file.openAsText': opens('httpme.openAsText'), 'file.duplicate': file('httpme.duplicate'), 'file.rename': file('httpme.rename'), 'file.reveal': file('httpme.revealInExplorer'),
     'file.copyAsCurl': file('httpme.copyAsCurl'), 'file.copyAsCurlWithCookies': file('httpme.copyAsCurlWithCookies'), 'file.copyAsCurlCmd': file('httpme.copyAsCurlCmd'),
@@ -90,7 +90,7 @@ function handlers(envs: Environments, cookies: Cookies): Record<string, Handler>
       for (const p of paths) await exec('httpme.delete', uriOf(p), true);
       return undefined;
     },
-    'folder.newRequest': file('httpme.newRequestIn'), 'folder.newFolder': file('httpme.newFolder'), 'folder.rename': file('httpme.rename'), 'folder.reimport': file('httpme.reimportFromSource'),
+    'folder.newRequest': file('httpme.newRequestIn'), 'folder.newFolder': file('httpme.newFolder'), 'folder.rename': file('httpme.rename'), 'folder.reimport': file('httpme.reimportFromSource'), 'folder.export': file('httpme.export'),
     move: async (a) => {
       const from = Array.isArray(a.from) ? a.from.map(uriOf) : [];
       if (from.length) await moveInto(from, uriOf(a.to));

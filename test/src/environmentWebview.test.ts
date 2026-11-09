@@ -120,3 +120,15 @@ test('review R23: klik Save menampilkan loading lalu notifikasi (host kirim "sav
   assert.match(ts, /else if \(m\.type === 'save'\) \{[\s\S]{0,300}finally \{ void panel\.webview\.postMessage\(\{ type: 'saved' \}\)/, 'host kirim saved di finally');
   assert.match(ts, /showInformationMessage\(`Environment "\$\{nameOf\(doc\)\}" saved\.`\)/, 'notifikasi sukses');
 });
+
+test('editor Environment: tombol ikon Delete (tooltip "Delete Environment"), tersembunyi untuk Globals, memanggil deleteEnv', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const html = fs.readFileSync(join(media, 'environment.html'), 'utf8');
+  const js = fs.readFileSync(join(media, 'environment.js'), 'utf8');
+  const ed = fs.readFileSync(join(__dirname, '..', '..', '..', 'src', 'environmentEditor.ts'), 'utf8');
+  assert.match(html, /<button[^>]*id="deleteEnv"[^>]*title="Delete Environment"[^>]*aria-label="Delete Environment"[^>]*><svg/);
+  assert.match(js, /\$\('deleteEnv'\)\.hidden = !!st\.globals/);
+  assert.match(js, /\$\('deleteEnv'\)\.onclick = \(\) => post\(\{ type: 'deleteEnv' \}\)/);
+  assert.match(ed, /m\.type === 'deleteEnv'[\s\S]{0,400}httpme\.deleteEnvironment/);
+  assert.match(ed, /m\.type === 'deleteEnv'[\s\S]{0,600}panel\.dispose\(\)/, 'tab ditutup setelah dihapus');
+});

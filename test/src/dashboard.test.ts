@@ -117,3 +117,29 @@ test('dashboard.js: flatten (tree → baris, filter membuka folder), canDrop, pa
   assert.equal(parentOf('api/sub/x.http'), 'api/sub');
   assert.equal(parentOf('r.http'), '');
 });
+
+test('dashboard.js deleteAction: Delete memilih aksi sesuai tab; Globals / No Environment tidak pernah bisa dihapus', () => {
+  const { deleteAction } = createRequire(__filename)(join(__dirname, '../../../media/webview/dashboard.js')) as {
+    deleteAction(tab: string, sel: Set<string>, cookie: { id: string; args: object } | null): { id: string; args: object } | undefined;
+  };
+  assert.deepEqual(deleteAction('collections', new Set(['a', 'b/c.http']), null), { id: 'file.delete', args: { paths: ['a', 'b/c.http'] } });
+  assert.equal(deleteAction('collections', new Set(), null), undefined);
+  assert.deepEqual(deleteAction('environments', new Set(['env:dev']), null), { id: 'env.delete', args: { name: 'dev' } });
+  assert.equal(deleteAction('environments', new Set(), null), undefined, 'Globals / No Environment tidak punya pilihan');
+  assert.equal(deleteAction('environments', new Set(['env:']), null), undefined, 'nama kosong = Globals');
+  const c = { id: 'cookie.delete', args: { name: 'sid' } };
+  assert.deepEqual(deleteAction('cookies', new Set(), c), c);
+  assert.equal(deleteAction('cookies', new Set(), null), undefined);
+});
+
+test('Dashboard: tombol Export… dan menu Export… memakai httpme.export; Delete lewat handler dokumen', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const js = fs.readFileSync(join(__dirname, '../../../media/webview/dashboard.js'), 'utf8');
+  const cmd = fs.readFileSync(join(__dirname, '../../../src/dashboardCommand.ts'), 'utf8');
+  assert.match(js, /textContent: 'Export…', onclick: \(\) => act\('coll\.export'\)/);
+  assert.match(js, /id: 'folder\.export'/);
+  assert.match(cmd, /'coll\.export': \(\) => exec\('httpme\.export'\)/);
+  assert.match(cmd, /'folder\.export': file\('httpme\.export'\)/);
+  assert.match(js, /document\.addEventListener\('keydown', [\s\S]{0,300}deleteAction\(/);
+  assert.doesNotMatch(js, /ev\.key === 'Delete'/, 'Delete tidak lagi per-baris (hilang saat render ulang)');
+});

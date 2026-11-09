@@ -162,6 +162,11 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
         if (m.type === 'ready') { await post(); takeFocus(); } else if (m.type === 'setActive') await envs.setActive(nameOf(doc));
         else if (m.type === 'rename') await vscode.commands.executeCommand('httpme.renameEnvironment', nameOf(doc));
         else if (m.type === 'compare') await openCompare();
+        else if (m.type === 'deleteEnv') {
+          if (nameOf(doc) === GLOBALS) return; // Globals tidak bisa dihapus
+          await vscode.commands.executeCommand('httpme.deleteEnvironment', nameOf(doc)); // konfirmasi ada di command
+          if (!(await envs.names()).includes(nameOf(doc))) panel.dispose();
+        }
         else if (m.type === 'openAsText') await vscode.commands.executeCommand('vscode.openWith', doc.uri, 'default');
         else if (m.type === 'save') {
           try {

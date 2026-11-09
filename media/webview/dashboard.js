@@ -34,7 +34,16 @@
   function canDrop(from, to) {
     return from.every((f) => to !== f && !to.startsWith(`${f}/`) && parentOf(f) !== to);
   }
-  const api = { segments, flatten, canDrop, parentOf };
+  /** aksi tombol Delete untuk tab aktif: Collections = item terpilih, Environments = Environment terpilih (Globals / No Environment tidak bisa dipilih), Cookies = baris cookie terakhir yang difokus */
+  function deleteAction(tab, sel, cookie) {
+    if (tab === 'collections') return sel.size ? { id: 'file.delete', args: { paths: [...sel] } } : undefined;
+    if (tab === 'environments') {
+      const name = [...sel].find((k) => k.startsWith('env:'))?.slice(4);
+      return name ? { id: 'env.delete', args: { name } } : undefined;
+    }
+    return cookie || undefined;
+  }
+  const api = { segments, flatten, canDrop, parentOf, deleteAction };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -43,6 +52,7 @@
   const ui = { tab: saved.tab || 'collections', open: new Set(saved.open || []), copen: new Set(saved.copen || []), filter: saved.filter || '' };
   let data = null;
   let sel = new Set();
+  let cdel = null; // aksi Delete baris cookie yang terakhir difokus / diklik (tab Cookies)
   let dragging = null;
   const persist = () => vscode.setState({ tab: ui.tab, open: [...ui.open], copen: [...ui.copen], filter: ui.filter });
   const $ = (id) => document.getElementById(id);
@@ -91,8 +101,8 @@
   const folderMenu = (n) => [
     { label: 'New Request', id: 'folder.newRequest', args: { path: n.path } }, { label: 'New Folder', id: 'folder.newFolder', args: { path: n.path } }, '-',
     { label: 'Rename', id: 'folder.rename', args: { path: n.path } }, { label: 'Delete', id: 'file.delete', args: { paths: [n.path] }, danger: true }, '-',
-    { label: 'Re-import from Source', id: 'folder.reimport', args: { path: n.path } }, { label: 'Reveal in Explorer', id: 'file.reveal', args: { path: n.path } }];
-  const rootMenu = () => [{ label: 'New Request', id: 'coll.newRequest' }, { label: 'New Collection', id: 'coll.newCollection' }, { label: 'New Folder', id: 'coll.newFolder' }, '-', { label: 'Import…', id: 'coll.import' }];
+    { label: 'Re-import from Source', id: 'folder.reimport', args: { path: n.path } }, { label: 'Export…', id: 'folder.export', args: { path: n.path } }, { label: 'Reveal in Explorer', id: 'file.reveal', args: { path: n.path } }];
+  const rootMenu = () => [{ label: 'New Request', id: 'coll.newRequest' }, { label: 'New Collection', id: 'coll.newCollection' }, { label: 'New Folder', id: 'coll.newFolder' }, '-', { label: 'Import…', id: 'coll.import' }, { label: 'Export…', id: 'coll.export' }];
 
   function collRow(r, order) {
     const n = r.node;
@@ -168,6 +178,7 @@
       el('button', { type: 'button', className: 'btn ghost', textContent: 'New Collection', onclick: () => act('coll.newCollection') }),
       el('button', { type: 'button', className: 'btn ghost', textContent: 'New Folder', onclick: () => act('coll.newFolder') }),
       el('button', { type: 'button', className: 'btn ghost', textContent: 'Import…', onclick: () => act('coll.import') }),
+      el('button', { type: 'button', className: 'btn ghost', textContent: 'Export…', onclick: () => act('coll.export') }),
       filter,
       el('button', { type: 'button', className: 'btn ghost', textContent: 'Expand all', onclick: () => { ui.open = new Set(allFolders(c.tree, [])); persist(); render(); } }),
       el('button', { type: 'button', className: 'btn ghost', textContent: 'Collapse all', onclick: () => { ui.open.clear(); persist(); render(); } }),
@@ -181,8 +192,7 @@
       list.replaceChildren(...(rows.length ? rows.map((r) => collRow(r, order)) : [el('div', { className: 'empty', textContent: ui.filter ? 'Nothing matches the filter.' : 'No .http requests yet. Create a request or import a Postman / OpenAPI file.' })]));
       list.onkeydown = (e) => {
         const one = sel.size === 1 ? rows.find((r) => r.node.path === [...sel][0]) : undefined;
-        if (e.key === 'Delete' && sel.size) { e.preventDefault(); act('file.delete', { paths: [...sel] }); }
-        else if (e.key === 'F2' && one) { e.preventDefault(); act(one.node.type === 'folder' ? 'folder.rename' : 'file.rename', { path: one.node.path }); }
+        if (e.key === 'F2' && one) { e.preventDefault(); act(one.node.type === 'folder' ? 'folder.rename' : 'file.rename', { path: one.node.path }); }
         else if (e.key === 'Enter' && one) { if (one.node.type === 'folder') toggle(one.node.path); else act('file.open', { path: one.node.path }); }
         else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && rows.length) {
           e.preventDefault();
@@ -230,7 +240,7 @@
         row.onclick = () => { sel = new Set([`env:${e.name}`]); render(); };
         row.ondblclick = () => act('env.open', { name: e.name });
         row.oncontextmenu = (ev) => { ev.preventDefault(); sel = new Set([`env:${e.name}`]); showMenu(envMenu(e), ev.clientX, ev.clientY); };
-        row.onkeydown = (ev) => { if (ev.key === 'Delete') act('env.delete', { name: e.name }); else if (ev.key === 'F2') act('env.rename', { name: e.name }); else if (ev.key === 'Enter') act('env.open', { name: e.name }); };
+        row.onkeydown = (ev) => { if (ev.key === 'F2') act('env.rename', { name: e.name }); else if (ev.key === 'Enter') act('env.open', { name: e.name }); };
         return row;
       }),
     ];
@@ -252,7 +262,7 @@
       const ek = `e:${e.env}`;
       const eopen = !ui.copen.has(ek);
       const toggleC = (k) => () => { if (ui.copen.has(k)) ui.copen.delete(k); else ui.copen.add(k); persist(); render(); }; // copen = key yang ditutup
-      rows.push(el('div', { className: 'row', tabIndex: 0, onclick: toggleC(ek), oncontextmenu: (ev) => { ev.preventDefault(); showMenu([{ label: 'Add Cookie…', id: 'cookie.add', args: { env: e.env } }, { label: 'Paste Cookies from Browser', id: 'cookie.paste', args: { env: e.env } }, '-', { label: 'Delete All Cookies', id: 'cookie.clearEnv', args: { env: e.env }, danger: true }], ev.clientX, ev.clientY); } }, [
+      rows.push(el('div', { className: 'row', tabIndex: 0, onfocus: () => { cdel = { id: 'cookie.clearEnv', args: { env: e.env } }; }, onclick: () => { cdel = { id: 'cookie.clearEnv', args: { env: e.env } }; toggleC(ek)(); }, oncontextmenu: (ev) => { ev.preventDefault(); showMenu([{ label: 'Add Cookie…', id: 'cookie.add', args: { env: e.env } }, { label: 'Paste Cookies from Browser', id: 'cookie.paste', args: { env: e.env } }, '-', { label: 'Delete All Cookies', id: 'cookie.clearEnv', args: { env: e.env }, danger: true }], ev.clientX, ev.clientY); } }, [
         el('span', { className: `chev${eopen ? ' open' : ''}`, textContent: '›' }), el('span', { className: 'grow' }, [el('span', { className: 'name folder', textContent: e.label })]), el('span', { className: 'pill', textContent: plural(e.cookies, 'cookie') }),
         el('span', { className: 'acts' }, [small('Paste', () => act('cookie.paste', { env: e.env }), 'Paste Cookies from Browser'), small('Delete all', () => act('cookie.clearEnv', { env: e.env }))])]));
       if (!eopen) continue;
@@ -261,7 +271,7 @@
         const dk = `d:${e.env}:${dm.domain}`;
         const dopen = !ui.copen.has(dk);
         const dmenu = [{ label: 'Add Cookie…', id: 'cookie.add', args: { env: e.env, domain: dm.domain } }, { label: 'Paste Cookies from Browser', id: 'cookie.paste', args: { env: e.env, domain: dm.domain } }, '-', { label: 'Delete Cookies of Domain', id: 'cookie.deleteDomain', args: { env: e.env, domain: dm.domain }, danger: true }];
-        rows.push(el('div', { className: 'row', tabIndex: 0, style: 'padding-left:22px', onclick: toggleC(dk), oncontextmenu: (ev) => { ev.preventDefault(); showMenu(dmenu, ev.clientX, ev.clientY); } }, [
+        rows.push(el('div', { className: 'row', tabIndex: 0, style: 'padding-left:22px', onfocus: () => { cdel = { id: 'cookie.deleteDomain', args: { env: e.env, domain: dm.domain } }; }, onclick: () => { cdel = { id: 'cookie.deleteDomain', args: { env: e.env, domain: dm.domain } }; toggleC(dk)(); }, oncontextmenu: (ev) => { ev.preventDefault(); showMenu(dmenu, ev.clientX, ev.clientY); } }, [
           el('span', { className: `chev${dopen ? ' open' : ''}`, textContent: '›' }), el('span', { className: 'grow' }, [el('span', { className: 'name', textContent: dm.domain })]), el('span', { className: 'pill', textContent: plural(dm.cookies.length, 'cookie') }),
           el('span', { className: 'acts' }, [small('+ Cookie', () => act('cookie.add', { env: e.env, domain: dm.domain }), 'Add Cookie'), dots(dmenu)])]));
         if (!dopen) continue;
@@ -272,7 +282,8 @@
             el('span', { className: 'grow' }, [el('span', { className: 'name', textContent: c.name }), el('span', { className: 'muted name', textContent: c.value }), el('span', { className: 'muted', textContent: c.path })]),
             c.secure ? el('span', { className: 'pill', textContent: 'secure' }) : null, c.httpOnly ? el('span', { className: 'pill', textContent: 'httpOnly' }) : null, c.expired ? el('span', { className: 'pill err', textContent: 'expired' }) : null,
             el('span', { className: 'acts' }, [small('Edit', () => act('cookie.edit', args), 'Edit Value'), small('Delete', () => act('cookie.delete', args))])]);
-          row.onkeydown = (ev) => { if (ev.key === 'Delete') act('cookie.delete', args); else if (ev.key === 'Enter') act('cookie.edit', args); };
+          row.onkeydown = (ev) => { if (ev.key === 'Enter') act('cookie.edit', args); };
+          row.onfocus = row.onclick = () => { cdel = { id: 'cookie.delete', args }; };
           rows.push(row);
         }
       }
@@ -297,8 +308,16 @@
     if (ui.tab === 'collections') renderCollections(box); else if (ui.tab === 'environments') renderEnvironments(box); else renderCookies(box);
     window.scrollTo(0, scroll);
   }
-  for (const t of document.querySelectorAll('.tab')) t.onclick = () => { ui.tab = t.dataset.tab; sel = new Set(); persist(); render(); };
+  for (const t of document.querySelectorAll('.tab')) t.onclick = () => { ui.tab = t.dataset.tab; sel = new Set(); cdel = null; persist(); render(); };
   window.addEventListener('message', (ev) => { if (ev.data.type === 'data') { data = ev.data; render(); } });
+  // Delete bekerja pada item terpilih walau fokus hilang setelah render ulang; tidak aktif saat mengetik atau menu terbuka
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Delete' || e.defaultPrevented) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    const d = deleteAction(ui.tab, sel, cdel);
+    if (d) { e.preventDefault(); act(d.id, d.args); }
+  });
   $('refresh').onclick = () => vscode.postMessage({ type: 'refresh' });
   vscode.postMessage({ type: 'ready' });
 })();
