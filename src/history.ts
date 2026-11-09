@@ -10,7 +10,7 @@ export const HISTORY_MAX = 200;
 const MAX_BODY = 64 * 1024;
 const SECRET_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie', 'set-cookie']);
 
-export type HistoryResponse = { contentType?: string; /** body teks, maks 64 KB */ body?: string };
+export type HistoryResponse = { contentType?: string; /** header response (Set-Cookie dibuang) */ headers?: [string, string][]; /** body teks, maks 64 KB */ body?: string };
 export type HistoryEntry = HistorySummary & { title?: string; /** response terakhir (untuk contoh / schema saat export OpenAPI) */ response?: HistoryResponse; /** blok ke-n di file multi-request */ block?: number; /** request sebagai teks .http */ text: string; note?: string };
 export type HistoryInput = Omit<HistorySummary, 'method' | 'url'> & { request: ParsedRequest; block?: number; response?: HistoryResponse };
 
@@ -20,8 +20,9 @@ export const historyId = (time: number, seq: number): string => `${String(time).
 export function historyEntry(i: HistoryInput): HistoryEntry {
   const big = Buffer.byteLength(i.request.body) > MAX_BODY;
   const r: ParsedRequest = { ...i.request, headers: i.request.headers.filter((h) => !SECRET_HEADERS.has(h.name.toLowerCase())), ...(big ? { body: '' } : {}) };
-  const { request: _r, response, ...rest } = i;
-  const keep = response && (response.body === undefined || Buffer.byteLength(response.body) <= MAX_BODY) ? response : response && { ...(response.contentType ? { contentType: response.contentType } : {}) };
+  const { request: _r, response: raw, ...rest } = i;
+  const response = raw && { ...raw, ...(raw.headers ? { headers: raw.headers.filter(([k]) => !SECRET_HEADERS.has(k.toLowerCase())) } : {}) };
+  const keep = response && (response.body === undefined || Buffer.byteLength(response.body) <= MAX_BODY) ? response : response && { ...(response.contentType ? { contentType: response.contentType } : {}), ...(response.headers ? { headers: response.headers } : {}) };
   return {
     ...rest, ...(keep && Object.keys(keep).length ? { response: keep } : {}), method: r.method, url: r.url, ...(r.title ? { title: r.title } : {}),
     text: serializeRequest(r), ...(big ? { note: 'Body not saved (larger than 64 KB).' } : {}),
@@ -54,8 +55,12 @@ export function historyView(e: HistoryEntry): HistoryView {
   if (e.cancelled) return { kind: 'cancelled' };
   if (e.error) return { kind: 'error', message: `${e.error} (from History: executed ${stamp(e.time)})` };
   const body = Buffer.from(e.response?.body ?? '', 'utf8');
-  const headers: [string, string][] = e.response?.contentType ? [['content-type', e.response.contentType]] : [];
+  const saved = e.response?.headers;
+  const headers: [string, string][] = saved ?? (e.response?.contentType ? [['content-type', e.response.contentType]] : []);
   const v = responseView({ status: e.status ?? 0, statusText: '', headers, body, size: body.length, timeMs: e.ms ?? 0, url: e.url }, e.method);
-  const note = `From History: executed ${stamp(e.time)}. ${e.response?.body === undefined ? 'Response body and headers were not saved.' : 'Headers were not saved.'}`;
+  const note = `From History: executed ${stamp(e.time)}. ${[e.response?.body === undefined ? 'body' : '', saved ? '' : 'headers'].filter(Boolean).join(' and ') ? `Response ${[e.response?.body === undefined ? 'body' : '', saved ? '' : 'headers'].filter(Boolean).join(' and ')} not saved.` : ''}`.trim();
   return { kind: 'response', ...v, note: v.note ? `${note} ${v.note}` : note };
 }
+
+/** teks request entri untuk tab baru: komentar penanda tanggal & jam eksekusi di atasnya */
+export const historyRequestText = (e: HistoryEntry): string => `# From History: executed ${stamp(e.time)}\n${e.text}`;

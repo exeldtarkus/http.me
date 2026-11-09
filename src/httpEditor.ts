@@ -25,7 +25,7 @@ import { dropKeepIfUsed, requestFileName } from './store';
 import { RequestError, resolveTimeoutMs, send } from './http';
 import { responseView, tabStatus, type ResponseView } from './response';
 import { createRunner } from './runner';
-import { historyView, type HistoryEntry } from './history';
+import { historyRequestText, historyView, type HistoryEntry, type HistoryResponse } from './history';
 import { stageText, type Stage } from './runningStatus';
 import { errMsg, errorLine, maskValues } from './log';
 import { log, reportError } from './output';
@@ -600,7 +600,7 @@ function responseText(res: Awaited<ReturnType<typeof send>>): string {
 }
 
 /** History (diisi activity.ts): dipanggil sekali per Send yang selesai / gagal / dibatalkan */
-export type HistoryHook = (e: { request: ParsedRequest; env?: string; file: string; block?: number; status?: number; ms?: number; error?: string; cancelled?: boolean; response?: { contentType?: string; body?: string } }) => void;
+export type HistoryHook = (e: { request: ParsedRequest; env?: string; file: string; block?: number; status?: number; ms?: number; error?: string; cancelled?: boolean; response?: HistoryResponse }) => void;
 let historyHook: HistoryHook | undefined;
 export function setHistoryHook(h: HistoryHook): vscode.Disposable {
   historyHook = h;
@@ -629,7 +629,7 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
   let parsed = original;
   let secrets: string[] = [];
   let envName: string | undefined;
-  let result: { status: number; ms: number; contentType?: string; body?: string } | undefined;
+  let result: { status: number; ms: number; headers: [string, string][]; contentType?: string; body?: string } | undefined;
   if (hooks) {
     const r = await hooks.resolve(original, undefined, doc.uri.fsPath);
     if (r.nulls.length) {
@@ -742,7 +742,7 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
     if (s.token !== token) { if (res.bodyFile) await fs.rm(res.bodyFile, { force: true }); return; } // hasil Send lama: dibuang
     Object.assign(s, { bodyFile: res.bodyFile, contentType: res.headers.find(([k]) => k === 'content-type')?.[1], url: res.url, responseText: responseText(res) });
     responseChanged.fire(responseUri(key));
-    result = { status: res.status, ms: res.timeMs, contentType: res.headers.find(([k]) => k === 'content-type')?.[1], body: res.binary || res.truncated ? undefined : maskValues(res.body.toString('utf8'), secrets) }; // secret di body di-mask sebelum masuk History
+    result = { status: res.status, ms: res.timeMs, headers: res.headers.map(([k, v]) => [k, maskValues(v, secrets)] as [string, string]), contentType: res.headers.find(([k]) => k === 'content-type')?.[1], body: res.binary || res.truncated ? undefined : maskValues(res.body.toString('utf8'), secrets) }; // secret di body di-mask sebelum masuk History
     const rv = responseView(res, parsed.method);
     view = { kind: 'response', ...rv, note: relogged ? `Session expired: logged in again and resent.${rv.note ? ` ${rv.note}` : ''}` : rv.note, ...(hasScripts() ? { scripts } : {}) };
   } catch (e) {
@@ -757,7 +757,7 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
   const block = /#(\d+)$/.exec(key);
   historyHook?.({
     request: original, env: envName, file: doc.uri.toString(), ...(block ? { block: Number(block[1]) } : {}),
-    ...(view.kind === 'response' && result ? { status: result.status, ms: result.ms, response: { ...(result.contentType ? { contentType: result.contentType } : {}), ...(result.body !== undefined ? { body: result.body } : {}) } }
+    ...(view.kind === 'response' && result ? { status: result.status, ms: result.ms, response: { headers: result.headers, ...(result.contentType ? { contentType: result.contentType } : {}), ...(result.body !== undefined ? { body: result.body } : {}) } }
       : view.kind === 'cancelled' ? { cancelled: true } : view.kind === 'error' ? { error: view.message } : {}),
   });
   if (s.token !== token) return; // sudah diganti Send yang lebih baru
@@ -1238,7 +1238,7 @@ export async function quickRun(): Promise<void> {
 
 /** klik entri History: request-nya dibuka di tab baru (untitled) beserta response yang tersimpan, juga di Response panel bawah */
 export async function openHistoryEntry(e: HistoryEntry): Promise<void> {
-  const key = (await newRequest(undefined, e.text)).toString();
+  const key = (await newRequest(undefined, historyRequestText(e))).toString();
   const s = stateFor(key);
   s.view = historyView(e);
   postView(s);

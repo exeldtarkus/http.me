@@ -41,7 +41,7 @@ export const tests: ITests = {
     }
   },
   async 'History: Send dicatat (tanpa Authorization), buka entri (request + response), Send again, Copy as cURL, Remove'() {
-    const srv = await startServer(async (req) => ({ status: req.url === '/missing' ? 404 : 200, body: 'ok' }));
+    const srv = await startServer(async (req) => ({ status: req.url === '/missing' ? 404 : 200, headers: { 'x-hist': '1', 'set-cookie': 'sid=secret' }, body: 'ok' }));
     const dir = join(vscode.workspace.workspaceFolders![0].uri.fsPath, 'tmp-hist-it');
     try {
       mkdirSync(dir, { recursive: true });
@@ -54,6 +54,9 @@ export const tests: ITests = {
       const e = await until('entri History', async () => (await mine())[0]);
       assert.equal(e.status, 404);
       assert.equal((e as { response?: { body?: string } }).response?.body, 'ok', 'body response disimpan untuk contoh export OpenAPI');
+      const hs = (e as { response?: { headers?: [string, string][] } }).response?.headers ?? [];
+      assert.ok(hs.some(([k, v]) => k === 'x-hist' && v === '1'), 'header response disimpan');
+      assert.ok(!hs.some(([k]) => k === 'set-cookie'), 'Set-Cookie tidak disimpan');
       assert.equal(e.text, `GET ${srv.url}/missing\nX-A: 1\n`, 'header Authorization tidak disimpan');
 
       await api().history.action(e.id, 'curl');
@@ -73,7 +76,8 @@ export const tests: ITests = {
       await api().history.action(e.id, 'open');
       const tab = await until('untitled', () => (vscode.window.tabGroups.activeTabGroup.activeTab?.input as { uri?: vscode.Uri })?.uri);
       assert.equal(tab.scheme, 'untitled', 'file asal sudah dihapus: tab untitled');
-      assert.equal((await vscode.workspace.openTextDocument(tab)).getText(), e.text);
+      assert.match((await vscode.workspace.openTextDocument(tab)).getText(), /^# From History: executed \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\n/);
+      assert.ok((await vscode.workspace.openTextDocument(tab)).getText().endsWith(e.text));
 
       await api().history.action(e.id, 'remove');
       assert.ok(!(await api().history.list()).some((x) => x.id === e.id));

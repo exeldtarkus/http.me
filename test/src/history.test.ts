@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { readdirSync, statSync } from 'node:fs';
-import { addHistory, clearHistory, historyEntry, historyView, historyId, listHistory, removeHistory, HISTORY_MAX } from '../../src/history';
+import { addHistory, clearHistory, historyEntry, historyView, historyRequestText, historyId, listHistory, removeHistory, HISTORY_MAX } from '../../src/history';
 import { parseRequest } from '../../src/httpFile';
 import { withTempDir } from './helpers/tmp';
 
@@ -61,4 +61,20 @@ test('historyView: response dari entri History (body JSON dirapikan, status & wa
   assert.equal(err.kind, 'error');
   assert.match(err.kind === 'error' ? err.message : '', /^ECONNRESET \(from History: executed \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\)$/);
   assert.deepEqual(historyView(historyEntry({ id: 'l', time: 1, request: r, cancelled: true })), { kind: 'cancelled' });
+});
+
+test('historyEntry: header response disimpan (Set-Cookie dibuang); historyView menampilkannya', () => {
+  const r = parseRequest('GET http://x/a\n');
+  const e = historyEntry({ id: 'i', time: 1, request: r, status: 200, ms: 5, response: { contentType: 'text/plain', body: 'hi', headers: [['content-type', 'text/plain'], ['x-id', '7'], ['set-cookie', 'sid=1']] } });
+  assert.deepEqual(e.response?.headers, [['content-type', 'text/plain'], ['x-id', '7']]);
+  const v = historyView(e);
+  assert.deepEqual(v.kind === 'response' ? v.headers : [], [['content-type', 'text/plain'], ['x-id', '7']]);
+  assert.doesNotMatch(v.kind === 'response' ? v.note ?? '' : '', /Headers were not saved/);
+});
+
+test('historyRequestText: request entri diberi komentar tanggal & jam eksekusi di atasnya, tetap bisa di-parse', () => {
+  const e = historyEntry({ id: 'i', time: 1, request: parseRequest('GET http://x/a\nX-A: 1\n') });
+  const t = historyRequestText(e);
+  assert.match(t, /^# From History: executed \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\nGET http:\/\/x\/a\nX-A: 1\n$/);
+  assert.equal(parseRequest(t).url, 'http://x/a');
 });
