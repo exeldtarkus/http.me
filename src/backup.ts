@@ -57,14 +57,16 @@ const isEntry = (x: unknown): x is { id: string; time: number; text: string; met
   !!x && typeof x === 'object' && ['id', 'text', 'method', 'url'].every((k) => typeof (x as Record<string, unknown>)[k] === 'string') && typeof (x as { time?: unknown }).time === 'number';
 
 /** import History: id yang sudah ada dilewati, entri rusak dihitung; batas 200 entri tetap berlaku (yang tertua terbuang) */
-export async function importHistoryItems(dir: string, items: unknown[]): Promise<{ added: number; skipped: number; invalid: number }> {
+export async function importHistoryItems(dir: string, items: unknown[], onProgress?: (done: number, total: number) => void): Promise<{ added: number; skipped: number; invalid: number }> {
   const have = new Set((await listHistory(dir)).map((e) => e.id));
   let added = 0, skipped = 0, invalid = 0;
+  let done = 0;
   for (const x of items) {
-    if (!isEntry(x)) { invalid++; continue; }
-    if (have.has(x.id)) { skipped++; continue; }
-    await addHistory(dir, x as never);
-    added++;
+    if (!isEntry(x)) invalid++;
+    else if (have.has(x.id)) skipped++;
+    else { await addHistory(dir, x as never); added++; }
+    onProgress?.(++done, items.length);
+    await new Promise((r) => setImmediate(r)); // beri giliran ke event loop: editor tetap responsif
   }
   return { added, skipped, invalid };
 }

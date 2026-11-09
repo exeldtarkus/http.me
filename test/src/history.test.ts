@@ -47,19 +47,19 @@ test('historyEntry: response (contentType + body) disimpan; body response > 64 K
 
 test('historyView: response dari entri History (body JSON dirapikan, status & waktu), error, cancelled, tanpa body', () => {
   const r = parseRequest('GET http://x/a\n');
-  const ok = historyView(historyEntry({ id: 'i', time: 1, request: r, status: 200, ms: 25, response: { contentType: 'application/json', body: '{"a":1}' } }));
+  const ok = historyView(historyEntry({ id: 'i', time: 1, request: r, status: 200, ms: 25, response: { contentType: 'application/json', body: '{"a":1}' } }), 1 + 5 * 60_000);
   assert.equal(ok.kind, 'response');
   if (ok.kind !== 'response') return;
   assert.equal(ok.status, '200');
   assert.equal(ok.time, '25 ms');
   assert.equal(ok.format, 'JSON');
   assert.match(ok.bodyHtml, /&quot;a&quot;/);
-  assert.match(ok.note ?? '', /^From History: executed \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\./, 'note memuat tanggal & jam eksekusi');
+  assert.match(ok.note ?? '', /^From History: executed \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \(5 min ago\)\./, 'note memuat tanggal, jam, dan selisih dari sekarang');
   const nobody = historyView(historyEntry({ id: 'j', time: 1, request: r, status: 500, ms: 3 }));
   assert.equal(nobody.kind, 'response');
-  const err = historyView(historyEntry({ id: 'k', time: 1, request: r, error: 'ECONNRESET' }));
+  const err = historyView(historyEntry({ id: 'k', time: 1, request: r, error: 'ECONNRESET' }), 1 + 2 * 3600_000);
   assert.equal(err.kind, 'error');
-  assert.match(err.kind === 'error' ? err.message : '', /^ECONNRESET \(from History: executed \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\)$/);
+  assert.match(err.kind === 'error' ? err.message : '', /^ECONNRESET — from History: executed \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \(2 h ago\)$/);
   assert.deepEqual(historyView(historyEntry({ id: 'l', time: 1, request: r, cancelled: true })), { kind: 'cancelled' });
 });
 
@@ -74,7 +74,7 @@ test('historyEntry: header response disimpan (Set-Cookie dibuang); historyView m
 
 test('historyRequestText: request entri diberi komentar tanggal & jam eksekusi di atasnya, tetap bisa di-parse', () => {
   const e = historyEntry({ id: 'i', time: 1, request: parseRequest('GET http://x/a\nX-A: 1\n') });
-  const t = historyRequestText(e);
-  assert.match(t, /^# From History: executed \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\nGET http:\/\/x\/a\nX-A: 1\n$/);
+  const t = historyRequestText(e, 1 + 3 * 24 * 3600_000);
+  assert.match(t, /^# From History: executed \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \(3 days ago\)\nGET http:\/\/x\/a\nX-A: 1\n$/);
   assert.equal(parseRequest(t).url, 'http://x/a');
 });

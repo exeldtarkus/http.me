@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs';
 import { clearCache, prune, readChunks, remove, writeChunk } from './cache';
 import { responseView, type ResponseView } from './response';
 import { serializeRequest, type ParsedRequest } from './httpFile';
-import type { HistorySummary } from './runningStatus';
+import { ago, type HistorySummary } from './runningStatus';
 
 export const HISTORY_MAX = 200;
 const MAX_BODY = 64 * 1024;
@@ -51,16 +51,19 @@ const two = (n: number) => String(n).padStart(2, '0');
 const stamp = (t: number): string => { const d = new Date(t); return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`; };
 
 /** tampilan response sebuah entri History (headers tidak disimpan; body hanya bila <= 64 KB) */
-export function historyView(e: HistoryEntry): HistoryView {
+/** `2026-11-09 15:07:02 (5 min ago)`: waktu eksekusi + selisih dari sekarang */
+const when = (e: HistoryEntry, now: number): string => `${stamp(e.time)} (${ago(Math.max(0, now - e.time))})`;
+
+export function historyView(e: HistoryEntry, now = Date.now()): HistoryView {
   if (e.cancelled) return { kind: 'cancelled' };
-  if (e.error) return { kind: 'error', message: `${e.error} (from History: executed ${stamp(e.time)})` };
+  if (e.error) return { kind: 'error', message: `${e.error} — from History: executed ${when(e, now)}` };
   const body = Buffer.from(e.response?.body ?? '', 'utf8');
   const saved = e.response?.headers;
   const headers: [string, string][] = saved ?? (e.response?.contentType ? [['content-type', e.response.contentType]] : []);
   const v = responseView({ status: e.status ?? 0, statusText: '', headers, body, size: body.length, timeMs: e.ms ?? 0, url: e.url }, e.method);
-  const note = `From History: executed ${stamp(e.time)}. ${[e.response?.body === undefined ? 'body' : '', saved ? '' : 'headers'].filter(Boolean).join(' and ') ? `Response ${[e.response?.body === undefined ? 'body' : '', saved ? '' : 'headers'].filter(Boolean).join(' and ')} not saved.` : ''}`.trim();
+  const note = `From History: executed ${when(e, now)}. ${[e.response?.body === undefined ? 'body' : '', saved ? '' : 'headers'].filter(Boolean).join(' and ') ? `Response ${[e.response?.body === undefined ? 'body' : '', saved ? '' : 'headers'].filter(Boolean).join(' and ')} not saved.` : ''}`.trim();
   return { kind: 'response', ...v, note: v.note ? `${note} ${v.note}` : note };
 }
 
 /** teks request entri untuk tab baru: komentar penanda tanggal & jam eksekusi di atasnya */
-export const historyRequestText = (e: HistoryEntry): string => `# From History: executed ${stamp(e.time)}\n${e.text}`;
+export const historyRequestText = (e: HistoryEntry, now = Date.now()): string => `# From History: executed ${when(e, now)}\n${e.text}`;

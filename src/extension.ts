@@ -6,7 +6,7 @@ import { log, reportError } from './output';
 import { applyPanelEdit, handleAuthMessage, importCurlText, saveUntitled, setAuthHooks, setOAuthStore, handleSnippet, copyBlockSnippet, type SaveInput, cancelActive, cancelBlock, cancelFile, getLayout, setLayout, outputKey, outputShown, newRequest, openAsText, openInPanel, activeBlock, registerRequestEditor, runner, quickRun, sendActive, sendAll, sendBlock, showResponse, viewOf } from './httpEditor';
 import { HTTP_FILES, RequestLenses } from './codelens';
 import { registerSidebar, type Sidebars } from './sidebar';
-import { backupNow, registerBackup } from './backupCommand';
+import { backupNow, registerBackup, type BackupResult } from './backupCommand';
 import { historyAction, registerActivity, statusBar, type HistoryAction } from './activity';
 import { listHistory } from './history';
 import { Environments } from './envState';
@@ -70,7 +70,7 @@ export type HttpmeApi = {
   statusBar: typeof statusBar;
   /** layout response (single / two pane / panel bawah) + view Response panel bawah */
   layout: { get: typeof getLayout; set: typeof setLayout; outputKey: typeof outputKey; outputShown: typeof outputShown };
-  /** backup History / temp ke exports/ sekarang (itest); `now` mengatur jam */ backupNow(now?: number): Promise<string[]>;
+  /** backup History / temp ke exports/ sekarang (itest); `now` mengatur jam */ backupNow(now?: number): Promise<BackupResult[]>;
   history: { list(): ReturnType<typeof listHistory>; action(id: string, a: HistoryAction): Promise<void> };
   /** tab request aktif panel file multi-request */ activeBlock: typeof activeBlock;
   /** export lewat jalur yang sama dengan command Export… (itest) */ exportApply(root: string, choice: import('./exportCommand').ExportChoice): Promise<import('./exportRun').ExportResult>;

@@ -76,7 +76,7 @@ export const tests: ITests = {
       await api().history.action(e.id, 'open');
       const tab = await until('untitled', () => (vscode.window.tabGroups.activeTabGroup.activeTab?.input as { uri?: vscode.Uri })?.uri);
       assert.equal(tab.scheme, 'untitled', 'file asal sudah dihapus: tab untitled');
-      assert.match((await vscode.workspace.openTextDocument(tab)).getText(), /^# From History: executed \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\n/);
+      assert.match((await vscode.workspace.openTextDocument(tab)).getText(), /^# From History: executed \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \((?:.+ ago|just now)\)\n/);
       assert.ok((await vscode.workspace.openTextDocument(tab)).getText().endsWith(e.text));
 
       await api().history.action(e.id, 'remove');

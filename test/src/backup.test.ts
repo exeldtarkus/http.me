@@ -60,3 +60,12 @@ test('importHistoryItems: entri baru ditambah, id yang sudah ada dilewati, entri
     assert.deepEqual(res, { added: 1, skipped: 1, invalid: 1 });
     assert.equal((await listHistory(dir)).length, 2);
   }));
+
+test('importHistoryItems: onProgress dilaporkan per entri sampai total', () =>
+  withTempDir(async (dir) => {
+    const r = parseRequest('GET http://x/a\n');
+    const items = [1, 2, 3].map((n) => historyEntry({ id: historyId(n * 1000, n), time: n * 1000, request: r, status: 200 }));
+    const seen: [number, number][] = [];
+    await importHistoryItems(dir, items, (done, total) => seen.push([done, total]));
+    assert.deepEqual(seen, [[1, 3], [2, 3], [3, 3]]);
+  }));

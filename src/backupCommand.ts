@@ -18,10 +18,14 @@ const tempItems = () => vscode.workspace.textDocuments
   .filter((d) => d.uri.scheme === 'untitled' && d.uri.path.endsWith('.http') && d.getText().trim() !== '')
   .map((d) => ({ name: d.uri.path.split('/').pop() ?? '', text: d.getText() }));
 
-/** cek kedua jenis; backup hanya bila ada perubahan dan (hari baru / tumbuh >= batas). Dikembalikan: file yang ditulis (itest) */
-export async function backupNow(historyDir: string, memento: vscode.Memento, now = Date.now()): Promise<string[]> {
-  const out: string[] = [];
-  for (const kind of ['history', 'temp'] as const) {
+export type BackupResult = { kind: BackupKind; file: string; count: number };
+
+/** cek kedua jenis; backup hanya bila ada perubahan dan (hari baru / tumbuh >= batas). Dikembalikan: file yang ditulis (+ jumlah item) */
+export async function backupNow(historyDir: string, memento: vscode.Memento, now = Date.now(), onStep?: (done: number, total: number) => void): Promise<BackupResult[]> {
+  const out: BackupResult[] = [];
+  const kinds = ['history', 'temp'] as const;
+  for (const [i, kind] of kinds.entries()) {
+    onStep?.(i, kinds.length);
     const dir = dirOf(kind);
     if (!dir) continue; // tanpa workspace tidak ada exports/
     try {
@@ -29,12 +33,14 @@ export async function backupNow(historyDir: string, memento: vscode.Memento, now
       const cur = fingerprint(items);
       const prev = memento.get<BackupState>(stateKey(kind));
       if (!shouldBackup(prev, cur, now)) continue;
-      out.push(await writeBackup(dir, kind, items, now));
+      out.push({ kind, file: await writeBackup(dir, kind, items, now), count: items.length });
       await memento.update(stateKey(kind), { at: now, ...cur } satisfies BackupState);
     } catch (e) {
       log().error(errorLine(`backup.${kind}`, e));
     }
+    await new Promise((r) => setImmediate(r)); // beri giliran ke event loop
   }
+  onStep?.(kinds.length, kinds.length);
   return out;
 }
 
@@ -44,22 +50,35 @@ async function importBackup(historyDir: string): Promise<void> {
   const [pick] = (await vscode.window.showOpenDialog({ defaultUri: base, canSelectMany: false, filters: { 'http.me backup': ['json'] }, openLabel: 'Import Backup', title: 'Import History or Temp Backup' })) ?? [];
   if (!pick) return;
   const b = parseBackup(await fs.readFile(pick.fsPath, 'utf8'));
-  if (b.kind === 'history') {
-    const r = await importHistoryItems(historyDir, b.items);
-    return void vscode.window.showInformationMessage(`History imported: ${r.added} added, ${r.skipped} already present${r.invalid ? `, ${r.invalid} invalid` : ''}.`);
-  }
-  let n = 0;
-  for (const x of b.items) {
-    const text = (x as { text?: unknown })?.text;
-    if (typeof text !== 'string') continue;
-    await newRequest(undefined, text);
-    n++;
-  }
-  void vscode.window.showInformationMessage(`Temp requests imported: ${n} opened as New Request tabs.`);
+  // berjalan di notifikasi dengan progress bar; editor tetap bisa dipakai selama import
+  const message = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'http.me: Importing backup' }, async (progress) => {
+    const step = (done: number, total: number) => progress.report({ increment: 100 / Math.max(1, total), message: `${done}/${total}` });
+    if (b.kind === 'history') {
+      const r = await importHistoryItems(historyDir, b.items, step);
+      return `History import complete: ${r.added} added, ${r.skipped} already present${r.invalid ? `, ${r.invalid} invalid` : ''}.`;
+    }
+    let n = 0;
+    for (const [i, x] of b.items.entries()) {
+      const text = (x as { text?: unknown })?.text;
+      if (typeof text === 'string') { await newRequest(undefined, text); n++; }
+      step(i + 1, b.items.length);
+    }
+    return `Temp import complete: ${n} request${n === 1 ? '' : 's'} opened as New Request tabs.`;
+  });
+  void vscode.window.showInformationMessage(message);
 }
 
 export function registerBackup(ctx: vscode.ExtensionContext, historyDir: string): vscode.Disposable {
-  const tick = () => void backupNow(historyDir, ctx.globalState).catch((e) => log().error(errorLine('backup.tick', e)));
+  let running = false; // tick tidak saling tumpang tindih
+  const tick = () => {
+    if (running) return;
+    running = true;
+    // progress di status bar (tidak memotong kerja user); notifikasi hanya bila ada file yang ditulis
+    void vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'http.me: Backing up History and temp requests' }, async (progress) => {
+      const done = await backupNow(historyDir, ctx.globalState, Date.now(), (d, total) => progress.report({ increment: 100 / total, message: `${d}/${total}` }));
+      if (done.length) void vscode.window.showInformationMessage(`http.me backup complete: ${done.map((r) => `${r.kind} (${r.count})`).join(', ')} saved to ${EXPORTS_DIR}/.`);
+    }).then(undefined, (e) => log().error(errorLine('backup.tick', e))).then(() => { running = false; });
+  };
   const first = setTimeout(tick, 10_000);
   const timer = setInterval(tick, 60 * 60 * 1000);
   return vscode.Disposable.from(

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { startServer } from './helpers/server';
 import type { ITests } from './it/index';
 
-type Api = { backupNow(now?: number): Promise<string[]> };
+type Api = { backupNow(now?: number): Promise<{ kind: string; file: string; count: number }[]> };
 const api = () => vscode.extensions.getExtension<Api>('exeltarkus.httpme')!.exports;
 const wait = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 const DAY = 24 * 3600 * 1000;
@@ -29,8 +29,8 @@ export const tests: ITests = {
 
       const t0 = Date.now() + 30 * DAY; // jauh di depan: hari baru dibanding backup run itest sebelumnya
       const files = await api().backupNow(t0);
-      assert.ok(files.some((f) => /history-backup[\\/]history-.*\.json$/.test(f)), 'file backup History');
-      const temp = files.find((f) => /temp-backup[\\/]temp-.*\.json$/.test(f));
+      assert.ok(files.some((f) => f.kind === 'history' && /history-backup[\\/]history-.*\.json$/.test(f.file)), 'file backup History');
+      const temp = files.find((f) => f.kind === 'temp' && /temp-backup[\\/]temp-.*\.json$/.test(f.file))?.file;
       assert.ok(temp, 'file backup temp');
       const b = JSON.parse(readFileSync(temp, 'utf8')) as { httpmeFormat: number; kind: string; items: { text: string }[] };
       assert.equal(b.httpmeFormat, 1);
@@ -40,7 +40,7 @@ export const tests: ITests = {
       edit.insert(doc.uri, new vscode.Position(0, 0), '# berubah\n');
       await vscode.workspace.applyEdit(edit);
       assert.deepEqual(await api().backupNow(t0 + 2000), [], 'berubah tapi hari sama dan tumbuh kecil: belum');
-      assert.ok((await api().backupNow(t0 + DAY)).some((f) => f.includes('temp-backup')), 'hari baru + berubah: backup lagi');
+      assert.ok((await api().backupNow(t0 + DAY)).some((f) => f.kind === 'temp'), 'hari baru + berubah: backup lagi');
     } finally {
       await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
       await srv.close();
