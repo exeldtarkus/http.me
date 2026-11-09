@@ -5,6 +5,9 @@ out/
 deployment/vsx/
 # semua dokumen markdown (RANCANGAN, FITUR, TODO, CLAUDE, README, ...) hanya lokal
 *.md
+# kecuali README (tampil di GitHub / Marketplace)
+!README.md
+!README.id.md
 # mockup desain hanya lokal
 design/
 .vscode/launch.json

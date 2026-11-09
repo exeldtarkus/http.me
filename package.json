@@ -4,6 +4,11 @@
   "description": "Lightweight HTTP client for VS Code: send requests from .http files, collections, environments and history, with a focus on low memory use.",
   "version": "0.2.5",
   "publisher": "exeltarkus",
+  "icon": "images/icon.png",
+  "homepage": "https://github.com/exeldtarkus/http.me#readme",
+  "bugs": {
+    "url": "https://github.com/exeldtarkus/http.me/issues"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -1480,6 +1485,8 @@
     "package": "vsce package --skip-license",
     "install:local": "node scripts/install-local.js",
     "deploy": "bash scripts/deploy-v2.sh",
+    "deploy:token": "node scripts/deploy.js",
+    "screenshots": "npm run compile && node scripts/screenshots.js",
     "test:ui": "npm run compile && node test/ui/unfold.js && node test/ui/snippet.js"
   },
   "devDependencies": {

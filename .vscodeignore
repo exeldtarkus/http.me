@@ -13,9 +13,13 @@ design/**
 *.md
 !README.md
 node_modules/**
-!node_modules/yaml/**
+!node_modules/yaml/package.json
+!node_modules/yaml/LICENSE
+!node_modules/yaml/dist/**/*.js
 logs/**
 images/*.svg
 images/screenshots/**
 deployment/**
 test-extension/**
+.superpowers/**
+*.vsix

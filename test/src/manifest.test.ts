@@ -40,7 +40,7 @@ test('main menunjuk ke out/src/extension.js hasil compile', () => {
 
 test('.vscodeignore mengecualikan test & md, tetap membawa yaml + README', () => {
   const ignore = readFileSync(join(root, '.vscodeignore'), 'utf8').split('\n').map((l) => l.trim());
-  for (const p of ['test/**', 'out/test/**', '*.md', '!README.md', 'node_modules/**', '!node_modules/yaml/**']) {
+  for (const p of ['test/**', 'out/test/**', '*.md', '!README.md', 'node_modules/**', '!node_modules/yaml/package.json', '!node_modules/yaml/dist/**/*.js']) {
     assert.ok(ignore.includes(p), `.vscodeignore tidak berisi ${p}`);
   }
 });
