@@ -221,3 +221,16 @@ test('review R41: blockLabel = judul ###, lalu # @name, lalu METHOD path', () =>
   assert.equal(blockLabel(parseRequest(c.text)), 'GET /users');
   assert.equal(blockLabel(parseRequest('GET {{host}}/x/y?z=1')), 'GET /x/y');
 });
+
+import { requestAt } from '../../src/httpFile';
+test('requestAt: dokumen kosong / satu request = index 0 sah (seluruh dokumen); banyak request = index per blok; di luar rentang = error', () => {
+  assert.equal(requestAt('', 0).url, '', 'request baru yang masih kosong (0 blok) tidak boleh error');
+  assert.equal(requestAt('# catatan saja\n', 0).url, '');
+  assert.equal(requestAt('GET https://a.test\n', 0).url, 'https://a.test');
+  const two = '### a\nGET https://a.test\n\n### b\nGET https://b.test\n';
+  assert.equal(requestAt(two, 1).url, 'https://b.test');
+  assert.throws(() => requestAt(two, 2), /Invalid request index/);
+  assert.throws(() => requestAt('GET https://a.test\n', 1), /Invalid request index/);
+  assert.throws(() => requestAt('', 0.5), /Invalid request index/);
+  assert.throws(() => requestAt('', -1), /Invalid request index/);
+});

@@ -211,6 +211,14 @@ export function splitBlocks(text: string): Block[] {
 }
 
 /** tulis ulang blok ke-index (file multi-request) dari request panel; variabel kepala file tidak ikut ditulis ke blok */
+/** request ke-`index`: banyak blok = blok itu; kosong / satu request = seluruh dokumen (hanya index 0 yang sah) */
+export function requestAt(text: string, index: number): ParsedRequest {
+  const blocks = splitBlocks(text);
+  const count = Math.max(blocks.length, 1);
+  if (!Number.isInteger(index) || index < 0 || index >= count) throw new Error('Invalid request index.');
+  return blocks.length > 1 ? parseRequest(blocks[index].text) : parseRequest(text);
+}
+
 export function replaceBlock(text: string, index: number, r: ParsedRequest): string {
   const b = splitBlocks(text)[index];
   if (!b) return text;

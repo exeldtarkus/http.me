@@ -219,6 +219,12 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
     }
   }
 
+  /** file itu tampil di tree Collections saat ini (ada di workspace dan lolos Filter); reveal file yang tersembunyi melempar "Cannot resolve tree item" */
+  async shows(uri: vscode.Uri): Promise<boolean> {
+    const { files } = await this.list();
+    return (await this.filtered(files.filter((u) => u.toString() === uri.toString()))).length > 0;
+  }
+
   private async collectionChildren(n?: Node): Promise<Node[]> {
     if (n?.kind === 'file' || n?.kind === 'empty') return [];
     const { files: all, keep } = await this.list();
@@ -665,8 +671,7 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
     const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input as { uri?: vscode.Uri } | undefined;
     const uri = input?.uri;
     if (!uri || !/\.http$/i.test(uri.path) || uri.scheme !== 'file') return;
-    const { files } = await sidebar.list();
-    if (files.some((u) => u.toString() === uri.toString())) await view.reveal({ kind: 'file', uri }, { select: true, focus: false, expand: true });
+    if (await sidebar.shows(uri)) await view.reveal({ kind: 'file', uri }, { select: true, focus: false, expand: true });
   };
 
   // isi semua cache sekarang (scan file, ringkasan, Environment, cookie): membuka / melipat section tidak lagi menunggu I/O

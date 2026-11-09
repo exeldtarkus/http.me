@@ -31,7 +31,7 @@ import { errMsg, errorLine, maskValues } from './log';
 import { log, reportError } from './output';
 import type { HoverInfo } from './diagnostics';
 import type { Replacement } from './varize';
-import { cookieFlags } from './httpFile';
+import { cookieFlags, requestAt } from './httpFile';
 import { sendWithRelogin, sessionExpired } from './login';
 import { singleFlight } from './runner';
 import type { HttpResponse, SendOptions } from './http';
@@ -231,15 +231,18 @@ export function setSessionHooks(h: SessionHooks): vscode.Disposable {
   session = h;
   return h.onChange(() => { for (const [key, s] of docs) s.panels.forEach((p) => void postCookies(p, key)); });
 }
+/** panel yang sudah ditutup: `panel.webview` melempar "Webview is disposed" bila disentuh lagi */
+const closedPanels = new WeakSet<vscode.WebviewPanel>();
 /** tab Cookies panel request: cookie jar yang cocok dengan URL (variable sudah diganti) */
 async function postCookies(panel: vscode.WebviewPanel, key: string): Promise<void> {
-  if (!session) return;
+  if (!session || closedPanels.has(panel)) return;
   try {
     const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === key);
     if (!doc) return;
     const parsed = parseRequest(doc.getText());
     const url = hooks ? (await hooks.resolve(parsed, undefined, doc.uri.fsPath)).request.url : parsed.url;
     const list = cookieFlags(parsed).send ? await session.forUrl(url) : [];
+    if (closedPanels.has(panel)) return; // panel ditutup saat menunggu resolve / jar
     void panel.webview.postMessage({ type: 'reqCookies', list: list.map((c) => ({ ...c, value: maskCookie(c.value) })), off: !cookieFlags(parsed).send });
   } catch (e) {
     log().error(errorLine('postCookies', e));
@@ -391,9 +394,7 @@ function serializeAuthForm(auth: AuthForm): string {
 }
 
 function authRequestAt(doc: vscode.TextDocument, index: number): ParsedRequest {
-  const blocks = splitBlocks(doc.getText());
-  if (!Number.isInteger(index) || index < 0 || index >= blocks.length) throw new Error('Invalid Authorization request index.');
-  return blocks.length > 1 ? parseRequest(blocks[index].text) : parseRequest(doc.getText());
+  return requestAt(doc.getText(), index);
 }
 
 async function writeAuthRequest(doc: vscode.TextDocument, index: number, request: ParsedRequest): Promise<void> {
@@ -921,6 +922,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
     }),
   ];
   panel.onDidDispose(() => {
+    closedPanels.add(panel);
     clearTimeout(cookieTimer);
     clearTimeout(scriptsTimer);
     subs.forEach((x) => x.dispose());
