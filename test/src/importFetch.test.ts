@@ -33,3 +33,14 @@ test('stringifyDoc: JSON & YAML round-trip Petstore; yaml dimuat hanya untuk YAM
   assert.deepEqual(parseDoc(y), doc);
   assert.equal(importOpenApi(parseDoc(y)).files.length, importOpenApi(doc).files.length);
 });
+
+import { specUrlCandidates } from '../../src/importFetch';
+test('specUrlCandidates: halaman Swagger UI -> kandidat URL spec; URL lain apa adanya', () => {
+  assert.deepEqual(specUrlCandidates('https://r.test/swagger-ui/index.html')?.slice(0, 2), ['https://r.test/v3/api-docs', 'https://r.test/v2/api-docs']);
+  assert.equal(specUrlCandidates('https://r.test/app/swagger-ui/index.html?x=1')![0], 'https://r.test/app/v3/api-docs', 'context path dipertahankan');
+  assert.equal(specUrlCandidates('https://r.test/swagger-ui.html')![0], 'https://r.test/v3/api-docs');
+  assert.equal(specUrlCandidates('https://r.test/swagger-ui/')![0], 'https://r.test/v3/api-docs');
+  assert.deepEqual(specUrlCandidates('https://r.test/swagger-ui/index.html?url=/custom/spec.json')![0], 'https://r.test/custom/spec.json', 'parameter url= dipakai lebih dulu');
+  assert.deepEqual(specUrlCandidates('https://r.test/swagger-ui/index.html?configUrl=/v3/api-docs/swagger-config')!.includes('https://r.test/v3/api-docs'), true);
+  assert.equal(specUrlCandidates('https://r.test/v3/api-docs'), undefined);
+});

@@ -15,3 +15,15 @@ export function importAuth(url: string, authText: string | undefined, values: Re
 const IMPORTABLE = /\.(json|ya?ml)$/i;
 /** hasil drop dari luar: hanya spec / collection (file .http dipindahkan, bukan diimpor) */
 export const importableFiles = (uris: readonly string[]): string[] => uris.filter((u) => IMPORTABLE.test(u));
+
+/** URL halaman Swagger UI (`…/swagger-ui/index.html`, `swagger-ui.html`) → kandidat URL spec yang dicoba berurutan; undefined = bukan halaman Swagger UI */
+export function specUrlCandidates(raw: string): string[] | undefined {
+  let u: URL;
+  try { u = new URL(raw); } catch { return undefined; } // bukan URL absolut: dipakai apa adanya
+  const m = /^(.*?)\/swagger-ui(?:\/index\.html|\.html|\/)?$/i.exec(u.pathname);
+  if (!m) return undefined;
+  const base = `${u.origin}${m[1]}`;
+  const explicit = u.searchParams.get('url');
+  return [...(explicit ? [new URL(explicit, `${base}/`).toString().replace(/^(https?:\/\/[^/]+)\/\/+/, '$1/')] : []),
+    ...['/v3/api-docs', '/v2/api-docs', '/openapi.json', '/swagger/v1/swagger.json', '/swagger.json', '/v3/api-docs.yaml'].map((p) => `${base}${p}`)];
+}

@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { promises as fs, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
-import { importAuth } from './importFetch';
+import { importAuth, specUrlCandidates } from './importFetch';
 import { detectFormat, parseDoc, type ImportPlan, type ImportFile } from './importCommon';
 import { importPostman } from './postman';
 import { importOpenApi } from './openapi';
@@ -35,7 +35,27 @@ function defaultDir(): string | undefined {
   return sub ? join(root.uri.fsPath, sub) : root.uri.fsPath;
 }
 
+/** satu URL; halaman Swagger UI dicoba ke kandidat URL spec (v3/api-docs, …) sampai ada yang berupa spec */
 async function fetchText(raw: string, envs: Environments): Promise<string> {
+  const url = substitute(raw.trim(), await envs.scopes([])).text;
+  const cands = specUrlCandidates(url);
+  if (!cands) return fetchOne(raw, envs);
+  const tried: string[] = [];
+  for (const c of cands) {
+    try {
+      const text = await fetchOne(c, envs);
+      detectFormat(text);
+      log().info(`import: ${url} is a Swagger UI page, using ${c}`);
+      return text;
+    } catch (e) {
+      log().warn(`import: ${c} is not usable: ${errMsg(e)}`);
+      tried.push(c);
+    }
+  }
+  throw new Error(`${url} is a Swagger UI page and no spec was found. Tried: ${tried.join(', ')}. Paste the spec URL shown in the Explore box instead.`);
+}
+
+async function fetchOne(raw: string, envs: Environments): Promise<string> {
   const scopes = await envs.scopes([]);
   const url = substitute(raw.trim(), scopes).text;
   if (/\{\{/.test(url)) throw new Error(`The URL still has unresolved variables: ${url}`);
