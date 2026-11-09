@@ -3,6 +3,7 @@
 import * as vscode from 'vscode';
 import { deleteWithFallback } from './trash';
 import { reimport } from './importCommand';
+import { exportCollection } from './exportCommand';
 import { importableFiles } from './importFetch';
 import * as path from 'node:path';
 import {
@@ -684,6 +685,10 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
     cmd('httpme.reimportFromSource', async (a?: Arg) => {
       const dir = await targetDir(a);
       if (dir) await reimport(dir, envs, () => sidebar.refresh());
+    }),
+    cmd('httpme.export', async (a?: Arg) => {
+      const dir = await targetDir(a);
+      if (dir) await exportCollection(dir, envs, vscode.Uri.joinPath(ctx.globalStorageUri, 'httpme-cache', 'history').fsPath);
     }),
     cmd('httpme.openRequest', (uri: vscode.Uri) => openRequest(uri)),
     cmd('httpme.rename', async (a?: Arg, input?: string) => {

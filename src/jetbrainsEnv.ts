@@ -29,3 +29,21 @@ export function fromJetBrainsEnv(publicJson: string, privateJson?: string): Impo
   for (const e of out) for (const [k, secret] of keys) if (!e.vars.some((v) => v.key === k)) e.vars.push({ key: k, value: null, ...(secret ? { secret: true } : {}) });
   return out;
 }
+
+export type ExportEnv = { name: string; vars: readonly EnvVar[]; secrets: Readonly<Record<string, string>> };
+
+/** nilai non-secret -> file utama; nilai Secret hanya ke file private (dan hanya bila includeSecrets) */
+export function toJetBrainsEnv(envs: readonly ExportEnv[], o: { includeSecrets: boolean }): { publicJson: string; privateJson?: string } {
+  const pub: Record<string, Record<string, string>> = {};
+  const priv: Record<string, Record<string, string>> = {};
+  for (const e of envs) {
+    pub[e.name] = {};
+    priv[e.name] = {};
+    for (const v of e.vars) {
+      if (v.enabled === false) continue;
+      if (v.secret) { if (o.includeSecrets && e.secrets[v.key] !== undefined) priv[e.name][v.key] = e.secrets[v.key]; } else if (v.value !== null) pub[e.name][v.key] = v.value;
+    }
+  }
+  const hasPriv = Object.values(priv).some((x) => Object.keys(x).length);
+  return { publicJson: `${JSON.stringify(pub, null, 2)}\n`, ...(hasPriv ? { privateJson: `${JSON.stringify(priv, null, 2)}\n` } : {}) };
+}

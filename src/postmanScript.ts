@@ -43,3 +43,39 @@ export function translateScript(src: string): Translated {
   }).join('\n');
   return { code, warnings };
 }
+
+// kebalikan RULES (export Fase 5c): httpme.* -> pm.*; urutan: bentuk panjang dulu
+const BACK: [RegExp, string][] = [
+  [/httpme\.expect\.equal\(httpme\.response\.status, ([^)]*)\)/g, 'pm.response.to.have.status($1)'],
+  [/httpme\.expect\.deepEqual\((.+?), (.*)\)/g, 'pm.expect($1).to.eql($2)'],
+  [/httpme\.expect\.equal\((.+), true\)/g, 'pm.expect($1).to.be.true'],
+  [/httpme\.expect\.equal\((.+?), (.*)\)/g, 'pm.expect($1).to.equal($2)'],
+  [/httpme\.expect\.ok\((.+?)\.includes\((.*)\)\)/g, 'pm.expect($1).to.include($2)'],
+  [/httpme\.request\.headers\.set\((.+?), (.+)\)/g, 'pm.request.headers.upsert({ key: $1, value: $2 })'],
+  [/httpme\.environment\./g, 'pm.environment.'],
+  [/httpme\.vars\./g, 'pm.variables.'],
+  [/httpme\.collection\./g, 'pm.collectionVariables.'],
+  [/httpme\.globals\./g, 'pm.globals.'],
+  [/httpme\.test\(/g, 'pm.test('],
+  [/httpme\.response\.statusText\b/g, 'pm.response.status'],
+  [/httpme\.response\.status\b/g, 'pm.response.code'],
+  [/httpme\.response\.time\b/g, 'pm.response.responseTime'],
+  [/httpme\.response\.(json|text|headers)\b/g, 'pm.response.$1'],
+  [/httpme\.request\.(headers\.remove|url)\b/g, 'pm.request.$1'],
+  [/httpme\.cookies\.get\b/g, 'pm.cookies.get'],
+];
+
+/** httpme.* -> pm.* per baris; yang tidak ada padanannya jadi `// pm: not supported — …` + peringatan */
+export function untranslateScript(src: string): Translated {
+  const warnings: string[] = [];
+  const code = src.replace(/\r\n/g, '\n').split('\n').map((line) => {
+    if (/^\s*\/\//.test(line)) return line;
+    let out = line;
+    for (const [re, to] of BACK) out = out.replace(re, to);
+    const left = /\bhttpme\.\w+/.exec(out);
+    if (!left) return out;
+    warnings.push(`${left[0]} is not supported in Postman: ${line.trim()}`);
+    return `// pm: not supported — ${left[0]}: ${line.trim()}`;
+  }).join('\n');
+  return { code, warnings };
+}

@@ -21,6 +21,7 @@ import { varize, varizeCandidates } from './varize';
 import { Cookies, registerCookieCommands, registerLoginStatus } from './cookies';
 import { cookieFlags, parseRequest, splitBlocks } from './httpFile';
 import { importApply, registerImport } from './importCommand';
+import { exportApply } from './exportCommand';
 import { registerDashboard } from './dashboardCommand';
 import { curlPasteToHttp } from './curl';
 import { sendUri, setSessionHooks } from './httpEditor';
@@ -70,6 +71,7 @@ export type HttpmeApi = {
   layout: { get: typeof getLayout; set: typeof setLayout; outputKey: typeof outputKey; outputShown: typeof outputShown };
   history: { list(): ReturnType<typeof listHistory>; action(id: string, a: HistoryAction): Promise<void> };
   /** tab request aktif panel file multi-request */ activeBlock: typeof activeBlock;
+  /** export lewat jalur yang sama dengan command Export… (itest) */ exportApply(root: string, choice: import('./exportCommand').ExportChoice): Promise<import('./exportRun').ExportResult>;
   /** tulis rencana import lewat antrean import (itest) */ importApply(plan: import('./importCommon').ImportPlan, dir: string): Promise<import('./importer').ApplyResult>;
 };
 async function scriptsCall(uri: vscode.Uri, m: ScriptsMessage): Promise<unknown[]> {
@@ -249,7 +251,8 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
   if (isNewerVersion(version, previous)) openWhatsNew(ctx);
   return { viewOf, runningCount: () => runner.jobs().length, applyPanelEdit, sidebar, envs, cookies, envOp, focusOf, compareView, setNullPrompt, scriptsCall, authCall, snippetCall,
     statusBar, layout: { get: getLayout, set: setLayout, outputKey, outputShown }, history: { list: () => listHistory(historyDir), action: (id, a) => historyAction(historyDir, id, a) }, activeBlock,
-    importApply: (plan, dir) => importApply(plan, dir, envs, () => sidebar.refresh()) };
+    importApply: (plan, dir) => importApply(plan, dir, envs, () => sidebar.refresh()),
+    exportApply: (root, choice) => exportApply(root, choice, envs, historyDir) };
 }
 
 export function deactivate(): void {}

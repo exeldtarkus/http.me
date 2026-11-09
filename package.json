@@ -291,6 +291,12 @@
         "category": "http.me"
       },
       {
+        "command": "httpme.export",
+        "title": "Export…",
+        "category": "http.me",
+        "icon": "$(cloud-upload)"
+      },
+      {
         "command": "httpme.selectEnvironment",
         "title": "Select Environment",
         "category": "http.me",
@@ -975,6 +981,11 @@
           "group": "more@3"
         },
         {
+          "command": "httpme.export",
+          "when": "view == httpme.sidebar",
+          "group": "more@4"
+        },
+        {
           "command": "httpme.newEnvironment",
           "when": "view == httpme.environments",
           "group": "navigation@1"
@@ -1255,6 +1266,11 @@
           "command": "httpme.reimportFromSource",
           "when": "view == httpme.sidebar && viewItem =~ /^httpme(Folder|Root)$/",
           "group": "1_new@9"
+        },
+        {
+          "command": "httpme.export",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpme(Folder|Root)$/",
+          "group": "1_new@10"
         }
       ]
     },
