@@ -6,6 +6,12 @@ export type Release = { version: string; date: string; items: ReleaseItem[] };
 /** catatan rilis halaman What's New, terbaru di atas; wajib ada entri baru tiap rilis MINOR */
 export const RELEASES: Release[] = [
   {
+    version: '1.0.4', date: '2026-11-09', items: [
+      { kind: 'new', title: 'Request timeout setting', detail: 'Set how long a request may run with the httpme.request.timeout setting, or run "http.me: Set Request Timeout…" from the Command Palette. A "# @timeout" line in a request still overrides it.' },
+      { kind: 'improved', title: 'Longer default timeout', detail: 'Requests now time out after 10 minutes instead of 30 seconds.' },
+    ],
+  },
+  {
     version: '1.0.3', date: '2026-11-09', items: [
       { kind: 'new', title: 'First release on the VS Code Marketplace and Open VSX', detail: 'Versions 1.0.0 to 1.0.2 were built but not published. Everything listed under v1.0.0 is in this release.' },
     ],
