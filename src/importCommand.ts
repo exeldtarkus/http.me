@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { promises as fs, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
-import { importAuth, specUrlCandidates } from './importFetch';
+import { importAuth, localPath, specUrlCandidates } from './importFetch';
 import { detectFormat, parseDoc, type ImportPlan, type ImportFile } from './importCommon';
 import { importPostman } from './postman';
 import { importOpenApi } from './openapi';
@@ -78,9 +78,10 @@ async function load(kind: 'file' | 'url' | 'clipboard', envs: Environments, drop
     const uris = dropped ?? await vscode.window.showOpenDialog({ title: 'Import', canSelectMany: true, filters: { 'Postman / OpenAPI / JetBrains': ['json', 'yaml', 'yml'] } });
     const out: Loaded[] = [];
     for (const u of uris ?? []) {
-      const st = await fs.stat(u.fsPath);
-      if (st.size > MAX_BYTES) throw new Error(`${basename(u.fsPath)} is larger than 20 MB`);
-      out.push({ label: basename(u.fsPath), text: await fs.readFile(u.fsPath, 'utf8'), file: u.fsPath, source: { type: 'file', location: u.fsPath, format: '' } });
+      const path = localPath(u.fsPath); // extension host WSL + file dari Windows (d:/…) → /mnt/d/…
+      const st = await fs.stat(path).catch((e: NodeJS.ErrnoException) => { throw new Error(`Cannot read ${u.fsPath}: ${e.code ?? e.message}${path !== u.fsPath ? ` (tried ${path})` : ''}`); });
+      if (st.size > MAX_BYTES) throw new Error(`${basename(path)} is larger than 20 MB`);
+      out.push({ label: basename(path), text: await fs.readFile(path, 'utf8'), file: path, source: { type: 'file', location: path, format: '' } });
     }
     return out;
   }
@@ -336,7 +337,7 @@ function pickResync(items: SyncItem[], root: string): Promise<SyncItem[]> {
 export async function reimport(folder: vscode.Uri, envs: Environments, refresh: () => void): Promise<void> {
   const src = parseSource(await fs.readFile(join(folder.fsPath, SOURCE_FILE), 'utf8').catch(() => { throw new Error(`${basename(folder.fsPath)} has no ${SOURCE_FILE}: it was not imported from a file or URL`); }));
   if (src.type === 'clipboard') throw new Error('Clipboard sources cannot be re-imported');
-  const text = src.type === 'url' ? await fetchText(src.location, envs) : await fs.readFile(src.location, 'utf8');
+  const text = src.type === 'url' ? await fetchText(src.location, envs) : await fs.readFile(localPath(src.location), 'utf8');
   const built = await build([{ label: src.location, text, ...(src.type === 'file' ? { file: src.location } : {}), source: src }], envs);
   if (!built.plan) throw new Error('The source no longer contains a collection');
   const root = basename(folder.fsPath);

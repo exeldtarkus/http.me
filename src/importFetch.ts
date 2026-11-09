@@ -27,3 +27,9 @@ export function specUrlCandidates(raw: string): string[] | undefined {
   return [...(explicit ? [new URL(explicit, `${base}/`).toString().replace(/^(https?:\/\/[^/]+)\/\/+/, '$1/')] : []),
     ...['/v3/api-docs', '/v2/api-docs', '/openapi.json', '/swagger/v1/swagger.json', '/swagger.json', '/v3/api-docs.yaml'].map((p) => `${base}${p}`)];
 }
+
+/** path drive Windows (`d:/…`, `C:\…`) yang sampai ke extension host WSL → `/mnt/<drive>/…`; platform lain apa adanya */
+export function localPath(p: string, platform: string = process.platform): string {
+  const m = /^([a-zA-Z]):[\\/](.*)$/.exec(p);
+  return platform === 'linux' && m ? `/mnt/${m[1].toLowerCase()}/${m[2].replace(/\\/g, '/')}` : p;
+}

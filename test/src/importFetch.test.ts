@@ -44,3 +44,11 @@ test('specUrlCandidates: halaman Swagger UI -> kandidat URL spec; URL lain apa a
   assert.deepEqual(specUrlCandidates('https://r.test/swagger-ui/index.html?configUrl=/v3/api-docs/swagger-config')!.includes('https://r.test/v3/api-docs'), true);
   assert.equal(specUrlCandidates('https://r.test/v3/api-docs'), undefined);
 });
+
+import { localPath } from '../../src/importFetch';
+test('localPath: path drive Windows dipetakan ke /mnt/<drive> di Linux (WSL); selain itu apa adanya', () => {
+  assert.equal(localPath("d:/OneDrive - PT. X/Documents/shop.json", 'linux'), '/mnt/d/OneDrive - PT. X/Documents/shop.json');
+  assert.equal(localPath('C:\\Users\\me\\a.json', 'linux'), '/mnt/c/Users/me/a.json');
+  assert.equal(localPath('d:/x/a.json', 'win32'), 'd:/x/a.json');
+  assert.equal(localPath('/home/me/a.json', 'linux'), '/home/me/a.json');
+});
