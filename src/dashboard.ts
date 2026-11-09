@@ -58,3 +58,56 @@ export function summarizeCookies(jars: readonly { env: string; cookies: readonly
   }));
   return { total: environments.reduce((n, e) => n + e.cookies, 0), environments };
 }
+
+export type TreeNode = { type: 'folder' | 'file'; name: string; /** relatif ke root workspace, `/` */ path: string; children?: TreeNode[]; /** total request di bawah folder */ count: number;
+  /** file: method request pertama, judul, jumlah request */ method?: string; title?: string; requests?: number };
+
+/** tree Collections seperti sidebar: folder (termasuk yang kosong lewat keeps = folder ber-.httpmekeep) dulu, lalu file; semua .http tampil, `_auth.http` tanpa method */
+export function buildCollectionTree(files: readonly { path: string; text: string }[], keeps: readonly string[]): TreeNode[] {
+  const root: TreeNode = { type: 'folder', name: '', path: '', children: [], count: 0 };
+  const folder = (path: string): TreeNode => {
+    let cur = root;
+    let acc = '';
+    for (const part of path.split('/').filter(Boolean)) {
+      acc = acc ? `${acc}/${part}` : part;
+      let next = cur.children!.find((c) => c.type === 'folder' && c.name === part);
+      if (!next) { next = { type: 'folder', name: part, path: acc, children: [], count: 0 }; cur.children!.push(next); }
+      cur = next;
+    }
+    return cur;
+  };
+  for (const k of keeps) folder(k);
+  for (const f of files) {
+    if (!/\.http$/i.test(f.path)) continue;
+    const parts = f.path.split('/');
+    const parent = folder(parts.slice(0, -1).join('/'));
+    const isMeta = /^_/.test(parts[parts.length - 1]);
+    const blocks = splitBlocks(f.text);
+    const reqs = isMeta ? [] : (blocks.length > 1 ? blocks.map((b) => parseRequest(b.text)) : [parseRequest(f.text)]).filter((r) => r.url !== '');
+    parent.children!.push({ type: 'file', name: parts[parts.length - 1], path: f.path, count: reqs.length, requests: reqs.length, ...(reqs.length ? { method: reqs[0].method, ...(reqs[0].title ? { title: reqs[0].title } : {}) } : {}) });
+  }
+  const finish = (n: TreeNode): number => {
+    if (n.type === 'file') return n.count;
+    n.children!.sort((a, b) => (a.type === 'file' ? 1 : 0) - (b.type === 'file' ? 1 : 0) || a.name.localeCompare(b.name));
+    n.count = n.children!.reduce((s, c) => s + finish(c), 0);
+    return n.count;
+  };
+  finish(root);
+  return root.children!;
+}
+
+export type CookieItem = { name: string; path: string; value: string; secure: boolean; httpOnly: boolean; expired: boolean; expires?: number };
+export type CookieTreeEnv = { env: string; label: string; cookies: number; domains: { domain: string; cookies: CookieItem[] }[] };
+
+/** Environment → domain → cookie; value sudah di-mask lewat `mask` (nilai asli tidak sampai ke webview) */
+export function buildCookieTree(jars: readonly { env: string; cookies: readonly Cookie[] }[], now: number, mask: (v: string) => string): CookieTreeEnv[] {
+  return jars.map(({ env, cookies }) => {
+    const by = new Map<string, CookieItem[]>();
+    for (const c of cookies) {
+      const list = by.get(c.domain) ?? [];
+      list.push({ name: c.name, path: c.path, value: mask(c.value), secure: c.secure, httpOnly: c.httpOnly, expired: c.expires !== undefined && c.expires <= now, ...(c.expires !== undefined ? { expires: c.expires } : {}) });
+      by.set(c.domain, list);
+    }
+    return { env, label: env ? env : 'No Environment', cookies: cookies.length, domains: [...by].sort((a, b) => a[0].localeCompare(b[0])).map(([domain, list]) => ({ domain, cookies: list })) };
+  });
+}

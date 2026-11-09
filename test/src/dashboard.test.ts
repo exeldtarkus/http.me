@@ -68,3 +68,52 @@ test('dashboard.js segments: urutan tetap, method lain digabung, persen', () => 
   assert.equal(s[0].pct, 50);
   assert.deepEqual(segments({}), []);
 });
+
+import { buildCollectionTree, buildCookieTree, type TreeNode } from '../../src/dashboard';
+
+test('buildCollectionTree: folder bersarang, folder dulu lalu file, jumlah request, folder kosong (.httpmekeep)', () => {
+  const t = buildCollectionTree([
+    { path: 'api/users/list.http', text: req('GET') },
+    { path: 'api/users/create.http', text: req('POST') },
+    { path: 'api/orders.http', text: `${req('GET')}\n${req('DELETE')}` },
+    { path: 'api/_auth.http', text: '# @auth bearer token=x\n' },
+    { path: 'root.http', text: req('PATCH') },
+  ], ['api/users', 'empty/nested']);
+  assert.deepEqual(t.map((n) => [n.type, n.name, n.path]), [['folder', 'api', 'api'], ['folder', 'empty', 'empty'], ['file', 'root.http', 'root.http']]);
+  const api = t[0] as TreeNode;
+  assert.deepEqual(api.children!.map((n) => [n.type, n.name]), [['folder', 'users'], ['file', '_auth.http'], ['file', 'orders.http']]);
+  assert.equal(api.count, 4, 'request di bawah folder (rekursif)');
+  const orders = api.children![2];
+  assert.deepEqual([orders.requests, orders.method], [2, 'GET']);
+  assert.equal(api.children![1].method, undefined, '_auth.http bukan request');
+  assert.equal(t[1].children![0].name, 'nested');
+  assert.deepEqual(t[1].children![0].children, []);
+  assert.equal(api.children![0].children![1].title, 't');
+});
+
+test('buildCookieTree: Environment → domain → cookie, nilai di-mask, kedaluwarsa ditandai', () => {
+  const now = 100;
+  const c = (domain: string, name: string, over = {}): Cookie => ({ name, value: 'secretvalue', domain, hostOnly: false, path: '/', secure: true, httpOnly: false, created: 0, ...over });
+  const t = buildCookieTree([{ env: 'dev', cookies: [c('b.test', 'x'), c('a.test', 'y', { expires: 50 }), c('a.test', 'z')] }, { env: '', cookies: [] }], now, (v) => `${v.slice(0, 2)}…`);
+  assert.deepEqual(t.map((e) => [e.env, e.label, e.cookies]), [['dev', 'dev', 3], ['', 'No Environment', 0]]);
+  assert.deepEqual(t[0].domains.map((d) => [d.domain, d.cookies.length]), [['a.test', 2], ['b.test', 1]]);
+  const y = t[0].domains[0].cookies.find((x) => x.name === 'y')!;
+  assert.deepEqual([y.value, y.expired, y.secure, y.path], ['se…', true, true, '/']);
+});
+
+test('dashboard.js: flatten (tree → baris, filter membuka folder), canDrop, parentOf', () => {
+  const { flatten, canDrop, parentOf } = createRequire(__filename)(join(__dirname, '../../../media/webview/dashboard.js')) as {
+    flatten(t: unknown[], open: Set<string>, q: string): { node: { path: string }; depth: number }[]; canDrop(from: string[], to: string): boolean; parentOf(p: string): string;
+  };
+  const tree = [{ type: 'folder', name: 'api', path: 'api', count: 2, children: [{ type: 'file', name: 'a.http', path: 'api/a.http', children: undefined }, { type: 'folder', name: 'sub', path: 'api/sub', count: 0, children: [] }] }, { type: 'file', name: 'r.http', path: 'r.http' }];
+  assert.deepEqual(flatten(tree, new Set(), '').map((r) => r.node.path), ['api', 'r.http'], 'tertutup');
+  assert.deepEqual(flatten(tree, new Set(['api']), '').map((r) => [r.node.path, r.depth]), [['api', 0], ['api/a.http', 1], ['api/sub', 1], ['r.http', 0]]);
+  assert.deepEqual(flatten(tree, new Set(), 'a.http').map((r) => r.node.path), ['api', 'api/a.http'], 'filter membuka folder induk');
+  assert.equal(canDrop(['api'], 'api'), false);
+  assert.equal(canDrop(['api'], 'api/sub'), false, 'folder ke dalam dirinya sendiri');
+  assert.equal(canDrop(['api/a.http'], 'api'), false, 'sudah di folder itu');
+  assert.equal(canDrop(['api/a.http'], ''), true);
+  assert.equal(canDrop(['r.http'], 'api'), true);
+  assert.equal(parentOf('api/sub/x.http'), 'api/sub');
+  assert.equal(parentOf('r.http'), '');
+});

@@ -73,7 +73,12 @@ async function fetchOne(raw: string, envs: Environments): Promise<string> {
   return res.text();
 }
 
-async function load(kind: 'file' | 'url' | 'clipboard', envs: Environments, dropped?: vscode.Uri[]): Promise<Loaded[]> {
+/** items = file yang di-drop ke Dashboard dari luar VS Code (isi sudah dibaca di webview) */
+type Dropped = { name: string; text: string };
+const isDropped = (x: unknown): x is Dropped[] => Array.isArray(x) && x.every((i) => !!i && typeof i.name === 'string' && typeof i.text === 'string');
+
+async function load(kind: 'file' | 'url' | 'clipboard' | 'text', envs: Environments, dropped?: vscode.Uri[], texts?: Dropped[]): Promise<Loaded[]> {
+  if (kind === 'text') return (texts ?? []).filter((t) => t.text.length <= MAX_BYTES).map((t) => ({ label: t.name, text: t.text, source: { type: 'clipboard' as const, location: '', format: '' } }));
   if (kind === 'file') {
     const uris = dropped ?? await vscode.window.showOpenDialog({ title: 'Import', canSelectMany: true, filters: { 'Postman / OpenAPI / JetBrains': ['json', 'yaml', 'yml'] } });
     const out: Loaded[] = [];
@@ -260,7 +265,7 @@ async function undo(): Promise<void> {
   void vscode.window.showInformationMessage(`Removed ${u.removed} file${u.removed === 1 ? '' : 's'}${u.restored ? `, restored ${u.restored}` : ''}.${u.kept.length ? ` ${u.kept.length} changed file${u.kept.length === 1 ? ' was' : 's were'} kept.` : ''}`);
 }
 
-async function startImport(envs: Environments, refresh: () => void, kindArg?: 'file' | 'url' | 'clipboard', dropped?: vscode.Uri[]): Promise<void> {
+async function startImport(envs: Environments, refresh: () => void, kindArg?: 'file' | 'url' | 'clipboard' | 'text', dropped?: vscode.Uri[], texts?: Dropped[]): Promise<void> {
   const dir = defaultDir();
   if (!dir) throw new Error('Open a folder first: imported requests are written into the workspace.');
   const kind = kindArg ?? (await vscode.window.showQuickPick([
@@ -271,7 +276,7 @@ async function startImport(envs: Environments, refresh: () => void, kindArg?: 'f
   if (!kind) return;
   let built: Awaited<ReturnType<typeof build>>;
   try {
-    const loaded = await load(kind, envs, dropped);
+    const loaded = await load(kind, envs, dropped, texts);
     if (!loaded.length) return;
     built = await build(loaded, envs);
   } catch (e) {
@@ -360,8 +365,8 @@ export async function reimport(folder: vscode.Uri, envs: Environments, refresh: 
 export function registerImport(envs: Environments, refresh: () => void): vscode.Disposable[] {
   const run = (where: string, fn: () => Promise<void>) => fn().catch((e) => reportError(where, e, `http.me: ${errMsg(e)}`));
   return [
-    vscode.commands.registerCommand('httpme.import', (kind?: 'file' | 'url' | 'clipboard', files?: vscode.Uri[]) =>
-      run('import', () => startImport(envs, refresh, typeof kind === 'string' ? kind : undefined, Array.isArray(files) ? files : undefined))),
+    vscode.commands.registerCommand('httpme.import', (kind?: 'file' | 'url' | 'clipboard' | 'text', files?: unknown) =>
+      run('import', () => startImport(envs, refresh, typeof kind === 'string' ? kind : undefined, kind !== 'text' && Array.isArray(files) ? files as vscode.Uri[] : undefined, kind === 'text' && isDropped(files) ? files : undefined))),
     vscode.commands.registerCommand('httpme.undoLastImport', () => run('undoLastImport', undo)),
   ];
 }
