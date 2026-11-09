@@ -3,7 +3,6 @@
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
     <span>Dashboard</span>
   </button>
-  <span class="backhint">Opened from the Dashboard</span>
 </div>
 <style>
   .backbar { position: fixed; top: 0; left: 0; right: 0; z-index: 50; height: 34px; display: flex; align-items: center; gap: 10px; padding: 0 12px;
@@ -14,7 +13,5 @@
   .backbtn:hover { background: var(--vscode-button-hoverBackground, #026ec1); }
   .backbtn:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
   .backbtn svg { width: 14px; height: 14px; }
-  .backhint { color: var(--vscode-descriptionForeground); font-size: 12px; }
   body.has-backbar { padding-top: 34px; box-sizing: border-box; }
-  @media (max-width: 420px) { .backhint { display: none; } }
 </style>
