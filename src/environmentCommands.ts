@@ -79,7 +79,7 @@ export function registerEnvironmentCommands(envs: Environments, refreshTree: () 
     if (!dir) throw new Error('Open a folder first: Environments are stored in .httpme/environments.');
     return dir;
   };
-  const open = (name: string) => vscode.commands.executeCommand('vscode.openWith', envs.uriOf(name), ENV_VIEW);
+  const open = (name: string, keepFocus = false) => vscode.commands.executeCommand('vscode.openWith', envs.uriOf(name), ENV_VIEW, keepFocus ? { preserveFocus: true } : undefined); // keepFocus: klik sidebar, Delete tetap jalan
 
   return vscode.Disposable.from(
     item, envs.onDidChange(update),
@@ -106,14 +106,14 @@ export function registerEnvironmentCommands(envs: Environments, refreshTree: () 
       if (input === undefined) await open(name);
     }),
     cmd('httpme.setActiveEnvironment', (a?: EnvArg) => envs.setActive(envName(a))),
-    cmd('httpme.openEnvironment', (a?: EnvArg) => { const n = envName(a); return n === undefined ? undefined : open(n); }),
-    cmd('httpme.openGlobals', async () => {
+    cmd('httpme.openEnvironment', (a?: EnvArg, keepFocus?: boolean) => { const n = envName(a); return n === undefined ? undefined : open(n, keepFocus === true); }),
+    cmd('httpme.openGlobals', async (keepFocus?: boolean) => {
       try {
         await vscode.workspace.fs.stat(envs.globalsUri);
       } catch {
         await envs.write(GLOBALS, []); // Globals belum pernah dibuat (bukan error): file kosong dibuat dulu
       }
-      await open(GLOBALS);
+      await open(GLOBALS, keepFocus === true);
     }),
     cmd('httpme.openEnvironmentAsText', (a?: EnvArg) => {
       const n = typeof a === 'object' && a?.kind === 'eglobals' ? GLOBALS : envName(a);

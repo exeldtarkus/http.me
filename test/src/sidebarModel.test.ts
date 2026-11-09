@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { arrangeOpen, defaultFileName, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED, busyTracker } from '../../src/sidebarModel';
+import { closeTargets, arrangeOpen, defaultFileName, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED, busyTracker } from '../../src/sidebarModel';
 
 test('folderChildren: folder dulu lalu file, urut nama; folder kosong (.httpmekeep) ikut; tampilan rata', () => {
   const files = ['api/auth/login.http', 'api/users.http', 'b.http', 'a.http'];
@@ -77,4 +77,11 @@ test('review R46: busyTracker: satu indikator loading selama ada muatan berjalan
   assert.deepEqual(log, ['start', 'end']);
   await busy(Promise.resolve(1));
   assert.deepEqual(log, ['start', 'end', 'start', 'end'], 'muatan berikutnya = indikator baru');
+});
+
+test('closeTargets: Close All Unpinned melewati tab yang di-pin, Close All (incl. Pinned) menutup semua', () => {
+  const tabs = [{ uri: 'file:///a.http' }, { uri: 'file:///b.http' }, { uri: undefined }];
+  assert.deepEqual(closeTargets(tabs, ['file:///a.http'], false), [tabs[1], tabs[2]]);
+  assert.deepEqual(closeTargets(tabs, ['file:///a.http'], true), tabs);
+  assert.deepEqual(closeTargets(tabs, [], false), tabs);
 });

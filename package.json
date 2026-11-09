@@ -226,9 +226,15 @@
       },
       {
         "command": "httpme.closeAll",
-        "title": "Close All",
+        "title": "Close All (incl. Pinned)",
         "category": "http.me",
         "icon": "$(close-all)"
+      },
+      {
+        "command": "httpme.closeAllUnpinned",
+        "title": "Close All Unpinned",
+        "category": "http.me",
+        "icon": "$(close)"
       },
       {
         "command": "httpme.saveTab",
@@ -1011,9 +1017,14 @@
           "group": "navigation@2"
         },
         {
-          "command": "httpme.closeAll",
+          "command": "httpme.closeAllUnpinned",
           "when": "view == httpme.open",
           "group": "navigation@3"
+        },
+        {
+          "command": "httpme.closeAll",
+          "when": "view == httpme.open",
+          "group": "more@1"
         },
         {
           "command": "httpme.openShowUnsaved",

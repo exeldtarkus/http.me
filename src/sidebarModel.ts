@@ -100,3 +100,7 @@ export function busyTracker(start: () => () => void): <T>(p: Promise<T>) => Prom
     return p.finally(() => { if (--running === 0) end?.(); });
   };
 }
+
+/** tab yang ditutup: semua (`includePinned`) atau hanya yang URI-nya tidak di-pin */
+export const closeTargets = <T extends { uri: string | undefined }>(tabs: readonly T[], pinned: readonly string[], includePinned: boolean): T[] =>
+  tabs.filter((t) => includePinned || !t.uri || !pinned.includes(t.uri));

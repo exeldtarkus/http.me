@@ -191,3 +191,30 @@ test('Open Dashboard muncul di Command Palette (Ctrl+Shift+P): ada title + categ
   assert.deepEqual([c.title, c.category], ['Open Dashboard', 'http.me']);
   assert.equal(pkg.contributes.menus.commandPalette.some((m: { command: string; when: string }) => m.command === 'httpme.openDashboard' && m.when === 'false'), false);
 });
+
+test('Export… ada di command, menu sidebar dan klik kanan folder', () => {
+  const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
+  assert.ok(pkg.contributes.commands.some((c: { command: string; title: string }) => c.command === 'httpme.export' && c.title === 'Export…'));
+  const menus = pkg.contributes.menus['view/title'].concat(pkg.contributes.menus['view/item/context']).filter((m: { command: string }) => m.command === 'httpme.export');
+  assert.ok(menus.length >= 2);
+});
+
+test('view Open: Close All Unpinned dan Close All (incl. Pinned)', () => {
+  const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
+  const title = (id: string) => pkg.contributes.commands.find((c: { command: string }) => c.command === id)?.title;
+  assert.equal(title('httpme.closeAllUnpinned'), 'Close All Unpinned');
+  assert.equal(title('httpme.closeAll'), 'Close All (incl. Pinned)');
+  const inOpen = (id: string) => pkg.contributes.menus['view/title'].some((m: { command: string; when: string }) => m.command === id && /view == httpme\.open/.test(m.when));
+  assert.ok(inOpen('httpme.closeAllUnpinned') && inOpen('httpme.closeAll'));
+});
+
+test('Delete / Rename / Duplicate Environment tidak muncul untuk Globals dan No Environment', () => {
+  const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
+  const items = pkg.contributes.menus['view/item/context'].filter((m: { command: string }) => /^httpme\.(deleteEnvironment|renameEnvironment|duplicateEnvironment)$/.test(m.command));
+  assert.ok(items.length >= 3);
+  for (const m of items) {
+    const re = new RegExp(/viewItem =~ \/(.+)\//.exec(m.when)![1]);
+    assert.ok(re.test('httpmeEnvironment') && re.test('httpmeEnvironmentActive'), m.command);
+    assert.ok(!re.test('httpmeGlobals') && !re.test('httpmeNoEnvironment'), m.command);
+  }
+});

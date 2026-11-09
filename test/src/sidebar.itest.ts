@@ -37,6 +37,7 @@ export const tests: ITests = {
     const item = await api().sidebar.getTreeItem(get);
     assert.equal(item.label, 'get');
     assert.equal(item.description, 'GET httpbin.org');
+    assert.equal(item.command?.arguments?.[1], true, 'klik request membuka editor tanpa mengambil fokus (tombol Delete tetap jalan di sidebar)');
     await vscode.commands.executeCommand('httpme.filterCollections', 'post.http');
     assert.deepEqual((await children()).map(name), ['post.http']);
     await vscode.commands.executeCommand('httpme.clearFilter');

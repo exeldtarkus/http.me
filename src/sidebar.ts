@@ -7,7 +7,7 @@ import { exportCollection } from './exportCommand';
 import { importableFiles } from './importFetch';
 import * as path from 'node:path';
 import {
-  arrangeOpen, busyTracker, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED,
+  arrangeOpen, busyTracker, closeTargets, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED,
   type OpenTab, type RequestSummary, type SidebarMode,
 } from './sidebarModel';
 import { createFolder, dropKeepIfUsed, duplicateFile, KEEP_FILE, siblingName } from './store';
@@ -376,7 +376,7 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
           tooltip: `${vscode.workspace.asRelativePath(n.uri, multiRoot())}${s.title ? `\n${s.title}` : ''}${s.url ? `\n${s.method} ${s.url}` : ''}`,
           iconPath: s.count > 1 ? new vscode.ThemeIcon('list-unordered') : new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor(METHOD_COLOR[s.method ?? ''] ?? 'foreground')),
           contextValue: 'httpmeFile',
-          command: { command: 'httpme.openRequest', title: 'Open', arguments: [n.uri] },
+          command: { command: 'httpme.openRequest', title: 'Open', arguments: [n.uri, true] },
         });
       }
       case 'empty': {
@@ -416,13 +416,13 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
           description: [on ? 'active' : '', nulls ? `${nulls} NULL` : nulls === undefined ? 'invalid file' : ''].filter(Boolean).join(' · ') || undefined,
           tooltip: `${on ? 'Active Environment\n' : ''}${ENV_DIR}/${n.name}.json${nulls ? `\n${nulls} variable${nulls === 1 ? '' : 's'} without a value (NULL)` : ''}`,
           contextValue: on ? 'httpmeEnvironmentActive' : 'httpmeEnvironment',
-          command: { command: 'httpme.openEnvironment', title: 'Open', arguments: [n.name] },
+          command: { command: 'httpme.openEnvironment', title: 'Open', arguments: [n.name, true] },
         });
       }
       case 'eglobals':
         return Object.assign(new vscode.TreeItem('Globals'), {
           id: 'eglobals', iconPath: new vscode.ThemeIcon('globe', new vscode.ThemeColor('charts.blue')), description: 'every Environment', tooltip: 'Variables for every Environment, stored on this computer',
-          contextValue: 'httpmeGlobals', command: { command: 'httpme.openGlobals', title: 'Open Globals' },
+          contextValue: 'httpmeGlobals', command: { command: 'httpme.openGlobals', title: 'Open Globals', arguments: [true] },
         });
       case 'cenv': {
         const n2 = (await this.cookies.jar(n.env)).length;
@@ -548,8 +548,9 @@ async function askName(title: string, dir: vscode.Uri, isFile: boolean, value = 
 }
 
 /** buka file dari Collections di panel http.me (file multi-request = tab per request + Send All) */
-export async function openRequest(uri: vscode.Uri): Promise<void> {
-  await vscode.commands.executeCommand('vscode.openWith', uri, REQUEST_VIEW);
+export async function openRequest(uri: vscode.Uri, keepFocus = false): Promise<void> {
+  // dari klik sidebar: fokus tetap di tree supaya tombol Delete / F2 bekerja pada item terpilih
+  await vscode.commands.executeCommand('vscode.openWith', uri, REQUEST_VIEW, keepFocus ? { preserveFocus: true } : undefined);
 }
 
 /**
@@ -690,7 +691,7 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
       const dir = await targetDir(a);
       if (dir) await exportCollection(dir, envs, vscode.Uri.joinPath(ctx.globalStorageUri, 'httpme-cache', 'history').fsPath);
     }),
-    cmd('httpme.openRequest', (uri: vscode.Uri) => openRequest(uri)),
+    cmd('httpme.openRequest', (uri: vscode.Uri, keepFocus?: boolean) => openRequest(uri, keepFocus === true)),
     cmd('httpme.rename', async (a?: Arg, input?: string) => {
       const uri = uriOf(a ?? view.selection[0]);
       if (!uri) return;
@@ -806,6 +807,11 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
     }),
     cmd('httpme.saveAll', () => vscode.commands.executeCommand('workbench.action.files.saveAll')),
     cmd('httpme.closeAll', () => vscode.commands.executeCommand('workbench.action.closeAllEditors')),
+    cmd('httpme.closeAllUnpinned', async () => {
+      const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).map((t) => ({ tab: t, uri: (t.input as { uri?: vscode.Uri } | undefined)?.uri?.toString() }));
+      const close = closeTargets(tabs, ctx.workspaceState.get<string[]>(OPEN_PINNED, []), false).map((x) => x.tab);
+      if (close.length) await vscode.window.tabGroups.close(close);
+    }),
   );
   return { sidebar: all, disposable };
 }
