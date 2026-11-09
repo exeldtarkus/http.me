@@ -1,0 +1,99 @@
+openapi: 3.0.3
+info:
+  title: Petstore 3
+  version: 1.0.0
+servers:
+  - url: "{scheme}://api.pets.test:{port}/api/v3"
+    variables:
+      scheme: { default: https }
+      port: { default: "8443" }
+security:
+  - bearerAuth: []
+tags:
+  - name: pet
+paths:
+  /pet:
+    put:
+      tags: [pet]
+      summary: Update an existing pet
+      operationId: updatePet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Pet" }
+          application/xml:
+            schema: { $ref: "#/components/schemas/Pet" }
+    get:
+      tags: [pet]
+      summary: List pets
+      operationId: listPets
+      parameters:
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 10 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+          example: abc
+        - $ref: "#/components/parameters/TraceId"
+  /pet/{petId}:
+    parameters:
+      - name: petId
+        in: path
+        required: true
+        schema: { type: integer }
+    delete:
+      summary: Delete a pet
+      operationId: deletePet
+      security:
+        - apiKey: []
+  /login:
+    post:
+      tags: [auth]
+      summary: Login
+      operationId: login
+      security: []
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                user: { type: string, example: bob }
+                pw: { type: string, format: password }
+  /note:
+    post:
+      summary: Text note
+      requestBody:
+        content:
+          text/plain:
+            example: hello
+components:
+  parameters:
+    TraceId:
+      name: X-Trace
+      in: header
+      schema: { type: string }
+      example: t-1
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
+    apiKey: { type: apiKey, in: query, name: key }
+    basicAuth: { type: http, scheme: basic }
+  schemas:
+    Pet:
+      type: object
+      required: [name]
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, example: doggie }
+        born: { type: string, format: date-time }
+        owner: { allOf: [{ $ref: "#/components/schemas/Owner" }, { type: object, properties: { vip: { type: boolean } } }] }
+        kind: { oneOf: [{ type: string, enum: [dog, cat] }, { type: integer }] }
+        self: { $ref: "#/components/schemas/Pet" }
+    Owner:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        uid: { type: string, format: uuid }
