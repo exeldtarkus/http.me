@@ -994,7 +994,11 @@ const provider: vscode.CustomTextEditorProvider = { resolveCustomTextEditor: res
 export const registerRequestEditor = (cacheDir: string, state: vscode.Memento): vscode.Disposable => (bodyDir = join(cacheDir, 'body'), layoutState = state, vscode.Disposable.from(
   vscode.window.registerCustomEditorProvider(REQUEST_VIEW, provider, { webviewOptions: { retainContextWhenHidden: false } }),
   vscode.window.registerWebviewViewProvider(OUTPUT_VIEW, outputProvider),
-  vscode.workspace.onDidCloseTextDocument(releaseDocument),
+  // VS Code bisa menutup TextDocument tab yang tersembunyi; selama tab-nya masih ada, request & response jangan dilepas
+  vscode.workspace.onDidCloseTextDocument((d) => {
+    const key = d.uri.toString();
+    if (!vscode.window.tabGroups.all.some((g) => g.tabs.some((t) => (t.input as { uri?: vscode.Uri } | undefined)?.uri?.toString() === key))) releaseDocument(d);
+  }),
   vscode.workspace.registerTextDocumentContentProvider(RESPONSE_SCHEME, responseProvider),
   responseChanged,
 ));
