@@ -173,3 +173,14 @@ test('tombol Delete di Environments dan Cookies memakai command Delete terpilih 
     assert.ok(pkg.contributes.menus.commandPalette.some((m: { command: string; when: string }) => m.command === cmd && m.when === 'false'));
   }
 });
+
+test('tombol Back to Dashboard: ikon panah di title bar editor yang dibuka dari Dashboard, tooltip dari title command', () => {
+  const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
+  const cmd = pkg.contributes.commands.find((c: { command: string }) => c.command === 'httpme.backToDashboard');
+  assert.equal(cmd.title, 'Back to Dashboard');
+  assert.match(cmd.icon, /arrow-left/);
+  const m = pkg.contributes.menus['editor/title'].find((x: { command: string }) => x.command === 'httpme.backToDashboard');
+  assert.match(m.when, /resourcePath in httpme\.dashboardOpened/);
+  assert.match(m.group, /^navigation/);
+  assert.ok(pkg.contributes.menus.commandPalette.some((x: { command: string; when: string }) => x.command === 'httpme.backToDashboard' && x.when === 'false'));
+});

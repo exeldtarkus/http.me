@@ -59,9 +59,27 @@ const exec = (cmd: string, ...args: unknown[]) => vscode.commands.executeCommand
 type Args = Record<string, unknown>;
 type Handler = (a: Args) => unknown;
 
+/** path editor yang dibuka dari Dashboard: tombol Back (title bar) hanya tampil di editor ini (context key httpme.dashboardOpened) */
+const opened = new Set<string>();
+const publish = () => void vscode.commands.executeCommand('setContext', 'httpme.dashboardOpened', [...opened]);
+function markOpened(uri: vscode.Uri | undefined): void {
+  if (uri?.scheme !== 'file') return;
+  opened.add(uri.fsPath);
+  publish();
+}
+/** tab yang sudah ditutup dilepas dari daftar */
+function pruneOpened(): void {
+  const open = new Set(vscode.window.tabGroups.all.flatMap((g) => g.tabs.map((t) => (t.input as { uri?: vscode.Uri } | undefined)?.uri?.fsPath).filter((x): x is string => !!x)));
+  let changed = false;
+  for (const p of [...opened]) if (!open.has(p)) { opened.delete(p); changed = true; }
+  if (changed) publish();
+}
+
 function handlers(envs: Environments, cookies: Cookies): Record<string, Handler> {
   const file = (cmd: string): Handler => (a) => exec(cmd, uriOf(a.path));
+  const opens = (cmd: string): Handler => (a) => { const u = uriOf(a.path); markOpened(u); return exec(cmd, u); };
   const env = (cmd: string): Handler => (a) => exec(cmd, str(a.name));
+  const envOpens = (cmd: string, arg: (a: Args) => unknown = (a) => str(a.name)): Handler => (a) => { markOpened(envs.uriOf(str(a.name) ?? '')); return exec(cmd, arg(a)); };
   /** cookie asli dicari ulang di jar (webview hanya punya nilai yang di-mask) */
   const node = async (a: Args) => {
     const e = str(a.env) ?? '';
@@ -73,7 +91,7 @@ function handlers(envs: Environments, cookies: Cookies): Record<string, Handler>
     // Collections
     'coll.newRequest': () => exec('httpme.newRequest'), 'coll.newCollection': () => exec('httpme.newCollection'), 'coll.newFolder': () => exec('httpme.newFolder'), 'coll.import': () => exec('httpme.import'),
     'coll.importText': (a) => exec('httpme.import', 'text', a.items),
-    'file.open': file('httpme.openRequest'), 'file.openAsText': file('httpme.openAsText'), 'file.duplicate': file('httpme.duplicate'), 'file.rename': file('httpme.rename'), 'file.reveal': file('httpme.revealInExplorer'),
+    'file.open': opens('httpme.openRequest'), 'file.openAsText': opens('httpme.openAsText'), 'file.duplicate': file('httpme.duplicate'), 'file.rename': file('httpme.rename'), 'file.reveal': file('httpme.revealInExplorer'),
     'file.copyAsCurl': file('httpme.copyAsCurl'), 'file.copyAsCurlWithCookies': file('httpme.copyAsCurlWithCookies'), 'file.copyAsCurlCmd': file('httpme.copyAsCurlCmd'),
     'file.copyAsCurlCmdWithCookies': file('httpme.copyAsCurlCmdWithCookies'), 'file.copyAsPowerShell': file('httpme.copyAsPowerShell'), 'file.copyAsPowerShellWithCookies': file('httpme.copyAsPowerShellWithCookies'),
     'file.setLoginRequest': file('httpme.setLoginRequest'),
@@ -93,10 +111,10 @@ function handlers(envs: Environments, cookies: Cookies): Record<string, Handler>
       if (from.length) await moveInto(from, uriOf(a.to));
     },
     // Environments
-    'env.setActive': env('httpme.setActiveEnvironment'), 'env.open': env('httpme.openEnvironment'), 'env.openAsText': env('httpme.openEnvironmentAsText'), 'env.rename': env('httpme.renameEnvironment'),
+    'env.setActive': env('httpme.setActiveEnvironment'), 'env.open': envOpens('httpme.openEnvironment'), 'env.openAsText': envOpens('httpme.openEnvironmentAsText'), 'env.rename': env('httpme.renameEnvironment'),
     'env.duplicate': env('httpme.duplicateEnvironment'), 'env.delete': env('httpme.deleteEnvironment'), 'env.reveal': env('httpme.revealEnvironment'),
     'env.new': () => exec('httpme.newEnvironment'), 'env.import': () => exec('httpme.importEnvironment'), 'env.compare': () => exec('httpme.compareEnvironments'), 'env.sync': () => exec('httpme.syncEnvironments'),
-    'env.openGlobals': () => exec('httpme.openGlobals'), 'env.openGlobalsText': () => exec('httpme.openEnvironmentAsText', { kind: 'eglobals' }),
+    'env.openGlobals': () => { markOpened(envs.globalsUri); return exec('httpme.openGlobals'); }, 'env.openGlobalsText': () => { markOpened(envs.globalsUri); return exec('httpme.openEnvironmentAsText', { kind: 'eglobals' }); },
     'env.addVariable': async () => {
       const name = await vscode.window.showInputBox({ title: 'Add Variable to Every Environment', prompt: 'Variable name (NULL in every Environment until you fill it)', validateInput: (v) => (/^[\w.-]+$/.test(v.trim()) || !v ? undefined : 'Use letters, digits, _ . -') });
       if (name?.trim()) await exec('httpme.addVariableToAll', name.trim());
@@ -114,7 +132,9 @@ let panel: vscode.WebviewPanel | undefined;
 
 export function registerDashboard(envs: Environments, cookies: Cookies): vscode.Disposable {
   const table = handlers(envs, cookies);
-  return vscode.commands.registerCommand('httpme.openDashboard', () => {
+  const back = vscode.commands.registerCommand('httpme.backToDashboard', () => vscode.commands.executeCommand('httpme.openDashboard'));
+  const tabs = vscode.window.tabGroups.onDidChangeTabs(pruneOpened);
+  const open = vscode.commands.registerCommand('httpme.openDashboard', () => {
     if (panel) return panel.reveal();
     const p = vscode.window.createWebviewPanel('httpme.dashboard', 'http.me Dashboard', vscode.ViewColumn.Active, { enableScripts: true });
     panel = p;
@@ -142,4 +162,5 @@ export function registerDashboard(envs: Environments, cookies: Cookies): vscode.
     ];
     p.onDidDispose(() => { clearTimeout(timer); subs.forEach((s) => s.dispose()); panel = undefined; });
   });
+  return vscode.Disposable.from(open, back, tabs);
 }

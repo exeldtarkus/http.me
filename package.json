@@ -604,6 +604,12 @@
         "title": "Open Dashboard",
         "category": "http.me",
         "icon": "$(dashboard)"
+      },
+      {
+        "command": "httpme.backToDashboard",
+        "title": "Back to Dashboard",
+        "category": "http.me",
+        "icon": "$(arrow-left)"
       }
     ],
     "customEditors": [
@@ -664,6 +670,11 @@
     ],
     "menus": {
       "editor/title": [
+        {
+          "command": "httpme.backToDashboard",
+          "when": "resourcePath in httpme.dashboardOpened || activeWebviewPanelId == 'httpme.compare'",
+          "group": "navigation@0"
+        },
         {
           "command": "httpme.openInPanel",
           "when": "resourceExtname == .http && activeCustomEditorId != httpme.request",
@@ -915,6 +926,10 @@
         },
         {
           "command": "httpme.deleteSelectedCookie",
+          "when": "false"
+        },
+        {
+          "command": "httpme.backToDashboard",
           "when": "false"
         }
       ],

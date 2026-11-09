@@ -12,4 +12,11 @@ export const tests: ITests = {
     assert.equal(labels().filter((l) => l === 'http.me Dashboard').length, 1);
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
   },
+  async 'Back to Dashboard membuka / menampilkan kembali Dashboard'() {
+    await new Promise((r) => setTimeout(r, 300)); // dispose panel dari test sebelumnya
+    await vscode.commands.executeCommand('httpme.backToDashboard');
+    for (let i = 0; i < 30 && !labels().includes('http.me Dashboard'); i++) await new Promise((r) => setTimeout(r, 100));
+    assert.ok(labels().includes('http.me Dashboard'), labels().join(', '));
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+  },
 };
