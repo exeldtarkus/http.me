@@ -71,6 +71,11 @@
         "category": "http.me"
       },
       {
+        "command": "httpme.backupNow",
+        "title": "Back Up History and Temp Now",
+        "category": "http.me"
+      },
+      {
         "command": "httpme.importBackup",
         "title": "Import History or Temp Backup…",
         "category": "http.me"

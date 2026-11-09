@@ -11,3 +11,5 @@ deployment/vsx/
 # mockup desain hanya lokal
 design/
 .vscode/launch.json
+# backup otomatis yang ditulis itest (extension aktif di workspace test)
+test-extension/exports/

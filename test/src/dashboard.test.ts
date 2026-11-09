@@ -124,6 +124,10 @@ test('dashboard.js deleteAction: Delete memilih aksi sesuai tab; Globals / No En
   };
   assert.deepEqual(deleteAction('collections', new Set(['a', 'b/c.http']), null), { id: 'file.delete', args: { paths: ['a', 'b/c.http'] } });
   assert.equal(deleteAction('collections', new Set(), null), undefined);
+  const stale = { id: 'cookie.delete', args: {} };
+  assert.equal(deleteAction('history', new Set(['x']), stale), undefined, 'tab History: Delete tidak menghapus');
+  assert.equal(deleteAction('backups', new Set(['x']), stale), undefined, 'tab Backups: Delete tidak menghapus');
+  assert.deepEqual(deleteAction('cookies', new Set(), stale), stale);
   assert.deepEqual(deleteAction('environments', new Set(['env:dev']), null), { id: 'env.delete', args: { name: 'dev' } });
   assert.equal(deleteAction('environments', new Set(), null), undefined, 'Globals / No Environment tidak punya pilihan');
   assert.equal(deleteAction('environments', new Set(['env:']), null), undefined, 'nama kosong = Globals');

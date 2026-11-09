@@ -41,7 +41,7 @@
       const name = [...sel].find((k) => k.startsWith('env:'))?.slice(4);
       return name ? { id: 'env.delete', args: { name } } : undefined;
     }
-    return cookie || undefined;
+    return tab === 'cookies' ? cookie || undefined : undefined; // History / Backups: tombol Delete tidak menghapus apa pun
   }
   const api = { segments, flatten, canDrop, parentOf, deleteAction };
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -49,12 +49,12 @@
 
   const vscode = acquireVsCodeApi();
   const saved = vscode.getState() || {};
-  const ui = { tab: saved.tab || 'collections', open: new Set(saved.open || []), copen: new Set(saved.copen || []), filter: saved.filter || '' };
+  const ui = { tab: saved.tab || 'collections', open: new Set(saved.open || []), copen: new Set(saved.copen || []), filter: saved.filter || '', hfilter: saved.hfilter || '' };
   let data = null;
   let sel = new Set();
   let cdel = null; // aksi Delete baris cookie yang terakhir difokus / diklik (tab Cookies)
   let dragging = null;
-  const persist = () => vscode.setState({ tab: ui.tab, open: [...ui.open], copen: [...ui.copen], filter: ui.filter });
+  const persist = () => vscode.setState({ tab: ui.tab, open: [...ui.open], copen: [...ui.copen], filter: ui.filter, hfilter: ui.hfilter });
   const $ = (id) => document.getElementById(id);
   const el = (tag, props, children) => { const e = Object.assign(document.createElement(tag), props || {}); for (const c of children || []) if (c) e.append(c); return e; };
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -292,6 +292,63 @@
       el('p', { className: 'hint', textContent: 'Double-click a cookie to edit its value · right-click for more · every delete asks for confirmation.' }));
   }
 
+  // ---------- History ----------
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const stamp = (t) => { const d = new Date(t); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
+  const ago = (t) => {
+    const m = Math.floor(Math.max(0, Date.now() - t) / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m} min ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h} h ago`;
+    const d = Math.floor(h / 24);
+    return `${d} day${d === 1 ? '' : 's'} ago`;
+  };
+  const kb = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+  function renderHistory(box) {
+    const all = data.history.list;
+    const filter = el('input', { type: 'search', placeholder: 'Filter by URL, method, status or Environment', value: ui.hfilter, 'aria-label': 'Filter', oninput: (e) => { ui.hfilter = e.target.value; persist(); renderList(); } });
+    box.append(el('div', { className: 'toolbar' }, [filter, el('button', { type: 'button', className: 'btn ghost', textContent: 'Clear All', onclick: () => act('history.clear') })]));
+    box.append(el('p', { className: 'summary', textContent: `${plural(all.length, 'request')} in History (the latest 200 are kept)` }));
+    const list = el('div', { className: 'list', tabIndex: 0 });
+    box.append(list, el('p', { className: 'hint', textContent: 'Click a request to open it with its saved response and the time it was executed · Send again repeats it · Backups keep older History.' }));
+    function renderList() {
+      const q = ui.hfilter.trim().toLowerCase();
+      const rows = all.filter((e) => !q || `${e.method} ${e.url} ${e.status ?? ''} ${e.env ?? ''} ${e.file ?? ''}`.toLowerCase().includes(q)).map((e) => {
+        const bad = e.error || (e.status ?? 0) >= 400;
+        const head = e.cancelled ? 'Cancelled' : e.error ? 'Error' : String(e.status ?? '');
+        const m = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(e.method) ? e.method : 'other';
+        const args = { id: e.id };
+        return el('div', { className: 'row', tabIndex: 0, title: `${e.url}\n${stamp(e.time)}`, onclick: () => act('history.open', args), onkeydown: (ev) => { if (ev.key === 'Enter') act('history.open', args); } }, [
+          el('span', { className: `method ${m}`, textContent: e.method }),
+          el('span', { className: 'grow' }, [el('span', { className: 'name', textContent: e.url }), e.env ? el('span', { className: 'muted', textContent: e.env }) : null, e.file ? el('span', { className: 'muted name', textContent: e.file }) : null]),
+          el('span', { className: `pill ${e.cancelled ? '' : bad ? 'err' : 'ok'}`, textContent: head }),
+          e.ms !== undefined && !e.error && !e.cancelled ? el('span', { className: 'muted', textContent: `${e.ms} ms` }) : null,
+          el('span', { className: 'muted', textContent: ago(e.time), title: stamp(e.time) }),
+          el('span', { className: 'acts' }, [small('Open', () => act('history.open', args)), small('Send again', () => act('history.send', args)), small('Copy cURL', () => act('history.curl', args)), small('Remove', () => act('history.remove', args))])]);
+      });
+      list.replaceChildren(...(rows.length ? rows : [el('div', { className: 'empty', textContent: q ? 'Nothing matches the filter.' : 'No requests yet. Send a request and it shows up here.' })]));
+    }
+    renderList();
+  }
+
+  // ---------- Backups ----------
+  function renderBackups(box) {
+    const d = data.backups;
+    box.append(el('div', { className: 'toolbar' }, [
+      el('button', { type: 'button', className: 'btn pri', textContent: 'Back Up Now', onclick: () => act('backup.now') }),
+      el('button', { type: 'button', className: 'btn ghost', textContent: 'Import Backup…', onclick: () => act('backup.import') }),
+    ]));
+    box.append(el('p', { className: 'summary', textContent: d.enabled ? `${plural(d.list.length, 'backup file')} in exports/history-backup and exports/temp-backup · automatic: once a day when something changed, or when History / temp requests grew by 2 MB` : 'Open a folder to use backups.' }));
+    const rows = d.list.map((b) => el('div', { className: 'row', tabIndex: 0, title: b.path, ondblclick: () => act('backup.importFile', { path: b.path }) }, [
+      el('span', { className: 'pill', textContent: b.kind === 'history' ? 'History' : 'Temp requests' }),
+      el('span', { className: 'grow' }, [el('span', { className: 'name', textContent: stamp(b.at) }), el('span', { className: 'muted', textContent: ago(b.at) })]),
+      el('span', { className: 'pill', textContent: plural(b.count, b.kind === 'history' ? 'request' : 'tab') }), el('span', { className: 'muted', textContent: kb(b.size) }),
+      el('span', { className: 'acts' }, [small('Import', () => act('backup.importFile', { path: b.path }), 'Import this backup'), small('Reveal', () => act('backup.reveal', { path: b.path }), 'Reveal in Explorer')])]));
+    box.append(el('div', { className: 'list' }, rows.length ? rows : [el('div', { className: 'empty', textContent: d.enabled ? 'No backups yet. Back Up Now creates the first one.' : 'No folder is open.' })]),
+      el('p', { className: 'hint', textContent: 'Double-click a backup to import it: History is merged (existing requests are skipped), temp requests open as New Request tabs.' }));
+  }
+
   function render() {
     if (!data) return;
     closeMenu();
@@ -300,12 +357,14 @@
     $('c-environments').textContent = data.environments.totalNulls ? `${data.environments.list} · ${data.environments.totalNulls} NULL` : String(data.environments.list);
     $('c-environments').className = `count${data.environments.totalNulls ? ' warn' : ''}`;
     $('c-cookies').textContent = String(data.cookies.total);
+    $('c-history').textContent = String(data.history.list.length);
+    $('c-backups').textContent = String(data.backups.list.length);
     for (const t of document.querySelectorAll('.tab')) t.setAttribute('aria-selected', String(t.dataset.tab === ui.tab));
     const box = $('panel');
     const scroll = window.scrollY;
     box.replaceChildren();
     box.setAttribute('aria-labelledby', `tab-${ui.tab}`);
-    if (ui.tab === 'collections') renderCollections(box); else if (ui.tab === 'environments') renderEnvironments(box); else renderCookies(box);
+    if (ui.tab === 'collections') renderCollections(box); else if (ui.tab === 'environments') renderEnvironments(box); else if (ui.tab === 'history') renderHistory(box); else if (ui.tab === 'backups') renderBackups(box); else renderCookies(box);
     window.scrollTo(0, scroll);
   }
   for (const t of document.querySelectorAll('.tab')) t.onclick = () => { ui.tab = t.dataset.tab; sel = new Set(); cdel = null; persist(); render(); };

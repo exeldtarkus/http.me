@@ -9,7 +9,11 @@ import { KEEP_FILE } from './store';
 import { webviewPage } from './webviewPage';
 import { errMsg } from './log';
 import { log, reportError } from './output';
-import { closeOutputPanel, maskCookie } from './httpEditor';
+import { closeOutputPanel, maskCookie, onRunnerChange } from './httpEditor';
+import { clearHistory, listHistory } from './history';
+import { historyAction } from './activity';
+import { listBackups } from './backup';
+import { backupDirs } from './backupCommand';
 import { moveInto } from './sidebar';
 import { COMPARE_KEY, markOpened, pruneOpened } from './backBar';
 import type { Environments } from './envState';
@@ -27,7 +31,7 @@ async function scan(dir: string, root: string, out: { files: { path: string; tex
   }
 }
 
-async function collect(envs: Environments, cookies: Cookies) {
+async function collect(envs: Environments, cookies: Cookies, historyDir: string) {
   const root = vscode.workspace.workspaceFolders?.[0];
   const found = { files: [] as { path: string; text: string }[], keeps: [] as string[] };
   if (root?.uri.scheme === 'file') await scan(root.uri.fsPath, root.uri.fsPath, found);
@@ -39,11 +43,15 @@ async function collect(envs: Environments, cookies: Cookies) {
   const globals = await envs.vars('').catch((e) => { log().error(`dashboard.globals - ${errMsg(e)}`); return []; }); // Globals belum ada: 0 variable
   const jars = await Promise.all((await cookies.environments()).map(async (e) => ({ env: e, cookies: await cookies.jar(e) })));
   const tree = buildCookieTree(jars, Date.now(), maskCookie);
+  const history = (await listHistory(historyDir)).map((e) => ({ id: e.id, time: e.time, method: e.method, url: e.url, env: e.env, status: e.status, ms: e.ms, error: e.error, cancelled: e.cancelled, file: e.file ? decodeURIComponent(e.file.split('/').pop() ?? '') : undefined }));
+  const base = root?.uri.scheme === 'file' ? root.uri.fsPath : undefined;
+  const backups = base ? (await listBackups(backupDirs())).map((b) => ({ ...b, path: relative(base, b.file).replace(/\\/g, '/') })) : [];
   return {
     type: 'data', workspace: root?.name ?? 'No folder',
     collections: { tree: buildCollectionTree(found.files, found.keeps), requests: sum.requests, files: sum.files },
     environments: { ...env, list: env.environments.length, globals: globals.length },
     cookies: { total: tree.reduce((n, e) => n + e.cookies, 0), tree },
+    history: { list: history }, backups: { list: backups, enabled: !!base },
   };
 }
 
@@ -60,7 +68,7 @@ const exec = (cmd: string, ...args: unknown[]) => vscode.commands.executeCommand
 type Args = Record<string, unknown>;
 type Handler = (a: Args) => unknown;
 
-function handlers(envs: Environments, cookies: Cookies): Record<string, Handler> {
+function handlers(envs: Environments, cookies: Cookies, historyDir: string): Record<string, Handler> {
   const file = (cmd: string): Handler => (a) => exec(cmd, uriOf(a.path));
   const opens = (cmd: string): Handler => (a) => { const u = uriOf(a.path); markOpened(u); return exec(cmd, u); };
   const env = (cmd: string): Handler => (a) => exec(cmd, str(a.name));
@@ -104,6 +112,15 @@ function handlers(envs: Environments, cookies: Cookies): Record<string, Handler>
       const name = await vscode.window.showInputBox({ title: 'Add Variable to Every Environment', prompt: 'Variable name (NULL in every Environment until you fill it)', validateInput: (v) => (/^[\w.-]+$/.test(v.trim()) || !v ? undefined : 'Use letters, digits, _ . -') });
       if (name?.trim()) await exec('httpme.addVariableToAll', name.trim());
     },
+    // History: aksi yang sama dengan Quick Pick History (id hanya dipakai untuk mencari entri)
+    'history.open': (a) => historyAction(historyDir, str(a.id) ?? '', 'open'), 'history.send': (a) => historyAction(historyDir, str(a.id) ?? '', 'send'),
+    'history.curl': (a) => historyAction(historyDir, str(a.id) ?? '', 'curl'), 'history.remove': (a) => historyAction(historyDir, str(a.id) ?? '', 'remove'),
+    'history.clear': async () => {
+      if ((await vscode.window.showWarningMessage('Clear all request history?', { modal: true }, 'Clear All')) === 'Clear All') await clearHistory(historyDir);
+    },
+    // Backups
+    'backup.now': () => exec('httpme.backupNow'), 'backup.import': () => exec('httpme.importBackup'),
+    'backup.importFile': (a) => exec('httpme.importBackup', uriOf(a.path)), 'backup.reveal': file('httpme.revealInExplorer'),
     // Cookies
     'cookie.add': (a) => exec('httpme.addCookie', { kind: 'cdomain', env: str(a.env) ?? cookies.env, domain: str(a.domain) }),
     'cookie.paste': (a) => exec('httpme.pasteCookies', { kind: 'cdomain', env: str(a.env) ?? cookies.env, domain: str(a.domain) }),
@@ -115,8 +132,8 @@ function handlers(envs: Environments, cookies: Cookies): Record<string, Handler>
 
 let panel: vscode.WebviewPanel | undefined;
 
-export function registerDashboard(envs: Environments, cookies: Cookies): vscode.Disposable {
-  const table = handlers(envs, cookies);
+export function registerDashboard(envs: Environments, cookies: Cookies, historyDir: string): vscode.Disposable {
+  const table = handlers(envs, cookies, historyDir);
   const back = vscode.commands.registerCommand('httpme.backToDashboard', () => vscode.commands.executeCommand('httpme.openDashboard'));
   const tabs = vscode.window.tabGroups.onDidChangeTabs(pruneOpened);
   const open = vscode.commands.registerCommand('httpme.openDashboard', async () => {
@@ -125,13 +142,13 @@ export function registerDashboard(envs: Environments, cookies: Cookies): vscode.
     const p = vscode.window.createWebviewPanel('httpme.dashboard', 'http.me Dashboard', vscode.ViewColumn.Active, { enableScripts: true });
     panel = p;
     p.webview.html = webviewPage('dashboard', { cspSource: p.webview.cspSource, nonce: randomBytes(16).toString('base64') });
-    const post = async () => { try { void p.webview.postMessage(await collect(envs, cookies)); } catch (e) { reportError('dashboard.collect', e, `http.me: ${errMsg(e)}`); } };
+    const post = async () => { try { void p.webview.postMessage(await collect(envs, cookies, historyDir)); } catch (e) { reportError('dashboard.collect', e, `http.me: ${errMsg(e)}`); } };
     let timer: ReturnType<typeof setTimeout> | undefined;
     const later = () => { clearTimeout(timer); timer = setTimeout(() => void post(), 300); };
-    const watchers = [vscode.workspace.createFileSystemWatcher('**/*.http'), vscode.workspace.createFileSystemWatcher(`**/${KEEP_FILE}`)];
+    const watchers = [vscode.workspace.createFileSystemWatcher('**/*.http'), vscode.workspace.createFileSystemWatcher(`**/${KEEP_FILE}`), vscode.workspace.createFileSystemWatcher('**/exports/*-backup/*.json')];
     for (const w of watchers) { w.onDidCreate(later); w.onDidDelete(later); w.onDidChange(later); }
     const subs = [
-      ...watchers, envs.onDidChange(later), p.onDidChangeViewState((e) => { if (e.webviewPanel.visible) later(); }),
+      ...watchers, envs.onDidChange(later), onRunnerChange(later), p.onDidChangeViewState((e) => { if (e.webviewPanel.visible) later(); }),
       p.webview.onDidReceiveMessage(async (m: { type: string; id?: string; args?: Args; text?: string }) => {
         try {
           if (m.type === 'ready' || m.type === 'refresh') return await post();

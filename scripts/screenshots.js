@@ -81,7 +81,16 @@ const dashboardData = () => {
   const env = summarizeEnvironments(envs, 'dev', { dev: [], uat: [], prod: [] });
   const tree = buildCookieTree(cookieJars, Date.now(), (v) => `${v.slice(0, 3)}…`);
   return { type: 'data', workspace: 'shop-workspace', collections: { tree: buildCollectionTree(httpFiles, []), requests: sum.requests, files: sum.files },
-    environments: { ...env, list: env.environments.length, globals: 2 }, cookies: { total: 2, tree } };
+    environments: { ...env, list: env.environments.length, globals: 2 }, cookies: { total: 2, tree },
+    history: { list: [
+      { id: 'h3', time: Date.now() - 2 * 60000, method: 'POST', url: 'https://api.shop.example/orders', env: 'dev', status: 201, ms: 142, file: 'create-order.http' },
+      { id: 'h2', time: Date.now() - 3 * 3600000, method: 'GET', url: 'https://api.shop.example/products?page=2', env: 'dev', status: 200, ms: 63, file: 'products.http' },
+      { id: 'h1', time: Date.now() - 26 * 3600000, method: 'DELETE', url: 'https://api.shop.example/cart/42', env: 'uat', status: 404, ms: 38, file: 'cart.http' },
+    ] },
+    backups: { enabled: true, list: [
+      { path: 'exports/history-backup/history-2026-11-09_150702.json', name: 'history-2026-11-09_150702.json', kind: 'history', at: Date.now() - 20 * 60000, count: 87, size: 183000 },
+      { path: 'exports/temp-backup/temp-2026-11-09_150702.json', name: 'temp-2026-11-09_150702.json', kind: 'temp', at: Date.now() - 20 * 60000, count: 3, size: 1900 },
+    ] } };
 };
 
 (async () => {
@@ -121,6 +130,13 @@ const dashboardData = () => {
     p = await page('dashboard', { w: 1100, h: 520 }, (m, pg) => { if (m.type === 'ready') send(pg, dashboardData()); });
     await p.click('.tab[data-tab="environments"]');
     await shot(p, 'dashboard-environments.png');
+
+    // 1b. Dashboard: History dan Backups
+    for (const [tab, file] of [['history', 'dashboard-history.png'], ['backups', 'dashboard-backups.png']]) {
+      p = await page('dashboard', { w: 1100, h: 420 }, (m, pg) => { if (m.type === 'ready') send(pg, dashboardData()); });
+      await p.click(`.tab[data-tab="${tab}"]`);
+      await shot(p, file);
+    }
 
     // 2. Environment editor: NULL, secret, initial / current value
     p = await page('environment', { w: 1000, h: 520 }, (m, pg) => {

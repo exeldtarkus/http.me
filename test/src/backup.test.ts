@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { BACKUP_KEEP, BACKUP_MAX_BYTES, backupFileName, fingerprint, importHistoryItems, parseBackup, shouldBackup, writeBackup } from '../../src/backup';
+import { BACKUP_KEEP, BACKUP_MAX_BYTES, backupFileName, fingerprint, importHistoryItems, listBackups, parseBackup, shouldBackup, writeBackup } from '../../src/backup';
 import { addHistory, historyEntry, historyId, listHistory } from '../../src/history';
 import { parseRequest } from '../../src/httpFile';
 import { withTempDir } from './helpers/tmp';
@@ -68,4 +68,16 @@ test('importHistoryItems: onProgress dilaporkan per entri sampai total', () =>
     const seen: [number, number][] = [];
     await importHistoryItems(dir, items, (done, total) => seen.push([done, total]));
     assert.deepEqual(seen, [[1, 3], [2, 3], [3, 3]]);
+  }));
+
+test('listBackups: file dari kedua folder, terbaru di atas, dengan jenis / waktu / jumlah item / ukuran; file asing dilewati', () =>
+  withTempDir(async (dir) => {
+    const h = join(dir, 'history-backup');
+    const t = join(dir, 'temp-backup');
+    await writeBackup(h, 'history', [{ id: 'a' }, { id: 'b' }], T);
+    await writeBackup(t, 'temp', [{ text: 'GET http://x\n' }], T + 5000);
+    await fs.writeFile(join(t, 'catatan.txt'), 'bukan backup');
+    const list = await listBackups([h, t, join(dir, 'tidak-ada')]);
+    assert.deepEqual(list.map((b) => [b.kind, b.count, b.at]), [['temp', 1, T + 5000], ['history', 2, T]]);
+    assert.ok(list.every((b) => b.size > 0 && b.file.endsWith('.json')));
   }));

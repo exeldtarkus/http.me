@@ -216,7 +216,7 @@ export function activate(ctx: vscode.ExtensionContext): HttpmeApi {
     values: () => cookies.values(),
     paste: (domain, text) => cookies.paste(cookies.env, domain, text),
   }));
-  ctx.subscriptions.push(sidebarDisposable, registerEnvironmentCommands(envs, () => sidebar.redraw()), registerVariables(envs), variableHooks(envs), registerScriptLinks(), ...registerImport(envs, () => sidebar.refresh()), registerDashboard(envs, cookies));
+  ctx.subscriptions.push(sidebarDisposable, registerEnvironmentCommands(envs, () => sidebar.redraw()), registerVariables(envs), variableHooks(envs), registerScriptLinks(), ...registerImport(envs, () => sidebar.refresh()), registerDashboard(envs, cookies, historyDir));
   void envs.checkKeys().catch((e) => log().error(errorLine('checkKeys', e)));
   const run = (name: string, fn: () => Promise<unknown> | unknown) => Promise.resolve().then(fn).catch((e) => reportError(name, e, `http.me: ${errMsg(e)}`));
   const docOf = (uri: vscode.Uri) => vscode.workspace.openTextDocument(uri);

@@ -39,7 +39,7 @@ export function shouldBackup(prev: BackupState | undefined, cur: { key: string; 
 export async function writeBackup(dir: string, kind: BackupKind, items: unknown[], now: number): Promise<string> {
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
   const target = join(dir, backupFileName(kind, now));
-  const file: BackupFile = { httpmeFormat: HTTPME_FORMAT, kind, createdAt: now, items };
+  const file = { httpmeFormat: HTTPME_FORMAT, kind, createdAt: now, count: items.length, items }; // count sebelum items: daftar backup cukup membaca awal file
   await fs.writeFile(target, JSON.stringify(file, null, 1), { mode: 0o600 });
   const mine = (await fs.readdir(dir)).filter((n) => n.startsWith(`${kind}-`) && n.endsWith('.json')).sort();
   for (const n of mine.slice(0, Math.max(0, mine.length - BACKUP_KEEP))) await fs.rm(join(dir, n), { force: true });
@@ -69,4 +69,30 @@ export async function importHistoryItems(dir: string, items: unknown[], onProgre
     await new Promise((r) => setImmediate(r)); // beri giliran ke event loop: editor tetap responsif
   }
   return { added, skipped, invalid };
+}
+
+export type BackupInfo = { file: string; name: string; kind: BackupKind; at: number; count: number; size: number };
+
+/** daftar file backup di folder-folder itu, terbaru di atas; hanya awal file yang dibaca (bukan seluruh isi) */
+export async function listBackups(dirs: string[]): Promise<BackupInfo[]> {
+  const out: BackupInfo[] = [];
+  for (const dir of dirs) {
+    for (const name of await fs.readdir(dir).catch(() => [] as string[])) { // folder belum ada = belum ada backup
+      const kind = /^(history|temp)-.*\.json$/.exec(name)?.[1] as BackupKind | undefined;
+      if (!kind) continue;
+      const file = join(dir, name);
+      const fh = await fs.open(file, 'r');
+      try {
+        const head = Buffer.alloc(300);
+        const { bytesRead } = await fh.read(head, 0, 300, 0);
+        const text = head.toString('utf8', 0, bytesRead);
+        const at = Number(/"createdAt":\s*(\d+)/.exec(text)?.[1]);
+        if (!Number.isFinite(at)) continue; // bukan file backup http.me
+        out.push({ file, name, kind, at, count: Number(/"count":\s*(\d+)/.exec(text)?.[1] ?? 0), size: (await fh.stat()).size });
+      } finally {
+        await fh.close();
+      }
+    }
+  }
+  return out.sort((a, b) => b.at - a.at);
 }
