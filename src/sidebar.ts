@@ -1,6 +1,7 @@
 // sidebar http.me: 4 section TreeView native (Collections, Environments, Open, Cookies) seperti Explorer VS Code,
 // tiap section punya judul & tombol aksinya sendiri. Satu class Sidebar per section (mode tetap). Logika murni di sidebarModel.ts.
 import * as vscode from 'vscode';
+import { deleteWithFallback } from './trash';
 import { reimport } from './importCommand';
 import { importableFiles } from './importFetch';
 import * as path from 'node:path';
@@ -711,7 +712,11 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
       if (!uris.length) return;
       const what = uris.length === 1 ? path.posix.basename(uris[0].path) : `${uris.length} items`;
       if (!confirmed && (await vscode.window.showWarningMessage(`Delete ${what}?`, { modal: true, detail: 'It is moved to the trash.' }, 'Delete')) !== 'Delete') return;
-      for (const u of uris) await vscode.workspace.fs.delete(u, { recursive: true, useTrash: true });
+      for (const u of uris) {
+        const done = await deleteWithFallback(u, (t, useTrash) => vscode.workspace.fs.delete(t, { recursive: true, useTrash }), async () =>
+          (await vscode.window.showWarningMessage(`Delete ${path.posix.basename(u.path)} permanently?`, { modal: true, detail: 'This location has no trash, so the deletion cannot be undone.' }, 'Delete Permanently')) === 'Delete Permanently');
+        if (done === 'cancelled') break;
+      }
       sidebar.refresh();
     }),
     cmd('httpme.revealInExplorer', (a?: Arg) => vscode.commands.executeCommand('revealInExplorer', uriOf(a ?? view.selection[0]))),

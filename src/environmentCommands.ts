@@ -1,5 +1,6 @@
 // command Environment + status bar "◉ Environment: <nama>" (lem tipis VS Code); logika file di environments.ts
 import * as vscode from 'vscode';
+import { deleteWithFallback } from './trash';
 import { createEnvironment, ENV_DIR, fromPostmanEnvironment, statusText, stepEnvironment, withKey, type EnvVar } from './environments';
 import { GLOBALS, type Environments } from './envState';
 import { ENV_VIEW, focusVariable, openCompare, setValue, type FocusMode } from './environmentEditor';
@@ -149,7 +150,8 @@ export function registerEnvironmentCommands(envs: Environments, refreshTree: () 
       if (!name) return;
       if (!confirmed && (await vscode.window.showWarningMessage(`Delete Environment "${name}"?`, { modal: true, detail: `${ENV_DIR}/${name}.json is moved to the trash. Its secrets and current values on this computer are removed.` }, 'Delete')) !== 'Delete') return;
       const vars = await envs.vars(name).catch(() => [] as EnvVar[]); // file rusak tetap boleh dihapus
-      await vscode.workspace.fs.delete(envs.uriOf(name)!, { useTrash: true });
+      await deleteWithFallback(envs.uriOf(name)!, (t, useTrash) => vscode.workspace.fs.delete(t, { useTrash }), async () =>
+        (await vscode.window.showWarningMessage(`Delete Environment "${name}" permanently?`, { modal: true, detail: 'This location has no trash, so the deletion cannot be undone.' }, 'Delete Permanently')) === 'Delete Permanently');
       for (const x of vars) if (x.secret) await envs.setSecret(name, x.key, undefined);
       await envs.resetCurrent(name);
       if (envs.active === name) await envs.setActive(undefined);
