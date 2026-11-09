@@ -1363,6 +1363,11 @@
         "mac": "cmd+alt+shift+e"
       },
       {
+        "command": "httpme.openDashboard",
+        "key": "ctrl+alt+d",
+        "mac": "cmd+alt+d"
+      },
+      {
         "command": "httpme.delete",
         "key": "delete",
         "mac": "cmd+backspace",

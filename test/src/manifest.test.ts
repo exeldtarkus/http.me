@@ -218,3 +218,13 @@ test('Delete / Rename / Duplicate Environment tidak muncul untuk Globals dan No 
     assert.ok(!re.test('httpmeGlobals') && !re.test('httpmeNoEnvironment'), m.command);
   }
 });
+
+test('Open Dashboard punya shortcut Ctrl+Alt+D / Cmd+Alt+D tanpa bentrok dengan keybinding lain', () => {
+  const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
+  const kbs = pkg.contributes.keybindings as { command: string; key: string; mac?: string; when?: string }[];
+  const k = kbs.find((x) => x.command === 'httpme.openDashboard');
+  assert.ok(k, 'keybinding httpme.openDashboard');
+  assert.equal(k.key, 'ctrl+alt+d');
+  assert.equal(k.mac, 'cmd+alt+d');
+  assert.equal(kbs.filter((x) => x.key === k.key && x.when === k.when).length, 1);
+});
