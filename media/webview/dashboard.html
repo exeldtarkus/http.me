@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src 'nonce-{{nonce}}';">
+<style>
+  :root {
+    --fg: var(--vscode-foreground); --muted: var(--vscode-descriptionForeground); --line: var(--vscode-panel-border, #8884);
+    --bg: var(--vscode-editor-background); --raise: var(--vscode-sideBar-background, var(--bg));
+    --hover: var(--vscode-toolbar-hoverBackground, #8882); --accent: var(--vscode-button-background); --accent-fg: var(--vscode-button-foreground);
+    --focus: var(--vscode-focusBorder); --mono: var(--vscode-editor-font-family, monospace);
+    --ok: var(--vscode-charts-green, #4ec27a); --warn: var(--vscode-editorWarning-foreground, #e2b34a); --err: var(--vscode-errorForeground, #f2676b);
+    --blue: var(--vscode-charts-blue, #3794ff); --orange: var(--vscode-charts-orange, #d18616); --purple: var(--vscode-charts-purple, #b180d7);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 14px 18px 28px; color: var(--fg); background: var(--bg); font-family: var(--vscode-font-family); font-size: 13px; line-height: 1.45; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  :focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
+  .head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 4px; }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  .sub { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+  .spacer { flex: 1; }
+  .btn { border: 1px solid transparent; border-radius: 4px; padding: 3px 12px; background: var(--hover); }
+  .btn:hover { background: color-mix(in srgb, var(--fg) 14%, transparent); }
+  .btn.pri { background: var(--accent); color: var(--accent-fg); }
+  .btn.ghost { background: transparent; border-color: var(--line); }
+  .btn.sm { padding: 0 8px; font-size: 12px; }
+  .btn.danger:hover { color: var(--err); border-color: var(--err); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; align-items: start; }
+  .card { border: 1px solid var(--line); border-radius: 6px; background: var(--raise); padding: 12px 14px; }
+  .card h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .card h2 .n { margin-left: auto; font-weight: 400; color: var(--muted); font-size: 12px; }
+  .tiles { display: flex; gap: 8px; margin-bottom: 10px; }
+  .tile { flex: 1; padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); }
+  .tile b { display: block; font-size: 20px; font-weight: 600; line-height: 1.2; }
+  .tile span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  .tile.warn b { color: var(--warn); }
+  .bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--hover); margin: 4px 0 6px; }
+  .bar i { display: block; background: var(--c); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .legend span::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--c); margin-right: 4px; }
+  .GET { --c: var(--blue); } .POST { --c: var(--ok); } .PUT { --c: var(--orange); } .PATCH { --c: var(--purple); } .DELETE { --c: var(--err); } .other { --c: var(--muted); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li.row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+  li.row:first-child { border-top: 0; }
+  li.row:hover { background: var(--hover); }
+  .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); flex: none; }
+  .dot.on { background: var(--ok); }
+  .pill { font-size: 11px; padding: 0 7px; border-radius: 9px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+  .pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+  .grow { flex: 1; min-width: 70px; }
+  li.row.two { flex-wrap: wrap; }
+  li.row.two .meta { order: 9; flex-basis: 100%; margin: -2px 0 0 16px; font-size: 11px; }
+  .btn { white-space: nowrap; }
+  .mini { display: flex; width: 70px; height: 6px; border-radius: 3px; overflow: hidden; background: var(--hover); flex: none; }
+  .mini i { background: var(--c); }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .empty { color: var(--muted); padding: 6px 0; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="head"><h1>http.me Dashboard</h1><span class="spacer"></span><button type="button" class="btn ghost" id="refresh">Refresh</button></div>
+<p class="sub" id="sub">Loading…</p>
+<div class="grid">
+  <section class="card" aria-labelledby="hc"><h2 id="hc">Collections <span class="n" id="cn"></span></h2><div id="collections"></div>
+    <div class="actions"><button type="button" class="btn pri" data-cmd="newRequest">New Request</button><button type="button" class="btn ghost" data-cmd="import">Import…</button><button type="button" class="btn ghost" data-cmd="focusCollections">Show in sidebar</button></div></section>
+  <section class="card" aria-labelledby="he"><h2 id="he">Environments <span class="n" id="en"></span></h2><div id="environments"></div>
+    <div class="actions"><button type="button" class="btn pri" data-cmd="newEnvironment">New Environment</button><button type="button" class="btn ghost" data-cmd="compareEnvironments">All Environments</button></div></section>
+  <section class="card" aria-labelledby="hk"><h2 id="hk">Cookies <span class="n" id="kn"></span></h2><div id="cookies"></div></section>
+</div>
+<script nonce="{{nonce}}" src="dashboard.js"></script>
+</body>
+</html>

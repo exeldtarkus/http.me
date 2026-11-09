@@ -598,6 +598,12 @@
         "command": "httpme.deleteSelectedCookie",
         "title": "Delete Selected Cookie",
         "category": "http.me"
+      },
+      {
+        "command": "httpme.openDashboard",
+        "title": "Open Dashboard",
+        "category": "http.me",
+        "icon": "$(dashboard)"
       }
     ],
     "customEditors": [
@@ -1017,6 +1023,11 @@
           "command": "httpme.clearCookies",
           "when": "view == httpme.cookies",
           "group": "navigation@3"
+        },
+        {
+          "command": "httpme.openDashboard",
+          "when": "view == httpme.sidebar",
+          "group": "more@1"
         }
       ],
       "view/item/context": [
