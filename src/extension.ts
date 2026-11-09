@@ -129,8 +129,8 @@ function authEnvironmentHooks(envs: Environments): vscode.Disposable {
 function variableHooks(envs: Environments): vscode.Disposable {
   return setVarHooks({
     onChange: envs.onDidChange,
-    async resolve(r, scriptVars) {
-      const scopes = await envs.scopes(r.vars);
+    async resolve(r, scriptVars, file) {
+      const scopes = await envs.scopes(r.vars, file);
       const res = resolveRequest(r, scriptVars?.size ? [{ source: 'script', values: scriptVars }, ...scopes] : scopes);
       return { ...res, env: envs.active, secrets: await envs.secretValues() };
     },

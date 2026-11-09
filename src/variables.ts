@@ -1,5 +1,6 @@
 // {{variable}} di editor VS Code (lem tipis): Diagnostics "http.me", Quick Fix, Hover, Definition / Peek, References, autocomplete {{.
 // Inti (token, status, pesan, hover) di diagnostics.ts; hanya dokumen yang terbuka yang dicek (hemat RAM).
+import { collectionScope } from './collectionVars';
 import * as vscode from 'vscode';
 import {
   completionNames, diagnoseEnvironmentJson, diagnoseHttp, fileVariables, findKeyInJson, findReferences, findVarTokens, hoverInfo, hoverMarkdown,
@@ -45,7 +46,13 @@ export function registerVariables(envs: Environments): vscode.Disposable {
       }));
     }
     if (!isHttp(doc) && !isScript(doc)) return;
-    const c = await context();
+    let c = await context();
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (root && doc.uri.scheme === 'file') {
+      // variable collection (_variables.json) dianggap terdefinisi: tidak ditandai "missing" (shortcut: label hover tetap Globals)
+      const col = await collectionScope(root, doc.uri.fsPath).catch((e) => { log().error(errorLine('variables.collection', e)); return undefined; });
+      if (col) c = { ...c, globals: new Map([...col.values, ...c.globals]) };
+    }
     collection.set(doc.uri, diagnoseHttp(doc.getText(), c, isScript(doc)).map((d) => {
       const x = new vscode.Diagnostic(rangeOf(doc, d), d.message, vscode.DiagnosticSeverity.Error);
       x.source = 'http.me';

@@ -6,6 +6,7 @@ import {
   ENV_DIR, environmentValues, keyMismatch, listEnvironments, mismatchMessage, parseEnvironment, readEnvironment, serializeEnvironment, syncKeys,
   writeEnvironment, type EnvVar,
 } from './environments';
+import { collectionScope } from './collectionVars';
 import { fileScope, type Scope } from './vars';
 import type { VarContext } from './diagnostics';
 import type { ParsedRequest } from './httpFile';
@@ -169,11 +170,20 @@ export class Environments {
     };
   }
 
-  /** scope untuk Send: variabel file → Environment aktif → Globals (script & collection menyusul di fase berikutnya) */
-  async scopes(fileVars: ParsedRequest['vars']): Promise<Scope[]> {
+  /** scope untuk Send: variabel file → Environment aktif → variable collection (`_variables.json`) → Globals */
+  async scopes(fileVars: ParsedRequest['vars'], httpFile?: string): Promise<Scope[]> {
     const out: Scope[] = [fileScope(fileVars)];
     const active = this.active;
     if (active && (await this.names()).includes(active)) out.push({ source: 'environment', name: active, values: await this.values(active) });
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (httpFile && root) {
+      try {
+        const col = await collectionScope(root, httpFile);
+        if (col) out.push(col);
+      } catch (e) {
+        log().error(errorLine('Environments.scopes _variables.json', e)); // file rusak: variable collection dilewati, Send tetap jalan
+      }
+    }
     out.push({ source: 'globals', values: await this.values(GLOBALS) });
     return out;
   }

@@ -184,7 +184,8 @@ export const onRunnerChange = (l: () => void): vscode.Disposable => (listeners.a
 /** variable {{…}}: diisi extension.ts (Environment, Globals); tanpa hook request dikirim apa adanya */
 export type VarHooks = {
   /** scriptVars: httpme.vars dari script pre (prioritas tertinggi) */
-  resolve(r: ParsedRequest, scriptVars?: ReadonlyMap<string, string>): Promise<{ request: ParsedRequest; nulls: string[]; env?: string; secrets: string[] }>;
+  /** file: path .http asal request (mencari `_variables.json` collection) */
+  resolve(r: ParsedRequest, scriptVars?: ReadonlyMap<string, string>, file?: string): Promise<{ request: ParsedRequest; nulls: string[]; env?: string; secrets: string[] }>;
   /** httpme.environment untuk script: nilai Environment aktif + simpan current value; undefined = tidak ada Environment aktif */
   scriptEnv(): Promise<{ values: ReadonlyMap<string, string | null>; save(changes: ReadonlyMap<string, string | undefined>): Promise<void> } | undefined>;
   /** warna token di panel: nama yang punya nilai / NULL (sisanya = tidak ditemukan) */
@@ -231,7 +232,7 @@ async function postCookies(panel: vscode.WebviewPanel, key: string): Promise<voi
     const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === key);
     if (!doc) return;
     const parsed = parseRequest(doc.getText());
-    const url = hooks ? (await hooks.resolve(parsed)).request.url : parsed.url;
+    const url = hooks ? (await hooks.resolve(parsed, undefined, doc.uri.fsPath)).request.url : parsed.url;
     const list = cookieFlags(parsed).send ? await session.forUrl(url) : [];
     void panel.webview.postMessage({ type: 'reqCookies', list: list.map((c) => ({ ...c, value: maskCookie(c.value) })), off: !cookieFlags(parsed).send });
   } catch (e) {
@@ -254,7 +255,7 @@ async function sendLogin(uri: string): Promise<HttpResponse> {
   const text = blocks.length > 1 ? (blocks.find((b) => parseRequest(b.text).login) ?? blocks[0]).text : doc.getText();
   let parsed = parseRequest(text);
   if (hooks) {
-    const r = await hooks.resolve(parsed);
+    const r = await hooks.resolve(parsed, undefined, doc.uri.fsPath);
     if (r.nulls.length) throw new Error(`Login request needs ${r.nulls.join(', ')} (NULL)`);
     parsed = r.request;
   }
@@ -511,8 +512,8 @@ async function handleOAuth(doc: vscode.TextDocument, kind: 'oauth2Token' | 'oaut
   try {
     if (!Number.isInteger(index)) throw new Error('Invalid Authorization request index.');
     const own = authRequestAt(doc, index as number);
-    const resolved = hooks ? await hooks.resolve(own) : { request: own, env: undefined as string | undefined };
-    const auth = await resolveRequestAuth(doc.uri, resolved.request, async (x) => (await hooks?.resolve(x))?.request ?? x);
+    const resolved = hooks ? await hooks.resolve(own, undefined, doc.uri.fsPath) : { request: own, env: undefined as string | undefined };
+    const auth = await resolveRequestAuth(doc.uri, resolved.request, async (x) => (await hooks?.resolve(x, undefined, doc.uri.fsPath))?.request ?? x);
     if (auth.type !== 'oauth2') throw new Error('Choose OAuth 2.0 in the Authorization tab first.');
     if (kind === 'oauth2Clear') {
       await oauthStore?.delete(oauthKey(auth.fields, resolved.env));
@@ -541,7 +542,7 @@ export async function handleSnippet(doc: vscode.TextDocument, kind: 'snippet' | 
   if (!isSnippetOptions(opts)) throw new Error('Invalid snippet options.');
   let r = req;
   let secrets: string[] = [];
-  if (opts.resolve && hooks) { const x = await hooks.resolve(req); r = x.request; secrets = [...x.secrets]; }
+  if (opts.resolve && hooks) { const x = await hooks.resolve(req, undefined, doc.uri.fsPath); r = x.request; secrets = [...x.secrets]; }
   let jar: string | undefined;
   if (opts.cookies && session) {
     const list = await session.forUrl(r.url);
@@ -624,7 +625,7 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
   let envName: string | undefined;
   let result: { status: number; ms: number } | undefined;
   if (hooks) {
-    const r = await hooks.resolve(original);
+    const r = await hooks.resolve(original, undefined, doc.uri.fsPath);
     if (r.nulls.length) {
       const pick = await nullPrompt(r.nulls, r.env);
       if (pick === 'fill') return void await vscode.commands.executeCommand('httpme.gotoVariable', r.nulls[0], 'fill');
@@ -693,7 +694,7 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
         if (out.skipped) { scripts.skippedNote = 'Request skipped by a pre-request script.'; throw new ScriptFailure(scripts.skippedNote); }
         // variable diselesaikan ulang: nilai dari httpme.vars / httpme.environment.set ikut terpakai
         const changed = applyScriptRequest(original, ctx!.request);
-        const again = await hooks?.resolve(changed, ctx!.vars);
+        const again = await hooks?.resolve(changed, ctx!.vars, doc.uri.fsPath);
         parsed = again?.request ?? changed;
         secrets = [...secrets, ...(again?.secrets ?? [])]; // secret baru dari script ikut di-mask
       }
@@ -703,7 +704,7 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
       let r: SendableRequest = toHttpRequest(parsed);
       // Authorization di header (tanpa # @auth) dikirim apa adanya; selain itu auth request / _auth.http terdekat
       const ownHeader = parsed.auth === undefined && parsed.headers.some((h) => h.enabled && h.name.toLowerCase() === 'authorization');
-      const auth = ownHeader ? headerAuth(parsed.headers) : await resolveRequestAuth(doc.uri, parsed, async (x) => (await hooks?.resolve(x))?.request ?? x);
+      const auth = ownHeader ? headerAuth(parsed.headers) : await resolveRequestAuth(doc.uri, parsed, async (x) => (await hooks?.resolve(x, undefined, doc.uri.fsPath))?.request ?? x);
       if (auth?.type === 'oauth2') {
         const t = await oauthToken(auth.fields, envName, signal);
         secrets = [...secrets, t.access_token]; // token ikut di-mask di log / pesan error
