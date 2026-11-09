@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { closeTargets, arrangeOpen, defaultFileName, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED, busyTracker } from '../../src/sidebarModel';
+import { closeTargets, unsavedPrompt, arrangeOpen, defaultFileName, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED, busyTracker } from '../../src/sidebarModel';
 
 test('folderChildren: folder dulu lalu file, urut nama; folder kosong (.httpmekeep) ikut; tampilan rata', () => {
   const files = ['api/auth/login.http', 'api/users.http', 'b.http', 'a.http'];
@@ -84,4 +84,12 @@ test('closeTargets: Close All Unpinned melewati tab yang di-pin, Close All (incl
   assert.deepEqual(closeTargets(tabs, ['file:///a.http'], false), [tabs[1], tabs[2]]);
   assert.deepEqual(closeTargets(tabs, ['file:///a.http'], true), tabs);
   assert.deepEqual(closeTargets(tabs, [], false), tabs);
+});
+
+test('unsavedPrompt: satu request = tanya nama file; banyak = jumlah + daftar (maks 5, sisanya "and N more")', () => {
+  assert.deepEqual(unsavedPrompt(['a.http']), { message: 'Do you want to save the changes to "a.http"?', detail: "Your changes will be lost if you don't save them." });
+  const many = unsavedPrompt(['a.http', 'b.http', 'c.http', 'd.http', 'e.http', 'f.http', 'g.http']);
+  assert.equal(many.message, '7 requests have unsaved changes. Save them before closing?');
+  assert.equal(many.detail, 'a.http\nb.http\nc.http\nd.http\ne.http\nand 2 more');
+  assert.equal(unsavedPrompt(['a.http', 'b.http']).detail, 'a.http\nb.http');
 });

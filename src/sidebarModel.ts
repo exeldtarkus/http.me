@@ -104,3 +104,10 @@ export function busyTracker(start: () => () => void): <T>(p: Promise<T>) => Prom
 /** tab yang ditutup: semua (`includePinned`) atau hanya yang URI-nya tidak di-pin */
 export const closeTargets = <T extends { uri: string | undefined }>(tabs: readonly T[], pinned: readonly string[], includePinned: boolean): T[] =>
   tabs.filter((t) => includePinned || !t.uri || !pinned.includes(t.uri));
+
+/** teks dialog "simpan dulu?" untuk tab request yang belum disimpan saat ditutup (satu nama = tanya file itu; banyak = ringkasan + daftar maks 5) */
+export function unsavedPrompt(names: string[]): { message: string; detail: string } {
+  if (names.length === 1) return { message: `Do you want to save the changes to "${names[0]}"?`, detail: "Your changes will be lost if you don't save them." };
+  const shown = names.slice(0, 5);
+  return { message: `${names.length} requests have unsaved changes. Save them before closing?`, detail: [...shown, ...(names.length > 5 ? [`and ${names.length - 5} more`] : [])].join('\n') };
+}

@@ -7,7 +7,7 @@ import { exportCollection } from './exportCommand';
 import { importableFiles } from './importFetch';
 import * as path from 'node:path';
 import {
-  arrangeOpen, busyTracker, closeTargets, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED,
+  arrangeOpen, busyTracker, closeTargets, unsavedPrompt, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED,
   type OpenTab, type RequestSummary, type SidebarMode,
 } from './sidebarModel';
 import { createFolder, dropKeepIfUsed, duplicateFile, KEEP_FILE, siblingName } from './store';
@@ -572,6 +572,33 @@ export class Sidebars {
   openTabs() { return this.sections.open.openTabs(); }
 }
 
+const isHttpmeTab = (t: vscode.Tab): boolean => {
+  const input = t.input;
+  return (input instanceof vscode.TabInputText || input instanceof vscode.TabInputCustom) && isHttpmeFile(input.uri);
+};
+
+/** tab http.me yang belum disimpan: dialog Save All / Don't Save / Cancel sebelum ditutup. Kembalikan tab yang boleh ditutup
+ *  (semua bila Don't Save / tidak ada yang kotor; kosong bila Cancel; tab yang gagal / batal disimpan tetap terbuka) */
+async function confirmUnsaved(tabs: readonly vscode.Tab[]): Promise<vscode.Tab[]> {
+  const dirty = tabs.filter((t) => t.isDirty && isHttpmeTab(t));
+  if (!dirty.length) return [...tabs];
+  const uriOfTab = (t: vscode.Tab) => (t.input as { uri: vscode.Uri }).uri;
+  const names = dirty.map((t) => (uriOfTab(t).scheme === 'untitled' ? path.posix.basename(uriOfTab(t).path) : vscode.workspace.asRelativePath(uriOfTab(t), multiRoot())));
+  const { message, detail } = unsavedPrompt(names);
+  const pick = await vscode.window.showWarningMessage(message, { modal: true, detail }, 'Save', "Don't Save");
+  if (!pick) return []; // Cancel
+  if (pick === 'Save') {
+    for (const t of dirty) {
+      const u = uriOfTab(t);
+      if (u.scheme === 'untitled') await vscode.commands.executeCommand('httpme.saveUntitled', u);
+      else await (await vscode.workspace.openTextDocument(u)).save();
+    }
+    const still = new Set<string | undefined>(vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.isDirty).map((t) => uriOfTab(t)?.toString()));
+    return tabs.filter((t) => !still.has((t.input as { uri?: vscode.Uri } | undefined)?.uri?.toString()));
+  }
+  return [...tabs];
+}
+
 export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments, cookies: Cookies): { sidebar: Sidebars; disposable: vscode.Disposable } {
   const make = (mode: SidebarMode, dnd: boolean): Sidebar => {
     const s = new Sidebar(ctx.workspaceState, envs, cookies, mode);
@@ -785,7 +812,8 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
     cmd('httpme.closeTab', async (a?: Arg) => {
       const u = uriOf(a)?.toString();
       const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => (t.input as { uri?: vscode.Uri } | undefined)?.uri?.toString() === u);
-      if (tabs.length) await vscode.window.tabGroups.close(tabs);
+      const close = await confirmUnsaved(tabs);
+      if (close.length) await vscode.window.tabGroups.close(close);
     }),
     cmd('httpme.pinTab', async (a?: Arg) => {
       const u = uriOf(a)?.toString();
@@ -806,10 +834,14 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
       if (u?.scheme === 'file') await view.reveal({ kind: 'file', uri: u }, { select: true, focus: true, expand: true });
     }),
     cmd('httpme.saveAll', () => vscode.commands.executeCommand('workbench.action.files.saveAll')),
-    cmd('httpme.closeAll', () => vscode.commands.executeCommand('workbench.action.closeAllEditors')),
+    cmd('httpme.closeAll', async () => {
+      const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => isHttpmeTab(t));
+      if ((await confirmUnsaved(mine)).length === mine.length) await vscode.commands.executeCommand('workbench.action.closeAllEditors'); // batal / simpan dibatalkan: tidak ada yang ditutup
+    }),
     cmd('httpme.closeAllUnpinned', async () => {
       const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).map((t) => ({ tab: t, uri: (t.input as { uri?: vscode.Uri } | undefined)?.uri?.toString() }));
-      const close = closeTargets(tabs, ctx.workspaceState.get<string[]>(OPEN_PINNED, []), false).map((x) => x.tab);
+      const targets = closeTargets(tabs, ctx.workspaceState.get<string[]>(OPEN_PINNED, []), false).map((x) => x.tab);
+      const close = await confirmUnsaved(targets);
       if (close.length) await vscode.window.tabGroups.close(close);
     }),
   );
