@@ -6,6 +6,11 @@ export type Release = { version: string; date: string; items: ReleaseItem[] };
 /** catatan rilis halaman What's New, terbaru di atas; wajib ada entri baru tiap rilis MINOR */
 export const RELEASES: Release[] = [
   {
+    version: '1.0.3', date: '2026-11-09', items: [
+      { kind: 'new', title: 'First release on the VS Code Marketplace and Open VSX', detail: 'Versions 1.0.0 to 1.0.2 were built but not published. Everything listed under v1.0.0 is in this release.' },
+    ],
+  },
+  {
     version: '1.0.0', date: '2026-11-09', items: [
       { kind: 'new', title: 'Dashboard', detail: 'Collections, Environments and Cookies on one page. Open it with Ctrl+Alt+D (Cmd+Alt+D on macOS).' },
       { kind: 'new', title: 'Environments and variables', detail: 'NULL for unfilled values, Globals, collection variables, secret values in SecretStorage, and import / export of http-client.env.json.' },

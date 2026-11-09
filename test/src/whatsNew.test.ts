@@ -17,7 +17,7 @@ test('isNewerVersion: semua kenaikan versi (termasuk patch) memunculkan halaman'
   assert.equal(isNewerVersion('0.10.0', '0.9.0'), true, 'bandingkan angka, bukan teks');
 });
 
-test('RELEASES: terbaru di atas, tanggal & item terisi, tidak lebih baru dari package.json', () => {
+test('RELEASES: terbaru di atas, tanggal & item terisi, paling jauh satu langkah di depan package.json', () => {
   const num = (v: string) => v.split('.').map(Number).reduce((a, n) => a * 1000 + n, 0);
   assert.ok(RELEASES.length > 0);
   for (let i = 1; i < RELEASES.length; i++) assert.ok(num(RELEASES[i - 1].version) > num(RELEASES[i].version), RELEASES[i].version);
@@ -25,7 +25,10 @@ test('RELEASES: terbaru di atas, tanggal & item terisi, tidak lebih baru dari pa
     assert.match(r.date, /^\d{4}-\d{2}-\d{2}$/);
     assert.ok(r.items.length > 0, r.version);
   }
-  assert.ok(num(RELEASES[0].version) <= num(pkg.version), 'entri terbaru melebihi versi package.json');
+  // `npm run deploy` menjalankan test SEBELUM menaikkan versi: entri rilis berikutnya (patch / minor / major +1) boleh sudah ada
+  const [a, b, c] = pkg.version.split('.').map(Number);
+  const next = [`${a}.${b}.${c + 1}`, `${a}.${b + 1}.0`, `${a + 1}.0.0`].map(num);
+  assert.ok(num(RELEASES[0].version) <= num(pkg.version) || next.includes(num(RELEASES[0].version)), `entri terbaru v${RELEASES[0].version} terlalu jauh dari package.json ${pkg.version}`);
 });
 
 test('halaman: versi terpasang, rilis terbaru terbuka, lama terlipat, teks di-escape, tanpa script', () => {
