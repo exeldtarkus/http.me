@@ -6,6 +6,17 @@ export type Release = { version: string; date: string; items: ReleaseItem[] };
 /** catatan rilis halaman What's New, terbaru di atas; wajib ada entri baru tiap rilis MINOR */
 export const RELEASES: Release[] = [
   {
+    version: '1.1.0', date: '2026-11-09', items: [
+      { kind: 'new', title: 'History in the Dashboard', detail: 'A History tab with filters by text and date. Click a request to open it with its saved response and the time it was executed; every entry opens in the same unsaved history.http tab.' },
+      { kind: 'new', title: 'Backups of History and unsaved requests', detail: 'Saved automatically to exports/history-backup and exports/temp-backup (once a day, or when they grow by 2 MB). Use the Backups tab or "http.me: Back Up History and Temp Now" to back up, and "http.me: Import History or Temp Backup…" to restore.' },
+      { kind: 'new', title: 'Set Active button in the Dashboard', detail: 'Every Environment that is not active now shows a visible Set Active button.' },
+      { kind: 'improved', title: 'History keeps response headers', detail: 'Set-Cookie is never stored.' },
+      { kind: 'improved', title: 'Response panel follows a slow request', detail: 'When an older request finishes after you sent another one, the Response panel switches to its result.' },
+      { kind: 'fixed', title: 'A running request no longer loses its response when you switch tabs' },
+      { kind: 'fixed', title: 'Close All in Open asks to save unsaved requests', detail: 'Applies to Close All, Close All Unpinned and the close button on a single tab.' },
+    ],
+  },
+  {
     version: '1.0.4', date: '2026-11-09', items: [
       { kind: 'new', title: 'Request timeout setting', detail: 'Set how long a request may run with the httpme.request.timeout setting, or run "http.me: Set Request Timeout…" from the Command Palette. A "# @timeout" line in a request still overrides it.' },
       { kind: 'improved', title: 'Longer default timeout', detail: 'Requests now time out after 10 minutes instead of 30 seconds.' },
