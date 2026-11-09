@@ -208,6 +208,16 @@
         "category": "http.me"
       },
       {
+        "command": "httpme.moveUp",
+        "title": "Move Up",
+        "category": "http.me"
+      },
+      {
+        "command": "httpme.moveDown",
+        "title": "Move Down",
+        "category": "http.me"
+      },
+      {
         "command": "httpme.delete",
         "title": "Delete",
         "category": "http.me"
@@ -758,6 +768,14 @@
           "when": "false"
         },
         {
+          "command": "httpme.moveUp",
+          "when": "false"
+        },
+        {
+          "command": "httpme.moveDown",
+          "when": "false"
+        },
+        {
           "command": "httpme.delete",
           "when": "false"
         },
@@ -1128,6 +1146,16 @@
           "command": "httpme.duplicate",
           "when": "view == httpme.sidebar && viewItem == httpmeFile",
           "group": "3_edit@2"
+        },
+        {
+          "command": "httpme.moveUp",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpme(File|Folder)$/",
+          "group": "3_order@1"
+        },
+        {
+          "command": "httpme.moveDown",
+          "when": "view == httpme.sidebar && viewItem =~ /^httpme(File|Folder)$/",
+          "group": "3_order@2"
         },
         {
           "command": "httpme.delete",

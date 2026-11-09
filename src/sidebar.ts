@@ -10,6 +10,8 @@ import {
   arrangeOpen, busyTracker, closeTargets, unsavedPrompt, filterFiles, folderChildren, moveInOrder, openChildren, requestSummary, UNTITLED,
   type OpenTab, type RequestSummary, type SidebarMode,
 } from './sidebarModel';
+import { applyOrder, ORDER_FILE, readOrder, type OrderMap } from './collectionOrder';
+import { reorderChild } from './orderCommand';
 import { createFolder, dropKeepIfUsed, duplicateFile, KEEP_FILE, siblingName } from './store';
 import { splitBlocks, parseRequest } from './httpFile';
 import { toCurl } from './curl';
@@ -206,6 +208,17 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
     return filterFiles(items, this.filter).map((i) => i.uri);
   }
 
+  /** urutan kustom dari `.httpme/order.json`; file rusak / tak terbaca = urutan default (error dilaporkan) */
+  private async order(root: vscode.WorkspaceFolder): Promise<OrderMap> {
+    if (root.uri.scheme !== 'file') return {};
+    try {
+      return await readOrder(root.uri.fsPath);
+    } catch (e) {
+      reportError('sidebar.order', e, `http.me: ${errMsg(e)}`);
+      return {};
+    }
+  }
+
   private async collectionChildren(n?: Node): Promise<Node[]> {
     if (n?.kind === 'file' || n?.kind === 'empty') return [];
     const { files: all, keep } = await this.list();
@@ -220,9 +233,10 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
     const rel = files.filter(inRoot).map((u) => this.relOf(root, u));
     const keepDirs = this.filter ? [] : keep.filter(inRoot).map((u) => path.posix.dirname(this.relOf(root, u))).filter((d) => d !== '.');
     const kids = folderChildren(rel, keepDirs, folder?.rel ?? '', false);
+    const saved = (await this.order(root))[folder?.rel ?? ''];
     const out: Node[] = [
-      ...kids.folders.map((r): Folder => ({ kind: 'folder', root, rel: r })),
-      ...kids.files.map((r): File => ({ kind: 'file', uri: vscode.Uri.joinPath(root.uri, r) })),
+      ...applyOrder(kids.folders, path.posix.basename, saved).map((r): Folder => ({ kind: 'folder', root, rel: r })),
+      ...applyOrder(kids.files, path.posix.basename, saved).map((r): File => ({ kind: 'file', uri: vscode.Uri.joinPath(root.uri, r) })),
     ];
     // folder kosong: pesan + Add request / Add folder
     if (folder && folder.rel && !out.length && !this.filter) {
@@ -477,6 +491,16 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
     data.set('text/uri-list', new vscode.DataTransferItem(uris.map(String).join('\r\n')));
   }
 
+  /** true bila semua `uris` file .http se-folder dengan `before` (urutan diubah); false = bukan reorder, lanjut jadi pindah */
+  private async reorderOnDrop(uris: vscode.Uri[], before: vscode.Uri): Promise<boolean> {
+    const root = vscode.workspace.getWorkspaceFolder(before);
+    const dir = path.posix.dirname(before.path);
+    if (!root || root.uri.scheme !== 'file' || !uris.length || !uris.every((u) => /\.http$/i.test(u.path) && path.posix.dirname(u.path) === dir)) return false;
+    // urut dari yang paling atas supaya beberapa file terpilih tetap berurutan di depan target
+    for (const u of uris) await reorderChild(root.uri.fsPath, path.posix.relative(root.uri.path, u.path), { before: path.posix.basename(before.path) });
+    return true;
+  }
+
   async handleDrop(target: Node | undefined, data: vscode.DataTransfer): Promise<void> {
     const own = data.get(TREE_MIME)?.value as string[] | undefined;
     const list = own ?? (await data.get('text/uri-list')?.asString())?.split(/\r?\n/).filter(Boolean) ?? [];
@@ -488,6 +512,8 @@ export class Sidebar implements vscode.TreeDataProvider<Node>, vscode.TreeDragAn
       await this.state.update(OPEN_ORDER, moveInOrder(shown, uris.map(String), to));
       return this.redraw();
     }
+    // file .http dilepas di atas file saudaranya (satu folder): urutan Collections diubah, bukan dipindah
+    if (own && target?.kind === 'file' && await this.reorderOnDrop(uris, target.uri)) return this.redraw();
     // file spec / collection dari luar (Explorer, OS): diimpor, bukan dipindah
     const specs = own ? [] : importableFiles(list).map((u) => vscode.Uri.parse(u));
     if (specs.length) return void vscode.commands.executeCommand('httpme.import', 'file', specs); // tidak ditunggu: preview menunggu user
@@ -624,8 +650,10 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
   // watcher: file .http / .httpmekeep dibuat / dihapus / di-rename dari luar (git pull, Explorer)
   let timer: ReturnType<typeof setTimeout> | undefined;
   const rescan = () => { clearTimeout(timer); timer = setTimeout(() => sidebar.refresh(), 200); };
-  const watchers = [vscode.workspace.createFileSystemWatcher('**/*.http'), vscode.workspace.createFileSystemWatcher(`**/${KEEP_FILE}`)];
-  for (const w of watchers) { w.onDidCreate(rescan); w.onDidDelete((u) => { sidebar.invalidate(u); rescan(); }); w.onDidChange((u) => { sidebar.invalidate(u); sidebar.redraw(); }); }
+  const orderWatcher = vscode.workspace.createFileSystemWatcher(`**/${ORDER_FILE}`); // urutan diubah dari Dashboard / git pull
+  for (const ev of [orderWatcher.onDidCreate, orderWatcher.onDidDelete, orderWatcher.onDidChange]) ev(() => sidebar.redraw());
+  const watchers = [vscode.workspace.createFileSystemWatcher('**/*.http'), vscode.workspace.createFileSystemWatcher(`**/${KEEP_FILE}`), orderWatcher];
+  for (const w of watchers.slice(0, 2)) { w.onDidCreate(rescan); w.onDidDelete((u) => { sidebar.invalidate(u); rescan(); }); w.onDidChange((u) => { sidebar.invalidate(u); sidebar.redraw(); }); }
 
   // Open: ikut tab / dirty / save tanpa polling
   let openTimer: ReturnType<typeof setTimeout> | undefined;
@@ -732,6 +760,12 @@ export function registerSidebar(ctx: vscode.ExtensionContext, envs: Environments
       if (!(await vscode.workspace.applyEdit(edit))) throw new Error(`${old} could not be renamed`);
       sidebar.refresh();
     }),
+    ...([['httpme.moveUp', -1], ['httpme.moveDown', 1]] as const).map(([id, shift]) => cmd(id, async (a?: Arg) => {
+      const uri = uriOf(a ?? view.selection[0]);
+      const root = uri && vscode.workspace.getWorkspaceFolder(uri);
+      if (!uri || !root || root.uri.scheme !== 'file') return;
+      if (await reorderChild(root.uri.fsPath, path.posix.relative(root.uri.path, uri.path), { shift })) sidebar.refresh();
+    })),
     cmd('httpme.duplicate', async (a?: Arg) => {
       const uri = uriOf(a ?? view.selection[0]);
       if (!uri) return;

@@ -4,6 +4,8 @@ import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { join, relative } from 'node:path';
+import { ORDER_FILE, readOrder } from './collectionOrder';
+import { reorderChild } from './orderCommand';
 import { buildCollectionTree, buildCookieTree, shouldSkipDir, summarizeCollections, summarizeEnvironments } from './dashboard';
 import { KEEP_FILE } from './store';
 import { webviewPage } from './webviewPage';
@@ -33,8 +35,10 @@ async function scan(dir: string, root: string, out: { files: { path: string; tex
 
 async function collect(envs: Environments, cookies: Cookies, historyDir: string) {
   const root = vscode.workspace.workspaceFolders?.[0];
+  const base0 = root?.uri.scheme === 'file' ? root.uri.fsPath : undefined;
   const found = { files: [] as { path: string; text: string }[], keeps: [] as string[] };
   if (root?.uri.scheme === 'file') await scan(root.uri.fsPath, root.uri.fsPath, found);
+  const order = base0 ? await readOrder(base0).catch((e) => { log().error(`dashboard.order - ${errMsg(e)}`); return {}; }) : {}; // file order.json rusak: urutan default
   const sum = summarizeCollections(found.files);
   const names = await envs.names();
   const loaded = await Promise.all(names.map(async (name) => ({ name, vars: await envs.vars(name), values: await envs.values(name) })));
@@ -44,11 +48,11 @@ async function collect(envs: Environments, cookies: Cookies, historyDir: string)
   const jars = await Promise.all((await cookies.environments()).map(async (e) => ({ env: e, cookies: await cookies.jar(e) })));
   const tree = buildCookieTree(jars, Date.now(), maskCookie);
   const history = (await listHistory(historyDir)).map((e) => ({ id: e.id, time: e.time, method: e.method, url: e.url, env: e.env, status: e.status, ms: e.ms, error: e.error, cancelled: e.cancelled, file: e.file ? decodeURIComponent(e.file.split('/').pop() ?? '') : undefined }));
-  const base = root?.uri.scheme === 'file' ? root.uri.fsPath : undefined;
+  const base = base0;
   const backups = base ? (await listBackups(backupDirs())).map((b) => ({ ...b, path: relative(base, b.file).replace(/\\/g, '/') })) : [];
   return {
     type: 'data', workspace: root?.name ?? 'No folder',
-    collections: { tree: buildCollectionTree(found.files, found.keeps), requests: sum.requests, files: sum.files },
+    collections: { tree: buildCollectionTree(found.files, found.keeps, order), requests: sum.requests, files: sum.files },
     environments: { ...env, list: env.environments.length, globals: globals.length },
     cookies: { total: tree.reduce((n, e) => n + e.cookies, 0), tree },
     history: { list: history }, backups: { list: backups, enabled: !!base },
@@ -62,6 +66,8 @@ function uriOf(rel: unknown): vscode.Uri {
   if (typeof rel !== 'string' || rel.split(/[\\/]/).includes('..') || /^([a-zA-Z]:|[\\/])/.test(rel)) throw new Error('Invalid path.');
   return rel ? vscode.Uri.joinPath(root, rel) : root;
 }
+/** root workspace pertama bila di disk (tempat `.httpme/order.json`) */
+const workspaceRoot = (): string | undefined => { const r = vscode.workspace.workspaceFolders?.[0]; return r?.uri.scheme === 'file' ? r.uri.fsPath : undefined; };
 const str = (x: unknown): string | undefined => (typeof x === 'string' ? x : undefined);
 const exec = (cmd: string, ...args: unknown[]) => vscode.commands.executeCommand(cmd, ...args);
 
@@ -99,6 +105,16 @@ function handlers(envs: Environments, cookies: Cookies, historyDir: string): Rec
       return undefined;
     },
     'folder.newRequest': file('httpme.newRequestIn'), 'folder.newFolder': file('httpme.newFolder'), 'folder.rename': file('httpme.rename'), 'folder.reimport': file('httpme.reimportFromSource'), 'folder.export': file('httpme.export'),
+    // urutan Collections: dir -1 / 1 = geser satu langkah; before = letakkan file di atas file lain (se-folder)
+    'order.shift': async (a) => {
+      const root = workspaceRoot();
+      if (root && (a.dir === -1 || a.dir === 1) && typeof a.path === 'string') await reorderChild(root, a.path, { shift: a.dir });
+    },
+    'order.before': async (a) => {
+      const root = workspaceRoot();
+      const from = Array.isArray(a.from) ? a.from.filter((p): p is string => typeof p === 'string') : [];
+      if (root && typeof a.before === 'string') for (const p of from) await reorderChild(root, p, { before: a.before.split('/').pop() ?? '' });
+    },
     move: async (a) => {
       const from = Array.isArray(a.from) ? a.from.map(uriOf) : [];
       if (from.length) await moveInto(from, uriOf(a.to));
@@ -145,7 +161,7 @@ export function registerDashboard(envs: Environments, cookies: Cookies, historyD
     const post = async () => { try { void p.webview.postMessage(await collect(envs, cookies, historyDir)); } catch (e) { reportError('dashboard.collect', e, `http.me: ${errMsg(e)}`); } };
     let timer: ReturnType<typeof setTimeout> | undefined;
     const later = () => { clearTimeout(timer); timer = setTimeout(() => void post(), 300); };
-    const watchers = [vscode.workspace.createFileSystemWatcher('**/*.http'), vscode.workspace.createFileSystemWatcher(`**/${KEEP_FILE}`), vscode.workspace.createFileSystemWatcher('**/exports/*-backup/*.json')];
+    const watchers = [vscode.workspace.createFileSystemWatcher('**/*.http'), vscode.workspace.createFileSystemWatcher(`**/${KEEP_FILE}`), vscode.workspace.createFileSystemWatcher('**/exports/*-backup/*.json'), vscode.workspace.createFileSystemWatcher(`**/${ORDER_FILE}`)];
     for (const w of watchers) { w.onDidCreate(later); w.onDidDelete(later); w.onDidChange(later); }
     const subs = [
       ...watchers, envs.onDidChange(later), onRunnerChange(later), p.onDidChangeViewState((e) => { if (e.webviewPanel.visible) later(); }),

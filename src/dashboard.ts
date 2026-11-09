@@ -1,4 +1,5 @@
 // data dashboard Collections / Environments / Cookies (tanpa vscode): ringkasan murni dari data yang sudah dibaca
+import { applyOrder, type OrderMap } from './collectionOrder';
 import { parseRequest, splitBlocks } from './httpFile';
 import type { EnvVar } from './environments';
 import type { Cookie } from './cookieJar';
@@ -63,7 +64,7 @@ export type TreeNode = { type: 'folder' | 'file'; name: string; /** relatif ke r
   /** file: method request pertama, judul, jumlah request */ method?: string; title?: string; requests?: number };
 
 /** tree Collections seperti sidebar: folder (termasuk yang kosong lewat keeps = folder ber-.httpmekeep) dulu, lalu file; semua .http tampil, `_auth.http` tanpa method */
-export function buildCollectionTree(files: readonly { path: string; text: string }[], keeps: readonly string[]): TreeNode[] {
+export function buildCollectionTree(files: readonly { path: string; text: string }[], keeps: readonly string[], order: OrderMap = {}): TreeNode[] {
   const root: TreeNode = { type: 'folder', name: '', path: '', children: [], count: 0 };
   const folder = (path: string): TreeNode => {
     let cur = root;
@@ -89,6 +90,8 @@ export function buildCollectionTree(files: readonly { path: string; text: string
   const finish = (n: TreeNode): number => {
     if (n.type === 'file') return n.count;
     n.children!.sort((a, b) => (a.type === 'file' ? 1 : 0) - (b.type === 'file' ? 1 : 0) || a.name.localeCompare(b.name));
+    n.children = applyOrder(n.children!.filter((c) => c.type === 'folder'), (c) => c.name, order[n.path])
+      .concat(applyOrder(n.children!.filter((c) => c.type === 'file'), (c) => c.name, order[n.path]));
     n.count = n.children!.reduce((s, c) => s + finish(c), 0);
     return n.count;
   };

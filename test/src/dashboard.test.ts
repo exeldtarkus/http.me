@@ -175,3 +175,22 @@ test('dashboard.js filterHistory: teks (URL / method / status / Environment / fi
   assert.deepEqual(ids({ q: 'post', from: '2026-11-07' }), ['b'], 'teks + tanggal digabung');
   assert.deepEqual(ids({ q: 'uat' }), ['b']);
 });
+
+test('buildCollectionTree: urutan kustom per folder (order) dipakai; folder tetap di atas file, yang tak tercatat di belakang', () => {
+  const t = buildCollectionTree([
+    { path: 'a.http', text: req('GET') }, { path: 'b.http', text: req('GET') }, { path: 'c.http', text: req('GET') },
+    { path: 'x/1.http', text: req('GET') }, { path: 'x/2.http', text: req('GET') }, { path: 'y/1.http', text: req('GET') },
+  ], [], { '': ['c.http', 'y', 'a.http'], x: ['2.http'] });
+  assert.deepEqual(t.map((n) => n.name), ['y', 'x', 'c.http', 'a.http', 'b.http']);
+  assert.deepEqual(t.find((n) => n.name === 'x')!.children!.map((n) => n.name), ['2.http', '1.http']);
+});
+
+test('dashboard.js: canReorder — hanya file .http se-folder dengan target (bukan target itu sendiri); folder / lintas folder = pindah, bukan urut', () => {
+  const { canReorder } = createRequire(__filename)(join(__dirname, '../../../media/webview/dashboard.js')) as { canReorder(from: string[], before: string): boolean };
+  assert.equal(canReorder(['b.http'], 'a.http'), true);
+  assert.equal(canReorder(['api/y.http', 'api/z.http'], 'api/x.http'), true);
+  assert.equal(canReorder(['a.http'], 'a.http'), false);
+  assert.equal(canReorder(['a.http', 'b.http'], 'b.http'), false);
+  assert.equal(canReorder(['x/a.http'], 'b.http'), false);
+  assert.equal(canReorder(['docs'], 'a.http'), false);
+});

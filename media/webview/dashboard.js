@@ -34,6 +34,10 @@
   function canDrop(from, to) {
     return from.every((f) => to !== f && !to.startsWith(`${f}/`) && parentOf(f) !== to);
   }
+  /** drop `from` di atas file `before` = ubah urutan (bukan pindah): semua file .http se-folder dengan target dan bukan target itu sendiri */
+  function canReorder(from, before) {
+    return from.length > 0 && from.every((f) => /\.http$/i.test(f) && f !== before && parentOf(f) === parentOf(before));
+  }
   /** aksi tombol Delete untuk tab aktif: Collections = item terpilih, Environments = Environment terpilih (Globals / No Environment tidak bisa dipilih), Cookies = baris cookie terakhir yang difokus */
   function deleteAction(tab, sel, cookie) {
     if (tab === 'collections') return sel.size ? { id: 'file.delete', args: { paths: [...sel] } } : undefined;
@@ -50,7 +54,7 @@
     const to = f.to ? new Date(`${f.to}T23:59:59.999`).getTime() : Infinity;
     return list.filter((e) => e.time >= from && e.time <= to && (!q || `${e.method} ${e.url} ${e.status ?? ''} ${e.env ?? ''} ${e.file ?? ''}`.toLowerCase().includes(q)));
   }
-  const api = { segments, flatten, canDrop, parentOf, deleteAction, filterHistory };
+  const api = { segments, flatten, canDrop, canReorder, parentOf, deleteAction, filterHistory };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -99,7 +103,7 @@
   // ---------- Collections ----------
   const fileMenu = (n) => [
     { label: 'Open', id: 'file.open', args: { path: n.path } }, { label: 'Open as Text', id: 'file.openAsText', args: { path: n.path } }, '-',
-    { label: 'Duplicate', id: 'file.duplicate', args: { path: n.path } }, { label: 'Rename', id: 'file.rename', args: { path: n.path } }, { label: 'Delete', id: 'file.delete', args: { paths: [n.path] }, danger: true }, '-',
+    { label: 'Duplicate', id: 'file.duplicate', args: { path: n.path } }, { label: 'Rename', id: 'file.rename', args: { path: n.path } }, { label: 'Move Up', id: 'order.shift', args: { path: n.path, dir: -1 } }, { label: 'Move Down', id: 'order.shift', args: { path: n.path, dir: 1 } }, { label: 'Delete', id: 'file.delete', args: { paths: [n.path] }, danger: true }, '-',
     ...(n.method ? [{ label: 'Copy as cURL', id: 'file.copyAsCurl', args: { path: n.path } }, { label: 'Copy as cURL with Cookies', id: 'file.copyAsCurlWithCookies', args: { path: n.path } },
       { label: 'Copy as cURL (cmd)', id: 'file.copyAsCurlCmd', args: { path: n.path } }, { label: 'Copy as cURL (cmd) with Cookies', id: 'file.copyAsCurlCmdWithCookies', args: { path: n.path } },
       { label: 'Copy as PowerShell', id: 'file.copyAsPowerShell', args: { path: n.path } }, { label: 'Copy as PowerShell with Cookies', id: 'file.copyAsPowerShellWithCookies', args: { path: n.path } }, '-',
@@ -107,7 +111,7 @@
     { label: 'Reveal in Explorer', id: 'file.reveal', args: { path: n.path } }];
   const folderMenu = (n) => [
     { label: 'New Request', id: 'folder.newRequest', args: { path: n.path } }, { label: 'New Folder', id: 'folder.newFolder', args: { path: n.path } }, '-',
-    { label: 'Rename', id: 'folder.rename', args: { path: n.path } }, { label: 'Delete', id: 'file.delete', args: { paths: [n.path] }, danger: true }, '-',
+    { label: 'Rename', id: 'folder.rename', args: { path: n.path } }, { label: 'Move Up', id: 'order.shift', args: { path: n.path, dir: -1 } }, { label: 'Move Down', id: 'order.shift', args: { path: n.path, dir: 1 } }, { label: 'Delete', id: 'file.delete', args: { paths: [n.path] }, danger: true }, '-',
     { label: 'Re-import from Source', id: 'folder.reimport', args: { path: n.path } }, { label: 'Export…', id: 'folder.export', args: { path: n.path } }, { label: 'Reveal in Explorer', id: 'file.reveal', args: { path: n.path } }];
   const rootMenu = () => [{ label: 'New Request', id: 'coll.newRequest' }, { label: 'New Collection', id: 'coll.newCollection' }, { label: 'New Folder', id: 'coll.newFolder' }, '-', { label: 'Import…', id: 'coll.import' }, { label: 'Export…', id: 'coll.export' }];
 
@@ -159,6 +163,15 @@
       row.ondragover = (e) => { if (dragging && canDrop(dragging, n.path)) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; row.classList.add('drop'); } };
       row.ondragleave = () => row.classList.remove('drop');
       row.ondrop = (e) => dropOn(e, n.path);
+    } else {
+      row.ondragover = (e) => { if (dragging && canReorder(dragging, n.path)) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; row.classList.add('drop'); } };
+      row.ondragleave = () => row.classList.remove('drop');
+      row.ondrop = (e) => {
+        if (!dragging || !canReorder(dragging, n.path)) return;
+        e.preventDefault(); e.stopPropagation();
+        act('order.before', { from: dragging, before: n.path });
+        dragging = null;
+      };
     }
     return row;
   }
@@ -192,7 +205,7 @@
     ]));
     box.append(el('p', { className: 'summary', textContent: `${plural(c.requests, 'request')} in ${plural(c.files, 'file')}` }));
     const list = el('div', { className: 'list', role: 'tree', tabIndex: 0, id: 'tree' });
-    box.append(list, el('p', { className: 'hint', textContent: 'Double-click opens a request · drag items onto folders to move them · drop a Postman / OpenAPI file here to import · right-click for more · Delete, F2 and Enter work on the selection.' }));
+    box.append(list, el('p', { className: 'hint', textContent: 'Double-click opens a request · drag items onto folders to move them · drop a request on another one to reorder (or use Move Up / Move Down) · drop a Postman / OpenAPI file here to import · right-click for more · Delete, F2 and Enter work on the selection.' }));
     function renderList() {
       const rows = flatten(c.tree, ui.open, ui.filter);
       const order = { paths: rows.map((r) => r.node.path), last: null };
