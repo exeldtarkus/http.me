@@ -4,6 +4,7 @@
   "description": "Lightweight HTTP client for VS Code: send requests from .http files, collections, environments and history, with a focus on low memory use.",
   "version": "0.2.5",
   "publisher": "exeltarkus",
+  "license": "GPL-3.0-only",
   "icon": "images/icon.png",
   "homepage": "https://github.com/exeldtarkus/http.me#readme",
   "bugs": {
