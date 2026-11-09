@@ -762,6 +762,8 @@ async function sendRequest(doc: vscode.TextDocument, key: string, original: Pars
   if (s.token !== token) return; // sudah diganti Send yang lebih baru
   s.view = view;
   postView(s);
+  // request lama yang selesai belakangan: Response panel bawah pindah ke hasilnya
+  if (getLayout() === 'panel' && output.view && output.key !== key) showInOutput(key);
 }
 
 /** Send blok ke-index di dokumen (file 1 request: index 0 = seluruh file) */

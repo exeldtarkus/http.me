@@ -4,7 +4,7 @@ import { startServer } from './helpers/server';
 import type { ITests } from './it/index';
 
 const wait = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
-type Api = { viewOf(uri: string): { kind: string; status?: string } | undefined };
+type Api = { viewOf(uri: string): { kind: string; status?: string } | undefined; layout: { set(l: string): Promise<void>; outputKey(): string | undefined } };
 const api = () => vscode.extensions.getExtension<Api>('exeltarkus.httpme')!.exports;
 
 /** tab request baru (panel) berisi `text`, kembalikan uri-nya */
@@ -37,6 +37,28 @@ export const tests: ITests = {
       assert.equal(api().viewOf(uri.toString())?.kind, 'response', 'hasil tetap ada saat panel tampil lagi');
     } finally {
       await srv.close();
+    }
+  },
+  async 'request lama selesai setelah pindah ke request cepat: Response panel bawah ikut menampilkan hasil request lama'() {
+    const slow = await startServer(async () => { await wait(1200); return { headers: { 'content-type': 'text/plain' }, body: 'slow' }; });
+    const fast = await startServer(async () => ({ headers: { 'content-type': 'text/plain' }, body: 'fast' }));
+    try {
+      await api().layout.set('panel');
+      const a = await requestTab(`GET ${slow.url}/a\n`);
+      void vscode.commands.executeCommand('httpme.sendRequest');
+      await wait(100);
+      const b = await requestTab(`GET ${fast.url}/b\n`);
+      await vscode.commands.executeCommand('httpme.sendRequest');
+      await wait(300);
+      assert.equal(api().viewOf(b.toString())?.kind, 'response');
+      assert.equal(api().layout.outputKey(), b.toString(), 'request cepat tampil dulu');
+      assert.equal(api().viewOf(a.toString())?.kind, 'running');
+      await wait(1500);
+      assert.equal(api().viewOf(a.toString())?.kind, 'response');
+      assert.equal(api().layout.outputKey(), a.toString(), 'request lama selesai: Response panel pindah ke hasilnya');
+    } finally {
+      await slow.close();
+      await fast.close();
     }
   },
 };
