@@ -25,6 +25,7 @@ const panel = require(join(__dirname, '..', '..', '..', 'media', 'webview', 'pan
   unfold(text: string, hidden: Map<string, string>): string;
   realLines(text: string, hidden: Map<string, string>): number[];
   bracketMatch(text: string, caret: number): [number, number] | undefined;
+  snippetSegments(text: string): { text: string; cls: string }[][];
 };
 type Vars = { ok: string[]; nulls: string[]; names: string[] };
 
@@ -622,4 +623,36 @@ test('panel.html: setiap $(\'id\') di panel.js ada di HTML dan elemennya berada 
   const missing = ids.filter((id) => !html.includes(`id="${id}"`));
   assert.deepEqual(missing, []);
   assert.deepEqual(ids.filter((id) => html.indexOf(`id="${id}"`) > scriptAt), []);
+});
+
+test('Code snippet: ada indikator loading selagi host menyiapkan snippet', () => {
+  const js = readFileSync(join(__dirname, '..', '..', '..', 'media', 'webview', 'panel.js'), 'utf8');
+  const ask = js.match(/function askSnippet\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
+  assert.match(ask, /cpNote'\)\.textContent = 'Generating/, 'askSnippet menandai panel sedang memuat');
+  assert.match(ask, /cpText/, 'panel yang masih kosong menampilkan teks loading');
+});
+
+test('Code snippet: snippetSegments mewarnai opsi / string / URL, string multi-baris tetap satu token per baris', () => {
+  const lines = panel.snippetSegments("curl -X POST 'https://a.test/x' \\\n  -H 'Content-Type: application/json' \\\n  --data-raw '{\n  \"a\": 1\n}'");
+  assert.equal(lines.length, 5, 'satu entri per baris');
+  assert.deepEqual(lines[0], [
+    { text: 'curl', cls: '' }, { text: ' ', cls: '' },
+    { text: '-X', cls: 'opt' }, { text: ' ', cls: '' },
+    { text: 'POST', cls: '' }, { text: ' ', cls: '' },
+    { text: "'https://a.test/x'", cls: 'str' }, { text: ' ', cls: '' },
+    { text: '\\', cls: 'cont' },
+  ]);
+  assert.deepEqual(lines[1].filter((t) => t.cls === 'opt'), [{ text: '-H', cls: 'opt' }]);
+  // string yang dibuka di baris --data-raw tetap bergaya string sampai kutip penutup
+  assert.equal(lines[2].at(-1)!.cls, 'str');
+  assert.deepEqual(lines[3], [{ text: '  "a": 1', cls: 'str' }]);
+  assert.deepEqual(lines[4], [{ text: "}'", cls: 'str' }]);
+  assert.deepEqual(panel.snippetSegments('http://localhost:8082/api')[0], [{ text: 'http://localhost:8082/api', cls: 'url' }]);
+});
+
+test('Code snippet: tombol Copy berlabel "Copy Code" dan panel memakai nomor baris', () => {
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const html = readFileSync(join(dir, 'panel.html'), 'utf8');
+  assert.match(html.match(/<button[^>]*id="cpCopy"[\s\S]*?<\/button>/)?.[0] ?? '', /Copy Code<\/span>/);
+  assert.match(html, /\.cp-code \.cl::before \{[^}]*counter\(/, 'nomor baris lewat CSS counter (tidak ikut tersalin)');
 });

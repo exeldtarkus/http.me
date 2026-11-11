@@ -241,11 +241,16 @@
   .codepanel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; gap: 8px; width: min(440px, 100%); padding: 10px 12px; border-left: 1px solid var(--line); background: var(--vscode-sideBar-background, var(--vscode-editor-background, #1e1e1e)); box-shadow: -4px 0 12px #0004; }
   .codepanel[hidden] { display: none; }
   .cp-head { display: flex; align-items: center; gap: 6px; } .cp-head b { flex: 1; }
-  .cp-copy { width: 28px; height: 26px; } .cp-copy svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+  .cp-copy { width: auto; height: 26px; gap: 6px; padding: 0 8px; border: 1px solid var(--line); } .cp-copy svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
   .cp-copy:hover { background: var(--soft); color: var(--fg); } .cp-copy .ok { display: none; color: var(--ok); } .cp-copy.done .ok { display: block; } .cp-copy.done svg:not(.ok) { display: none; }
-  .cp-code.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* satu <div class="cl"> per baris: nomor baris lewat CSS counter supaya tidak ikut saat teks dipilih / disalin */
+  .cp-code .cl { display: flex; min-height: 1.5em; counter-increment: ln; }
+  .cp-code .cl::before { content: counter(ln); position: sticky; left: 0; z-index: 1; flex: none; min-width: 2.2em; padding: 0 8px 0 2px; background: var(--soft); color: var(--muted); text-align: right; user-select: none; }
+  .cp-code .ct { white-space: pre; padding-right: 10px; }
+  .cp-code.wrap .ct { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cp-code .opt { color: var(--code-key); } .cp-code .str { color: var(--code-str); } .cp-code .url { color: var(--vscode-textLink-foreground, var(--focus)); } .cp-code .cont { color: var(--muted); }
   .cp-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; } .cp-opts label { display: flex; align-items: center; gap: 6px; }
-  .cp-code { flex: 1; min-height: 0; margin: 0; padding: 8px 10px; overflow: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--soft); font: 12px/1.5 var(--mono); white-space: pre; user-select: text; }
+  .cp-code { flex: 1; min-height: 0; margin: 0; padding: 8px 0; overflow: auto; counter-reset: ln; border: 1px solid var(--line); border-radius: 4px; background: var(--soft); font: 12px/1.5 var(--mono); white-space: pre; user-select: text; }
   .cp-foot { display: flex; align-items: center; gap: 8px; } .cp-foot .note { flex: 1; margin: 0; }
   .autohdr { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
   .autotag { padding: 0 6px; border-radius: 8px; background: var(--soft); color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; }
@@ -593,7 +598,7 @@
 <aside class="codepanel" id="codePanel" aria-label="Code snippet" hidden>
   <div class="cp-head"><b>Code snippet</b>
     <select id="cpLang" aria-label="Language"><option value="curl">cURL</option><option value="cmd">cURL (cmd)</option><option value="powershell">PowerShell</option></select>
-    <button class="icon-btn cp-copy" id="cpCopy" type="button" title="Copy snippet" aria-label="Copy snippet"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="9" rx="1"/><path d="M3.5 10.5h-1v-8a1 1 0 0 1 1-1h7v1"/></svg><svg class="ok" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg></button>
+    <button class="icon-btn cp-copy" id="cpCopy" type="button" title="Copy snippet" aria-label="Copy snippet"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="9" rx="1"/><path d="M3.5 10.5h-1v-8a1 1 0 0 1 1-1h7v1"/></svg><svg class="ok" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg><span>Copy Code</span></button>
     <button class="icon-btn" id="cpClose" type="button" title="Close (Escape)" aria-label="Close"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></div>
   <div class="cp-opts" id="cpOpts">
     <label><input type="checkbox" data-o="longForm"> Long-form options</label>

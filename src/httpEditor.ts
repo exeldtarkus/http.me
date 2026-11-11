@@ -547,6 +547,16 @@ const isSnippetOptions = (v: unknown): v is SnippetOptions => {
 /** panel Code snippet: variable / auth / cookie diselesaikan di sini; secret tampil ******** dan Copy meminta konfirmasi bila isinya memuat secret */
 export async function handleSnippet(doc: vscode.TextDocument, kind: 'snippet' | 'copySnippet', opts: unknown, req: ParsedRequest, post: (x: unknown) => void): Promise<void> {
   if (!isSnippetOptions(opts)) throw new Error('Invalid snippet options.');
+  try {
+    await buildSnippet(doc, kind, opts, req, post);
+  } catch (e) {
+    log().error(errorLine('snippet', e));
+    if (kind !== 'snippet') throw e; // Copy: pesan error lewat notifikasi seperti aksi lain
+    post({ type: 'snippet', text: `Could not generate the code snippet: ${errMsg(e)}`, secrets: false }); // panel kosong tanpa penjelasan lebih buruk
+  }
+}
+
+async function buildSnippet(doc: vscode.TextDocument, kind: 'snippet' | 'copySnippet', opts: SnippetOptions, req: ParsedRequest, post: (x: unknown) => void): Promise<void> {
   let r = req;
   let secrets: string[] = [];
   if (opts.resolve && hooks) { const x = await hooks.resolve(req, undefined, doc.uri.fsPath); r = x.request; secrets = [...x.secrets]; }

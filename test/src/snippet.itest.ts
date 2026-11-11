@@ -63,4 +63,28 @@ export const tests: ITests = {
       rmSync(dir, { recursive: true, force: true });
     }
   },
+
+  async 'Code snippet: Environment aktif rusak -> panel memberi pesan, tidak kosong'() {
+    await vscode.commands.executeCommand('httpme.whatsNew');
+    const api = vscode.extensions.getExtension<Api>('exeltarkus.httpme')!.exports;
+    const dir = join(root(), 'zz-itest-snippet-bad');
+    const file = join(dir, 'request.http');
+    const envDir = join(root(), '.httpme', 'environments');
+    mkdirSync(dir, { recursive: true });
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(file, 'GET {{BASE}}/items\n');
+    const bad = join(envDir, 'zz-snip-bad.json');
+    writeFileSync(bad, '{ "variables": [ }'); // JSON rusak: hooks.resolve gagal
+    try {
+      await api.envs.setActive('zz-snip-bad');
+      const out = await api.snippetCall(vscode.Uri.file(file), base) as Reply[];
+      assert.equal(out.length, 1, 'panel tetap menerima balasan');
+      assert.equal(out[0].type, 'snippet');
+      assert.match(out[0].text, /Could not generate the code snippet/);
+    } finally {
+      await api.envs.setActive(undefined);
+      rmSync(bad, { force: true });
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
 };

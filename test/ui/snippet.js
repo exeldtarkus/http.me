@@ -44,7 +44,7 @@ const results = []; const check = (name, ok, detail = '') => { results.push(ok);
     let ui; for (let i = 0; i < 40 && !ui; i++) { for (const f of page.frames()) { if (await f.$('#codeBtn').catch(() => null)) { ui = f; break; } } await sleep(500); }
     check('panel request terbuka', !!ui);
     const panelHidden = () => ui.$eval('#codePanel', (e) => e.hidden);
-    const text = () => ui.$eval('#cpText', (e) => e.textContent);
+    const text = () => ui.$eval('#cpText', (e) => [...e.querySelectorAll('.cl')].map((l) => l.textContent).join('\n') || e.textContent); // tiap baris = <div class="cl"> (nomor baris dari CSS counter)
     const until = async (fn, ms = 4000) => { const end = Date.now() + ms; for (;;) { const v = await fn().catch(() => false); if (v) return v; if (Date.now() > end) return false; await sleep(100); } };
 
     check('panel snippet tertutup di awal', await panelHidden());

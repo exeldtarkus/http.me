@@ -576,7 +576,21 @@
     return { name: 'Authorization', text: `${label} (set in the Authorization tab)` };
   }
 
-  const api = { autoAuthHeader, findMatches, bodyNotice, fitTabs, xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers, authForms: AUTH_FORMS, authForm, switchAuthType, isRawAuthSecret, authVariableName, parseAuthForm };
+  /** teks snippet -> baris berisi token berwarna: string berkutip (boleh lintas baris), opsi (-X / --header), URL, tanda sambung baris */
+  function snippetSegments(text) {
+    const lines = [[]];
+    const add = (t, cls) => t.split('\n').forEach((part, i) => {
+      if (i) lines.push([]);
+      if (part) lines[lines.length - 1].push({ text: part, cls });
+    });
+    for (const m of text.matchAll(/'(?:[^'\\]|\\.)*'?|"(?:[^"\\]|\\.)*"?|\s+|[^\s'"]+/g)) {
+      const t = m[0];
+      add(t, /^['"]/.test(t) ? 'str' : /^\s/.test(t) ? '' : /^-/.test(t) ? 'opt' : /^[a-z][\w+.-]*:\/\//i.test(t) ? 'url' : /^[\\^`]$/.test(t) ? 'cont' : '');
+    }
+    return lines;
+  }
+
+  const api = { snippetSegments, autoAuthHeader, findMatches, bodyNotice, fitTabs, xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers, authForms: AUTH_FORMS, authForm, switchAuthType, isRawAuthSecret, authVariableName, parseAuthForm };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -1301,8 +1315,13 @@
   function askSnippet() {
     if ($('codePanel').hidden) return;
     clearTimeout(snippetTimer);
+    $('cpNote').textContent = 'Generating\u2026'; // snippet dibuat di host (variable, auth, cookie): bisa butuh waktu
+    if (!$('cpText').textContent) renderSnippet('Generating\u2026');
     snippetTimer = setTimeout(() => post({ type: 'snippet', req, opts: snippetOpts() }), 150);
   }
+  /** snippet digambar seperti editor: satu baris = satu <div class="cl">, nomor baris dari CSS counter */
+  const renderSnippet = (text) => $('cpText').replaceChildren(...snippetSegments(text).map((line) =>
+    el('div', { className: 'cl' }, [el('span', { className: 'ct' }, line.map((t) => el('span', { className: t.cls }, [t.text])))])));
   const toggleCode = (on = $('codePanel').hidden, focusBtn = true) => {
     $('codePanel').hidden = !on;
     $('codeBtn').setAttribute('aria-expanded', String(on));
@@ -1697,7 +1716,7 @@
     if (m.blocks) renderBlocks(m.blocks, m.active);
     if (m.type === 'vars') { vars = { ok: m.ok, nulls: m.nulls, names: m.names }; syncMirrors(); askSnippet(); }
     if (m.type === 'snippetCopied') { $('cpCopy').classList.add('done'); $('cpCopy').title = 'Copied'; setTimeout(() => { $('cpCopy').classList.remove('done'); $('cpCopy').title = 'Copy snippet'; }, 1500); }
-    if (m.type === 'snippet') { $('cpText').textContent = m.text; $('cpNote').textContent = m.secrets ? 'Secret values are shown as ********.' : ''; }
+    if (m.type === 'snippet') { renderSnippet(m.text); $('cpNote').textContent = m.secrets ? 'Secret values are shown as ********.' : ''; }
     if (m.type === 'varHover') showHover(m.name, m.info);
     if (m.type === 'matching') $('matching').hidden = !m.on;
     if (m.type === 'reqCookies') {
