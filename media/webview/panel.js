@@ -301,17 +301,24 @@
       ws();
       const c = s[i];
       if (variable()) return;
-      if (c === '{') return list('}', () => {
+      if (c === '{') {
+        const keys = new Set(); // key ganda = error, per objek (objek bersarang punya Set sendiri)
+        return list('}', () => {
         ws();
+        const from = i;
         if (!variable()) {
           if (s[i] === '"') str();
           else fail(i >= s.length ? 'Unexpected end of JSON' : 'Expected a double-quoted property name');
         }
+        const key = s.slice(from, i);
+        if (keys.has(key)) { i = from; fail(`Duplicate property name ${key}`, key.length); }
+        keys.add(key);
         ws();
         if (s[i] !== ':') fail(i >= s.length ? 'Unexpected end of JSON' : "Expected ':' after property name");
         i++;
         value();
-      }, 'property value');
+        }, 'property value');
+      }
       if (c === '[') return list(']', value, 'array element');
       if (c === '"') return str();
       const num = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?/.exec(s.slice(i));

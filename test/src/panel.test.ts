@@ -679,3 +679,11 @@ test('Body: find bar (tombol Ctrl+F, prev/next, jumlah hasil, sorotan di mirror)
   assert.match(js, /findRanges\(input\.value, bodyQuery, bodyAt\)/);
   assert.match(js, /stepBodyFind\(e\.shiftKey \? -1 : 1\)/);
 });
+
+test('bodyError JSON: key ganda di objek yang sama = error, nama key digaris merah', () => {
+  const dup = panel.bodyError('{\n  "fileName": "a",\n  "fileName": "b"\n}', 'json')!;
+  assert.deepEqual([dup.start, dup.end], [23, 33], 'key kedua digaris merah');
+  assert.match(dup.message, /^Line 3, column 3: Duplicate property name "fileName"/);
+  // objek berbeda / array: key sama boleh
+  for (const ok of ['{"a":{"x":1},"b":{"x":2}}', '[{"x":1},{"x":2}]', '{"a":1,"b":2}']) assert.equal(panel.bodyError(ok, 'json'), undefined, ok);
+});
