@@ -212,6 +212,8 @@
   #bodyText { flex: 1; min-height: 90px; width: 100%; resize: none; border: 0; border-radius: 0; background: transparent; font: 12.5px/1.6 var(--mono); padding: 6px 12px; tab-size: 2; white-space: pre; overflow: auto; }
   .bodyed .vwrap.area { min-height: 0; }
   .bodyed .vwrap.area > .mirror { white-space: pre; overflow-wrap: normal; }
+  .jx-find { background: var(--vscode-editor-findMatchHighlightBackground, #ea5c0055); }
+  .jx-find-cur { background: var(--vscode-editor-findMatchBackground, #515c6a); }
   .jx-bm { outline: 1px solid var(--vscode-editorBracketMatch-border, var(--muted)); background: var(--vscode-editorBracketMatch-background, transparent); border-radius: 2px; }
   /* XML ala VS Code: tanda abu, tag biru, atribut biru muda, nilai oranye, komentar redup */
   .jx-p, .code .p { color: var(--vscode-editorBracketHighlight-unexpectedBracket\.foreground, #808080); }
@@ -488,8 +490,10 @@
       </div>
       <span class="note warn" id="beautifyNote" hidden></span>
       <span class="note err" id="bodyErr" role="status" hidden></span>
-      <button class="btn link" id="beautify" type="button" title="Format the JSON / XML body (Shift+Alt+F)" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m2 14 8.5-8.5M9 4l1-1 3 3-1 1zM12.5 1.5v2M11.5 2.5h2M3.5 4v2M2.5 5h2M13 10v2M12 11h2"/></svg>Beautify</button>
+      <button class="icon-btn" id="bodyFind" type="button" title="Find in body (Ctrl+F)" aria-label="Find in body" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4"/><path d="M9.5 9.5L14 14"/></svg></button>
+    <button class="btn link" id="beautify" type="button" title="Format the JSON / XML body (Shift+Alt+F)" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m2 14 8.5-8.5M9 4l1-1 3 3-1 1zM12.5 1.5v2M11.5 2.5h2M3.5 4v2M2.5 5h2M13 10v2M12 11h2"/></svg>Beautify</button>
     </div>
+    <div class="findbar" id="bodyFindBar" hidden><input id="bodyFindInput" type="text" placeholder="Find in body" aria-label="Find in body" autocomplete="off" spellcheck="false"><span class="count" id="bodyFindCount"></span><button class="icon-btn" id="bodyFindPrev" type="button" title="Previous (Shift+Enter)" aria-label="Previous match"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10l4-4 4 4"/></svg></button><button class="icon-btn" id="bodyFindNext" type="button" title="Next (Enter)" aria-label="Next match"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button><button class="icon-btn" id="bodyFindClose" type="button" title="Close (Escape)" aria-label="Close find"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></div>
     <div class="bodyed" id="bodyEd"><pre id="bodyGutter" aria-hidden="true">1</pre><textarea id="bodyText" spellcheck="false" wrap="off" aria-label="Body" aria-describedby="bodyErr"></textarea></div>
     <div class="bodyempty" id="bodyEmpty" hidden>
       <p>This request has no body.</p>

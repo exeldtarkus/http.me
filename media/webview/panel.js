@@ -563,6 +563,9 @@
     return out;
   }
 
+  /** rentang sorotan cari untuk lapisan mirror: semua kecocokan 'on', yang sedang aktif 'cur' */
+  const findRanges = (text, query, cur) => findMatches(text, query).map((m, i) => ({ ...m, val: i === cur ? 'cur' : 'on' }));
+
   const AUTO_LABEL = { basic: 'Basic', bearer: 'Bearer', digest: 'Digest', hawk: 'Hawk', jwt: 'JWT', oauth1: 'OAuth 1.0', oauth2: 'OAuth 2.0', aws: 'AWS Signature v4', apiKey: 'API Key' };
   /** header yang dibuat otomatis dari # @auth (ditampilkan `auto` di tab Headers); undefined = tidak ada */
   function autoAuthHeader(r) {
@@ -590,7 +593,7 @@
     return lines;
   }
 
-  const api = { snippetSegments, autoAuthHeader, findMatches, bodyNotice, fitTabs, xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers, authForms: AUTH_FORMS, authForm, switchAuthType, isRawAuthSecret, authVariableName, parseAuthForm };
+  const api = { snippetSegments, autoAuthHeader, findMatches, findRanges, bodyNotice, fitTabs, xmlRanges, jsonRows, hiddenRows, foldRanges, unfold, realLines, bracketMatch, layoutGrid, bodyError, markSegments, jsonRanges, applyRanges, indentEdit, enterIndent, highlightJs, defaultScript, clampSplit, othersText, loadingState, METHODS, urlToParams, paramsToUrl, setBodyType, formToRows, rowsToForm, tokenClass, segments, completionPrefix, insertAt, lineNumbers, authForms: AUTH_FORMS, authForm, switchAuthType, isRawAuthSecret, authVariableName, parseAuthForm };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -722,6 +725,8 @@
     // pembungkus mirror (flex: 1) ikut disembunyikan: tabel form langsung di bawah pilihan tipe body
     $('bodyText').closest('.vwrap').hidden = $('bodyText').hidden;
     $('bodyEd').hidden = $('bodyText').hidden;
+    $('bodyFind').hidden = $('bodyText').hidden;
+    if ($('bodyFind').hidden && !$('bodyFindBar').hidden) closeBodyFind();
     $('formTable').hidden = !form;
     if (form) {
       formRows = formToRows(req.body);
@@ -758,6 +763,8 @@
     syncMirrors();
   }
 
+  let bodyQuery = ''; // kueri find bar body (kosong = tidak ada sorotan)
+  let bodyAt = 0;
   // ---------- lapisan mirror: teks field transparan, token digambar di bawahnya (caret, seleksi, paste tetap normal) ----------
   const mirrors = new Set();
   function mirror(input) {
@@ -796,12 +803,13 @@
     // shortcut: warna JSON / XML hanya untuk body <= 200 KB, lebih besar teks polos (mirror tiap ketikan)
     if (input.id === 'bodyText' && req && ['json', 'xml'].includes(req.bodyType) && input.value.length <= 200000) segs = applyRanges(segs, req.bodyType === 'xml' ? xmlRanges(input.value) : jsonRanges(input.value), 'j');
     if (err) segs = markSegments(segs, err.start, err.end);
+    if (input.id === 'bodyText' && bodyQuery) segs = applyRanges(segs, findRanges(input.value, bodyQuery, bodyAt), 'find');
     // pasangan kurung di kursor (hanya saat body difokus)
     const bm = input.id === 'bodyText' && document.activeElement === input && input.value.length <= 200000 ? bracketMatch(input.value, input.selectionStart) : undefined;
     if (bm) segs = applyRanges(segs, bm.map((p) => ({ start: p, end: p + 1, val: true })), 'bm');
     if (marks.length) segs = applyRanges(segs, marks.map((x) => ({ start: x.index, end: x.index + 1, val: true })), 'fold');
     m.replaceChildren(...segs.map((s) => {
-      if (s.err || s.j || s.bm || s.fold) return el('span', { className: `${s.err ? 'synerr ' : ''}${s.j ? `jx-${s.j} ` : ''}${s.bm ? 'jx-bm ' : ''}${s.fold ? 'jx-fold' : ''}`.trim(), textContent: s.text });
+      if (s.err || s.j || s.bm || s.fold || s.find) return el('span', { className: `${s.err ? 'synerr ' : ''}${s.j ? `jx-${s.j} ` : ''}${s.bm ? 'jx-bm ' : ''}${s.find ? `jx-find${s.find === 'cur' ? ' jx-find-cur' : ''} ` : ''}${s.fold ? 'jx-fold' : ''}`.trim(), textContent: s.text });
       if (!s.name) return document.createTextNode(s.text);
       const t = el('span', { className: `tok t-${s.cls}`, textContent: s.text });
       t.dataset.name = s.name;
@@ -810,7 +818,7 @@
     // input satu baris: teks lebih panjang dari field ikut bergeser sesuai scroll input
     m.scrollTop = input.scrollTop;
     m.scrollLeft = input.scrollLeft;
-    input.parentNode?.classList.toggle('tokd', segs.some((s) => s.name || s.err || s.j || s.bm || s.fold));
+    input.parentNode?.classList.toggle('tokd', segs.some((s) => s.name || s.err || s.j || s.bm || s.fold || s.find));
   }
   function syncMirrors() {
     for (const input of mirrors) {
@@ -1083,12 +1091,63 @@
   $('bodyText').oninput = () => {
     const full = unfold($('bodyText').value, folds);
     paintGutter();
+    if (!$('bodyFindBar').hidden) runBodyFind(false);
     if (full === req.body) return paintBodyError(); // hanya lipat / buka lipatan
     req.body = full;
     renderMethod();
     paintBodyError();
     changed();
   };
+  // ---- cari di body request: sorot semua kecocokan di lapisan mirror, Enter = kecocokan berikutnya ----
+  function runBodyFind(jump) {
+    const t = $('bodyText');
+    bodyQuery = $('bodyFindInput').value;
+    const hits = findMatches(t.value, bodyQuery);
+    if (bodyAt >= hits.length) bodyAt = 0;
+    $('bodyFindCount').textContent = hits.length ? `${bodyAt + 1} / ${hits.length}` : (bodyQuery ? 'No results' : '');
+    paint(t, t._mirror);
+    const hit = hits[bodyAt];
+    if (!jump || !hit) return;
+    t.setSelectionRange(hit.start, hit.end);
+    // shortcut: gulir vertikal saja (kolom tidak dihitung), perbaiki bila baris sangat panjang jadi masalah
+    const line = t.value.slice(0, hit.start).split('\n').length - 1;
+    t.scrollTop = Math.max(0, line * (parseFloat(getComputedStyle(t).lineHeight) || 20) - t.clientHeight / 2);
+  }
+  const stepBodyFind = (d) => {
+    const n = findMatches($('bodyText').value, bodyQuery).length;
+    if (!n) return;
+    bodyAt = (bodyAt + d + n) % n;
+    runBodyFind(true);
+  };
+  const openBodyFind = () => {
+    $('bodyFindBar').hidden = false;
+    const sel = $('bodyText').value.slice($('bodyText').selectionStart, $('bodyText').selectionEnd);
+    if (sel && !sel.includes('\n')) $('bodyFindInput').value = sel;
+    $('bodyFindInput').focus();
+    $('bodyFindInput').select();
+    bodyAt = 0;
+    runBodyFind(true);
+  };
+  function closeBodyFind() {
+    $('bodyFindBar').hidden = true;
+    bodyQuery = '';
+    bodyAt = 0;
+    $('bodyFindCount').textContent = '';
+    paint($('bodyText'), $('bodyText')._mirror);
+    if (!$('bodyText').hidden) $('bodyText').focus();
+  }
+  $('bodyFind').onclick = () => ($('bodyFindBar').hidden ? openBodyFind() : closeBodyFind());
+  $('bodyFindInput').oninput = () => { bodyAt = 0; runBodyFind(true); };
+  $('bodyFindInput').onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); stepBodyFind(e.shiftKey ? -1 : 1); }
+    else if (e.key === 'Escape') { e.stopPropagation(); closeBodyFind(); }
+  };
+  $('bodyFindPrev').onclick = () => stepBodyFind(-1);
+  $('bodyFindNext').onclick = () => stepBodyFind(1);
+  $('bodyFindClose').onclick = closeBodyFind;
+  $('p-body').addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !$('bodyText').hidden) { e.preventDefault(); openBodyFind(); }
+  });
   // gutter body: klik panah = lipat / buka lipatan baris itu (lewat insertText supaya Undo tetap jalan)
   $('bodyGutter').addEventListener('mousedown', (e) => {
     const g = e.target.closest('.gl.can, .gl.shut');

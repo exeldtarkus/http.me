@@ -656,3 +656,26 @@ test('Code snippet: tombol Copy berlabel "Copy Code" dan panel memakai nomor bar
   assert.match(html.match(/<button[^>]*id="cpCopy"[\s\S]*?<\/button>/)?.[0] ?? '', /Copy Code<\/span>/);
   assert.match(html, /\.cp-code \.cl::before \{[^}]*counter\(/, 'nomor baris lewat CSS counter (tidak ikut tersalin)');
 });
+
+test('findRanges: sorotan cari di body — semua kecocokan "on", yang sedang aktif "cur"', () => {
+  const f = (panel as unknown as { findRanges(t: string, q: string, cur: number): { start: number; end: number; val: string }[] }).findRanges;
+  assert.deepEqual(f('foo bar foo', 'foo', 1), [{ start: 0, end: 3, val: 'on' }, { start: 8, end: 11, val: 'cur' }]);
+  assert.deepEqual(f('foo', 'foo', 0), [{ start: 0, end: 3, val: 'cur' }]);
+  assert.deepEqual(f('foo', '', 0), []);
+});
+
+test('Body: find bar (tombol Ctrl+F, prev/next, jumlah hasil, sorotan di mirror)', () => {
+  const dir = join(__dirname, '..', '..', '..', 'media', 'webview');
+  const html = readFileSync(join(dir, 'panel.html'), 'utf8');
+  const js = readFileSync(join(dir, 'panel.js'), 'utf8');
+  assert.match(html, /id="bodyFind"[^>]*title="Find in body \(Ctrl\+F\)"/);
+  assert.match(html, /id="bodyFindBar"[^>]*hidden/);
+  assert.match(html, /id="bodyFindInput"/);
+  assert.match(html, /id="bodyFindCount"/);
+  assert.match(html, /id="bodyFindPrev"/);
+  assert.match(html, /id="bodyFindNext"/);
+  assert.match(html, /id="bodyFindClose"/);
+  assert.match(html, /\.jx-find/);
+  assert.match(js, /findRanges\(input\.value, bodyQuery, bodyAt\)/);
+  assert.match(js, /stepBodyFind\(e\.shiftKey \? -1 : 1\)/);
+});
