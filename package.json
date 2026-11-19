@@ -1434,6 +1434,12 @@
         "when": "resourceScheme == untitled && resourceExtname == .http"
       },
       {
+        "command": "httpme.saveUntitled",
+        "key": "ctrl+s",
+        "mac": "cmd+s",
+        "when": "activeCustomEditorId == httpme.request"
+      },
+      {
         "command": "httpme.selectEnvironment",
         "key": "ctrl+alt+e",
         "mac": "cmd+alt+e"

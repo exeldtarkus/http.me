@@ -26,3 +26,11 @@ test('command http.me: New Request terdaftar', () => {
   const cmd = pkg.contributes?.commands?.find((c: { command: string }) => c.command === 'httpme.newRequest');
   assert.deepEqual(cmd && { title: cmd.title, category: cmd.category }, { title: 'New Request', category: 'http.me' });
 });
+
+test('Ctrl+S saat tab request di panel aktif = httpme.saveUntitled (bukan save bawaan ke root filesystem)', () => {
+  const kbs = pkg.contributes.keybindings as { command: string; key: string; mac?: string; when?: string }[];
+  const k = kbs.find((x) => x.command === 'httpme.saveUntitled' && /activeCustomEditorId == httpme\.request/.test(x.when ?? ''));
+  assert.ok(k, 'keybinding Ctrl+S untuk panel request belum ada');
+  assert.equal(k.key, 'ctrl+s');
+  assert.equal(k.mac, 'cmd+s');
+});

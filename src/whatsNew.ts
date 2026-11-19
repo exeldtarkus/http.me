@@ -6,6 +6,11 @@ export type Release = { version: string; date: string; items: ReleaseItem[] };
 /** catatan rilis halaman What's New, terbaru di atas; wajib ada entri baru tiap rilis MINOR */
 export const RELEASES: Release[] = [
   {
+    version: '1.2.5', date: '2026-11-19', items: [
+      { kind: 'fixed', title: 'Ctrl+S on a new request no longer fails with a permission error', detail: 'Saving an unsaved request from the http.me panel now asks for a folder and a file name instead of trying to write it to the root of the file system.' },
+    ],
+  },
+  {
     version: '1.2.1', date: '2026-11-09', items: [
       { kind: 'fixed', title: 'A new empty request no longer logs an Authorization error', detail: 'The Authorization tab asked for the auth source of a request that did not exist yet.' },
       { kind: 'fixed', title: 'No more "Webview is disposed" errors when a request tab closes', detail: 'Cookies are no longer posted to a tab that was just closed.' },
