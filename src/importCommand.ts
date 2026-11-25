@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { importAuth, localPath, specUrlCandidates } from './importFetch';
-import { type ImportPlan, type ImportFile } from './importCommon';
+import { renamedRoot, rootName, type ImportPlan, type ImportFile } from './importCommon';
 import { describe, runInWorker } from './importBuild';
 import { fromJetBrainsEnv } from './jetbrainsEnv';
 import { applyPlan, conflictsOf, importQueue, reportMarkdown, summarize, undoImport, type ApplyResult, type Conflict } from './importer';
@@ -157,15 +157,22 @@ function preview(plan: ImportPlan, initialDir: string): Promise<Choice | undefin
     const finish = (c: Choice | undefined) => { if (settled) return; settled = true; resolve(c); panel.dispose(); };
     const state = async () => {
       const exist = new Set(await conflictsOf(plan, dir));
-      return { items: plan.files.map((f) => ({ path: f.path, warnings: f.warnings, exists: exist.has(f.path), ...(f.info ?? describe(f)) })), name: plan.name, dir, format: plan.format === 'postman' ? 'Postman' : 'OpenAPI' };
+      return {
+        items: plan.files.map((f) => ({ path: f.path, warnings: f.warnings, exists: exist.has(f.path), ...(f.info ?? describe(f)) })),
+        name: plan.name, dir, root: rootName(plan.files) ?? '', format: plan.format === 'postman' ? 'Postman' : 'OpenAPI',
+      };
     };
-    panel.webview.onDidReceiveMessage(async (m: { type: string; selected?: string[]; conflicts?: Record<string, Conflict> }) => {
+    panel.webview.onDidReceiveMessage(async (m: { type: string; selected?: string[]; conflicts?: Record<string, Conflict>; name?: string }) => {
       try {
         if (m.type === 'ready') void panel.webview.postMessage({ type: 'state', ...(await state()) });
         else if (m.type === 'cancel') finish(undefined);
         else if (m.type === 'browse') {
           const pick = await vscode.window.showOpenDialog({ title: 'Destination folder', canSelectFiles: false, canSelectFolders: true, defaultUri: vscode.Uri.file(dir) });
           if (pick?.[0]) { dir = pick[0].fsPath; void panel.webview.postMessage({ type: 'dir', ...(await state()) }); }
+        } else if (m.type === 'renameRoot' && typeof m.name === 'string') {
+          // nama folder akar diganti sebelum import: path semua file ikut berubah
+          plan.files = renamedRoot(plan.files, m.name);
+          void panel.webview.postMessage({ type: 'dir', ...(await state()) });
         } else if (m.type === 'import') finish({ selected: new Set(m.selected ?? []), conflicts: new Map(Object.entries(m.conflicts ?? {})), dir });
       } catch (e) {
         reportError(`importPreview.${m.type}`, e, `http.me: ${errMsg(e)}`);

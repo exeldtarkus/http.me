@@ -7,6 +7,21 @@ export type ImportPlan = {
   environmentVars?: { key: string; value: string }[];
 };
 
+/** nama folder akar rencana bila semua file berada di bawah satu folder (bisa diganti di Import preview) */
+export function rootName(files: readonly ImportFile[]): string | undefined {
+  const roots = new Set(files.map((f) => (f.path.includes('/') ? f.path.slice(0, f.path.indexOf('/')) : '')));
+  const [only] = [...roots];
+  return roots.size === 1 && only ? only : undefined;
+}
+
+/** ganti folder akar rencana; nama kosong / tanpa akar: dibiarkan */
+export function renamedRoot(files: readonly ImportFile[], to: string): ImportFile[] {
+  const from = rootName(files);
+  const name = safeName(to, '');
+  if (!from || !name || name === from) return [...files];
+  return files.map((f) => ({ ...f, path: `${name}${f.path.slice(from.length)}` }));
+}
+
 export type FormatName = 'postman-collection' | 'postman-environment' | 'postman-globals' | 'openapi' | 'swagger' | 'jetbrains-env' | 'curl';
 export type Detected = { format: FormatName; /** isi terparse (kecuali curl) */ data?: Record<string, unknown> };
 

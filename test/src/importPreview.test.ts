@@ -23,3 +23,11 @@ test('importPreview.matches: filter nama / method / judul / peringatan, kosong =
   for (const q of ['', 'addpet', 'post', 'new pet', 'graphql']) assert.equal(matches(it, q), true, q);
   assert.equal(matches(it, 'delete'), false);
 });
+
+test('import preview: pilihan file ikut pindah saat folder akar diganti', () => {
+  const api = createRequire(__filename)(join(__dirname, '../../../media/webview/importPreview.js')) as {
+    remapRoot(paths: string[], from: string, to: string): string[];
+  };
+  assert.deepEqual(api.remapRoot(['OpenAPI definition/a.http', 'OpenAPI definition/b/c.http'], 'OpenAPI definition', 'kafka'), ['kafka/a.http', 'kafka/b/c.http']);
+  assert.deepEqual(api.remapRoot(['lain/a.http'], 'OpenAPI definition', 'kafka'), ['lain/a.http'], 'di luar akar: tidak disentuh');
+});

@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { applyPlan, conflictsOf, reportMarkdown, summarize, undoImport, importQueue } from '../../src/importer';
-import type { ImportPlan } from '../../src/importCommon';
+import { renamedRoot, rootName, type ImportPlan } from '../../src/importCommon';
 
 const mk = () => mkdtempSync(join(tmpdir(), 'httpme-imp-'));
 const f = (path: string, content = `GET https://a.test/${path}\n`, warnings: string[] = []) => ({ path, content, warnings });
@@ -135,4 +135,14 @@ test('importQueue: import diantrekan satu per satu, terpisah dari slot request',
   const second = importQueue('import', async () => { order.push('b'); });
   await Promise.all([slow, second]);
   assert.deepEqual(order, ['a-start', 'a-end', 'b']);
+});
+
+test('import preview: ganti nama folder akar rencana', () => {
+  const files = [{ path: 'OpenAPI definition/a/x.http', content: '', warnings: [] }, { path: 'OpenAPI definition/_variables.json', content: '', warnings: [] }];
+  assert.equal(rootName(files), 'OpenAPI definition');
+  assert.equal(rootName([...files, { path: 'Other/y.http', content: '', warnings: [] }]), undefined, 'lebih dari satu akar: tidak bisa diganti');
+  assert.equal(rootName([{ path: 'x.http', content: '', warnings: [] }]), undefined, 'file di akar tujuan');
+  assert.deepEqual(renamedRoot(files, 'worker-kafka').map((f) => f.path), ['worker-kafka/a/x.http', 'worker-kafka/_variables.json']);
+  assert.deepEqual(renamedRoot(files, ' a/b:c ').map((f) => f.path), ['a-b-c/a/x.http', 'a-b-c/_variables.json'], 'karakter ilegal dibersihkan');
+  assert.deepEqual(renamedRoot(files, '   ').map((f) => f.path), files.map((f) => f.path), 'nama kosong: tidak diubah');
 });

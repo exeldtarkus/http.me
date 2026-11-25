@@ -24,14 +24,18 @@
     const t = q.trim().toLowerCase();
     return !t || [item.path, item.method, item.title, ...item.warnings].some((x) => (x || '').toLowerCase().includes(t));
   }
-  const api = { buildTree, leaves, matches };
+  /** path yang berada di bawah folder akar lama dipindah ke akar baru (pilihan & konflik ikut) */
+  function remapRoot(paths, from, to) {
+    return paths.map((p) => (from && p.startsWith(`${from}/`) ? `${to}${p.slice(from.length)}` : p));
+  }
+  const api = { buildTree, leaves, matches, remapRoot };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
   const vscode = acquireVsCodeApi();
   const $ = (id) => document.getElementById(id);
   const el = (tag, props, children) => { const e = Object.assign(document.createElement(tag), props || {}); for (const c of children || []) e.append(c); return e; };
-  let st = { items: [], name: '', dir: '', format: '' };
+  let st = { items: [], name: '', dir: '', root: '', format: '' };
   const checked = new Set();
   const conflict = new Map();
   const closed = new Set();
@@ -87,6 +91,8 @@
     $('format').hidden = !st.format;
     $('sub').textContent = `${st.name}: review what will be created. Pick files, check the destination, then import.`;
     $('dir').value = st.dir;
+    $('rootBox').hidden = !st.root;
+    if (document.activeElement !== $('root')) $('root').value = st.root || '';
     chips();
     const q = $('filter').value;
     const rows = buildTree(st.items).children.map((c) => node(c, q, '')).filter(Boolean);
@@ -98,7 +104,18 @@
   window.addEventListener('message', (e) => {
     const m = e.data;
     if (m.type === 'state') { st = m; checked.clear(); for (const i of st.items) checked.add(i.path); render(); }
-    if (m.type === 'dir') { st.dir = m.dir; st.items = m.items; render(); }
+    if (m.type === 'dir') {
+      if (m.root !== undefined && m.root !== st.root) {
+        const moved = remapRoot([...checked], st.root, m.root);
+        checked.clear();
+        for (const p of moved) checked.add(p);
+        for (const [k, v] of [...conflict]) { conflict.delete(k); conflict.set(remapRoot([k], st.root, m.root)[0], v); }
+        st.root = m.root;
+      }
+      st.dir = m.dir;
+      st.items = m.items;
+      render();
+    }
   });
   $('filter').oninput = render;
   $('all').onclick = () => setAll(true);
@@ -106,6 +123,9 @@
   $('expand').onclick = () => fold(true);
   $('collapse').onclick = () => fold(false);
   $('confAll').onchange = () => { for (const i of st.items) if (i.exists) conflict.set(i.path, $('confAll').value); render(); };
+  // ganti nama folder akar: dikirim saat selesai mengetik (blur / Enter)
+  $('root').onchange = () => { const name = $('root').value.trim(); if (name && name !== st.root) vscode.postMessage({ type: 'renameRoot', name }); else $('root').value = st.root; };
+  $('root').onkeydown = (e) => { if (e.key === 'Enter') $('root').blur(); };
   $('browse').onclick = () => vscode.postMessage({ type: 'browse' });
   $('cancel').onclick = () => vscode.postMessage({ type: 'cancel' });
   $('go').onclick = () => vscode.postMessage({ type: 'import', selected: [...checked], conflicts: Object.fromEntries(conflict) });

@@ -7,6 +7,7 @@ export type Release = { version: string; date: string; items: ReleaseItem[] };
 export const RELEASES: Release[] = [
   {
     version: '1.2.5', date: '2026-11-19', items: [
+      { kind: 'new', title: 'Rename the folder in Import preview', detail: 'The Folder name box sets the folder that an imported Postman collection or OpenAPI definition is created in, instead of the name from the file ("OpenAPI definition").' },
       { kind: 'new', title: 'Variant values for a variable', detail: 'A variable can keep a list of alternative values, saved in the Environment file so your team shares them. In the Environment editor, the arrow button next to the initial value opens the list: pick one to use it as the current value, type one to add it, or remove one. The same values appear as buttons in the {{variable}} popup in the request panel, where the arrow button opens the list and + adds one, and as links when you hover a variable in a .http file. Right-click a variable in the URL or a header to keep the popup open while you use it.' },
       { kind: 'fixed', title: 'The {{variable}} popup closes after you pick a variant', detail: 'It used to stay open showing the previous value.' },
       { kind: 'fixed', title: 'Ctrl+S on a new request no longer fails with a permission error', detail: 'Saving an unsaved request from the http.me panel now asks for a folder and a file name instead of trying to write it to the root of the file system.' },
