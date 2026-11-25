@@ -883,7 +883,7 @@
       if (e.variants?.length) {
         rows.push(el('div', { className: 'pvars' }, [el('span', { className: 'penv' }), el('span', { className: 'pchips' }, e.variants.map((v) => el('button', {
           type: 'button', className: `pchip${v === e.value ? ' on' : ''}`, textContent: v, title: `Use this value in "${e.name}"`,
-          onclick: () => post({ type: 'useVariant', env: e.name, key: name, value: v }),
+          onclick: () => { post({ type: 'useVariant', env: e.name, key: name, value: v }); pop().hidden = true; }, // nilai di popup sudah basi: tutup
         })))]));
       }
     }
