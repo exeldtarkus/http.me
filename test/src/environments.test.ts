@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import {
   clearedKey, createEnvironment, deleteEnvironment, duplicateEnvironment, environmentValues, fromPostmanEnvironment, keyMismatch, listEnvironments,
   mismatchMessage, parseEnvironment, persistAll, readEnvironment, renameEnvironment, renamedKey, serializeEnvironment, syncKeys, updateAll,
-  normalizeEdited, statusText, stepEnvironment, validateVars, withKey, withoutKey, withSecret, withVariant, withoutVariant, writeEnvironment, type EnvVar,
+  normalizeEdited, statusText, variantList, stepEnvironment, validateVars, withKey, withoutKey, withSecret, withVariant, withoutVariant, writeEnvironment, type EnvVar,
 } from '../../src/environments';
 import { environmentFileName } from '../../src/store';
 import { withTempDir } from './helpers/tmp';
@@ -170,4 +170,12 @@ test('variants: tetap ada setelah baris diedit dari tabel', () => {
   ]);
   assert.deepEqual(edited[0], { key: 'H', value: 'https://svc.example.test', variants: ['https://svc-b.example.test'] });
   assert.deepEqual(edited[1], { key: 's', value: null, secret: true }, 'secret: nilai & variant tidak ikut ke file');
+});
+
+test('variantList: initial value ikut jadi pilihan, tanpa duplikat / NULL / secret', () => {
+  assert.deepEqual(variantList({ key: 'H', value: 'https://svc.example.test', variants: ['https://svc-b.example.test', 'https://svc.example.test'] }),
+    ['https://svc.example.test', 'https://svc-b.example.test'], 'initial di depan, duplikat dibuang');
+  assert.deepEqual(variantList({ key: 'H', value: null, variants: ['https://svc-b.example.test'] }), ['https://svc-b.example.test']);
+  assert.deepEqual(variantList({ key: 'H', value: 'https://svc.example.test' }), [], 'tanpa variant: tidak ada pilihan');
+  assert.deepEqual(variantList({ key: 's', value: null, secret: true, variants: ['x'] }), []);
 });

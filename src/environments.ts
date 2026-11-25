@@ -83,6 +83,9 @@ export const withSecret = (vars: readonly EnvVar[], key: string, secret: boolean
 /** nilai alternatif satu key (dipilih dari dropdown jadi current value); kosong / duplikat / secret diabaikan */
 export const withVariant = (vars: readonly EnvVar[], key: string, value: string): EnvVar[] => vars.map((x) =>
   x.key !== key || x.secret || !value.trim() || (x.variants ?? []).includes(value) ? x : { ...x, variants: [...(x.variants ?? []), value] });
+/** pilihan nilai satu key (hover / popup): initial value lebih dulu, lalu variant; kosong bila key tidak punya variant */
+export const variantList = (x: EnvVar): string[] =>
+  x.secret || !x.variants?.length ? [] : [...new Set([...(x.value === null ? [] : [x.value]), ...x.variants])];
 export const withoutVariant = (vars: readonly EnvVar[], key: string, value: string): EnvVar[] => vars.map((x) =>
   x.key === key && x.variants ? { ...x, variants: x.variants.filter((v) => v !== value) } : x);
 

@@ -196,7 +196,10 @@ export function registerEnvironmentCommands(envs: Environments, refreshTree: () 
       void vscode.window.showInformationMessage(v === undefined ? `${key} has no value (NULL).` : `${key}: ${v}`);
     }),
     // hover / dropdown: pakai salah satu variant sebagai current value (lokal, tidak mengubah file)
-    cmd('httpme.useVariant', async (env: string, key: string, value: string) => envs.setCurrent(env, key, value)),
+    cmd('httpme.useVariant', async (env: string, key: string, value: string) => {
+      await envs.setCurrent(env, key, value);
+      void vscode.window.showInformationMessage(`${key} = ${value} in Environment "${env}" (current value, only on this computer).`);
+    }),
     // Quick Fix: Set value in active Environment… / Set in Globals… (env '' = Globals)
     cmd('httpme.setVariableValue', async (name: string, env: string, value?: string) => {
       const where = env === GLOBALS ? 'Globals' : `Environment "${env}"`;

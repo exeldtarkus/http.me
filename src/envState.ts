@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { join } from 'node:path';
 import {
   ENV_DIR, environmentValues, keyMismatch, listEnvironments, mismatchMessage, parseEnvironment, readEnvironment, serializeEnvironment, syncKeys,
-  writeEnvironment, type EnvVar,
+  variantList, writeEnvironment, type EnvVar,
 } from './environments';
 import { collectionScope } from './collectionVars';
 import { fileScope, type Scope } from './vars';
@@ -159,7 +159,7 @@ export class Environments {
         const vars = await this.vars(name);
         return {
           name, values: environmentValues(vars, this.current(name), await this.secretsOf(name, vars)), secret: new Set(vars.filter((x) => x.secret).map((x) => x.key)),
-          variants: new Map(vars.filter((x) => x.variants?.length).map((x) => [x.key, x.variants!])),
+          variants: new Map(vars.filter((x) => x.variants?.length).map((x) => [x.key, variantList(x)])),
         };
       } catch (e) {
         log().error(errorLine(`Environments.context ${name}`, e)); // file rusak: dilewati, pesan JSON tampil saat dibuka
