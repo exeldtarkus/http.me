@@ -694,6 +694,8 @@ test('popup variable: variant Environment jadi tombol pilih (useVariant) dan dit
   const js = fs.readFileSync(join(root, 'media', 'webview', 'panel.js'), 'utf8');
   assert.match(js, /type: 'useVariant', env: [\w.]+, key: name, value: /, 'tombol variant mengirim useVariant');
   assert.match(js, /type: 'useVariant'[\s\S]{0,160}?hidden = true/, 'popup tertutup setelah variant dipilih');
+  assert.match(js, /type: 'addVariant', env: [\w.]+, key: name/, 'popup bisa menambah variant');
+  assert.match(fs.readFileSync(join(root, 'src', 'httpEditor.ts'), 'utf8'), /m\.type === 'addVariant'/, 'host meneruskan tambah variant');
   assert.match(fs.readFileSync(join(root, 'media', 'webview', 'panel.html'), 'utf8'), /\.pchip\b/, 'gaya tombol variant ada');
   assert.match(fs.readFileSync(join(root, 'src', 'httpEditor.ts'), 'utf8'), /m\.type === 'useVariant'/, 'host meneruskan ke command');
 });

@@ -880,11 +880,16 @@
       if (e.value === undefined) continue;
       rows.push(el('div', { className: e.active ? 'pactive' : '' }, [el('span', { className: 'penv', textContent: e.active ? `${e.name} (active)` : e.name }), value(e.name, e.value, e.secret)]));
       // variant: klik = nilai itu dipakai sebagai current value Environment tsb
-      if (e.variants?.length) {
-        rows.push(el('div', { className: 'pvars' }, [el('span', { className: 'penv' }), el('span', { className: 'pchips' }, e.variants.map((v) => el('button', {
+      if (e.variants?.length || (e.active && !e.secret && e.value !== undefined)) {
+        const chips = (e.variants || []).map((v) => el('button', {
           type: 'button', className: `pchip${v === e.value ? ' on' : ''}`, textContent: v, title: `Use this value in "${e.name}"`,
           onclick: () => { post({ type: 'useVariant', env: e.name, key: name, value: v }); pop().hidden = true; }, // nilai di popup sudah basi: tutup
-        })))]));
+        }));
+        if (e.active && !e.secret) chips.push(el('button', {
+          type: 'button', className: 'pchip add', textContent: '+', title: `Add a variant value in "${e.name}"`,
+          onclick: () => { post({ type: 'addVariant', env: e.name, key: name }); pop().hidden = true; },
+        }));
+        rows.push(el('div', { className: 'pvars' }, [el('span', { className: 'penv' }), el('span', { className: 'pchips' }, chips)]));
       }
     }
     if (info.globals) rows.push(el('div', {}, [el('span', { className: 'penv', textContent: 'Globals' }), value('', info.globals.value, info.globals.secret)]));

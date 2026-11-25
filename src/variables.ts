@@ -98,7 +98,7 @@ export function registerVariables(envs: Environments): vscode.Disposable {
       const t = tokenAt(doc, pos);
       if (!t) return undefined;
       const md = new vscode.MarkdownString(hoverMarkdown(hoverInfo(t.name, await context(), isHttp(doc) ? fileVariables(doc.getText()) : new Map())), true);
-      md.isTrusted = { enabledCommands: ['httpme.showSecret', 'httpme.gotoVariable', 'httpme.useVariant'] };
+      md.isTrusted = { enabledCommands: ['httpme.showSecret', 'httpme.gotoVariable', 'httpme.useVariant', 'httpme.addVariant'] };
       return new vscode.Hover(md, rangeOf(doc, t));
     },
   };

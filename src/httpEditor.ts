@@ -872,6 +872,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
           void panel.webview.postMessage({ type: 'varHover', name: m.name, info });
         } else if (m.type === 'varGoto' && typeof m.name === 'string') await vscode.commands.executeCommand('httpme.gotoVariable', m.name);
         else if (m.type === 'showSecret' && typeof m.env === 'string' && typeof m.key === 'string') await vscode.commands.executeCommand('httpme.showSecret', m.env, m.key);
+        else if (m.type === 'addVariant' && typeof m.env === 'string' && typeof m.key === 'string') await vscode.commands.executeCommand('httpme.addVariant', m.env, m.key);
         else if (m.type === 'useVariant' && typeof m.env === 'string' && typeof m.key === 'string' && typeof m.value === 'string') await vscode.commands.executeCommand('httpme.useVariant', m.env, m.key, m.value);
         else if (m.type === 'edit' && isRequest(m.req)) {
           written = blockCount() > 1 ? replaceBlock(doc.getText(), typeof m.index === 'number' ? m.index : active, m.req) : serializeRequest(m.req);

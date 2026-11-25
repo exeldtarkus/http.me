@@ -164,7 +164,11 @@ export function hoverMarkdown(info: HoverInfo): string {
     const value = e.value === null ? '_NULL_' : e.secret ? `${code('••••')} [Show](${cmd('httpme.showSecret', [e.name, info.name])})` : code(e.value);
     lines.push(`${label}: ${value}`);
     // variant: klik = pakai nilai itu sebagai current value Environment tsb
-    if (e.variants?.length) lines.push(`  ${e.variants.map((v) => `[${v}](${cmd('httpme.useVariant', [e.name, info.name, v])})`).join(' · ')}`);
+    if (e.variants?.length) {
+      const pick = e.variants.map((v) => `[${v}](${cmd('httpme.useVariant', [e.name, info.name, v])})`);
+      if (e.active) pick.push(`[+ Add variant](${cmd('httpme.addVariant', [e.name, info.name])})`);
+      lines.push(`  ${pick.join(' · ')}`);
+    }
   }
   if (info.globals) {
     const g = info.globals;

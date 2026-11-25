@@ -117,4 +117,6 @@ test('hoverInfo: variant Environment ikut (hanya yang punya, secret tidak)', () 
   const md = hoverMarkdown(info);
   assert.match(md, /\[https:\/\/uat-pos\]\(command:httpme\.useVariant\?/, 'variant jadi link pilih');
   assert.ok(!hoverMarkdown(hoverInfo('baseUrl', ctx)).includes('useVariant'), 'tanpa variant tidak ada link');
+  assert.match(md, /\[\+ Add variant\]\(command:httpme\.addVariant\?/, 'Environment aktif bisa menambah variant');
+  assert.ok(!hoverMarkdown(hoverInfo('baseUrl', ctx)).includes('addVariant'), 'hanya Environment aktif yang punya link tambah');
 });

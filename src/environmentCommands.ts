@@ -1,7 +1,7 @@
 // command Environment + status bar "◉ Environment: <nama>" (lem tipis VS Code); logika file di environments.ts
 import * as vscode from 'vscode';
 import { deleteWithFallback } from './trash';
-import { createEnvironment, ENV_DIR, fromPostmanEnvironment, statusText, stepEnvironment, withKey, type EnvVar } from './environments';
+import { createEnvironment, ENV_DIR, fromPostmanEnvironment, statusText, stepEnvironment, withKey, withVariant, type EnvVar } from './environments';
 import { GLOBALS, type Environments } from './envState';
 import { ENV_VIEW, focusVariable, openCompare, setValue, type FocusMode } from './environmentEditor';
 import { environmentFileName } from './store';
@@ -199,6 +199,15 @@ export function registerEnvironmentCommands(envs: Environments, refreshTree: () 
     cmd('httpme.useVariant', async (env: string, key: string, value: string) => {
       await envs.setCurrent(env, key, value);
       void vscode.window.showInformationMessage(`${key} = ${value} in Environment "${env}" (current value, only on this computer).`);
+    }),
+    cmd('httpme.addVariant', async (env: string, key: string) => {
+      const vars = await envs.vars(env);
+      const x = vars.find((y) => y.key === key);
+      if (!x || x.secret) return void vscode.window.showWarningMessage(`${key} cannot have variant values.`);
+      const value = await vscode.window.showInputBox({ title: `Add a variant value for ${key}`, prompt: `Saved in Environment "${env}" (shared with your team)`, value: x.value ?? '' });
+      if (!value?.trim()) return;
+      await envs.write(env, withVariant(vars, key, value.trim()));
+      void vscode.window.showInformationMessage(`Variant added to ${key} in Environment "${env}".`);
     }),
     // Quick Fix: Set value in active Environment… / Set in Globals… (env '' = Globals)
     cmd('httpme.setVariableValue', async (name: string, env: string, value?: string) => {

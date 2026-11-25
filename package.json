@@ -436,6 +436,11 @@
         "category": "http.me"
       },
       {
+        "command": "httpme.addVariant",
+        "title": "Add Variant Value…",
+        "category": "http.me"
+      },
+      {
         "command": "httpme.setVariableValue",
         "title": "Set Variable Value…",
         "category": "http.me"
@@ -877,6 +882,10 @@
         },
         {
           "command": "httpme.useVariant",
+          "when": "false"
+        },
+        {
+          "command": "httpme.addVariant",
           "when": "false"
         },
         {
