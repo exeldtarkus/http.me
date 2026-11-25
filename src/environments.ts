@@ -7,8 +7,12 @@ import { parseFormatted, stringifyFormatted } from './format';
 import type { VarValue } from './vars';
 
 export const ENV_DIR = '.httpme/environments';
-/** value null = NULL (belum diisi); secret: nilai di SecretStorage, file hanya berisi nama */
-export type EnvVar = { key: string; value: VarValue; secret?: boolean; enabled?: boolean };
+/** value null = NULL (belum diisi); secret: nilai di SecretStorage, file hanya berisi nama; variants = nilai alternatif siap pilih (jadi current value) */
+export type EnvVar = { key: string; value: VarValue; secret?: boolean; enabled?: boolean; variants?: string[] };
+
+/** daftar variant yang bersih: string tidak kosong, tanpa duplikat */
+const cleanVariants = (v: unknown): string[] =>
+  Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string' && x.trim() !== ''))] : [];
 
 export function parseEnvironment(text: string, fileName = 'Environment file'): EnvVar[] {
   const json = parseFormatted<{ variables?: unknown }>(text, fileName);
@@ -16,15 +20,25 @@ export function parseEnvironment(text: string, fileName = 'Environment file'): E
   return json.variables.filter((x) => x && typeof x === 'object' && typeof x.key === 'string').map((x: Record<string, unknown>): EnvVar => {
     const out: EnvVar = { key: x.key as string, value: x.secret === true || x.value === null || x.value === undefined ? null : String(x.value) };
     if (x.secret === true) out.secret = true;
+    else { const variants = cleanVariants(x.variants); if (variants.length) out.variants = variants; } // secret tidak punya variant
     if (x.enabled === false) out.enabled = false;
     return out;
   });
 }
 
 export function serializeEnvironment(vars: readonly EnvVar[]): string {
-  const variables = vars.map((x) => ({ key: x.key, ...(x.secret ? { secret: true } : { value: x.value }), ...(x.enabled === false ? { enabled: false } : {}) }));
+  const variables = vars.map((x) => ({
+    key: x.key, ...(x.secret ? { secret: true } : { value: x.value }),
+    ...(!x.secret && x.variants?.length ? { variants: x.variants } : {}), ...(x.enabled === false ? { enabled: false } : {}),
+  }));
   return stringifyFormatted({ variables });
 }
+
+/** baris dari tabel editor siap ditulis: nama dirapikan, secret tidak membawa nilai / variant ke file */
+export const normalizeEdited = (vars: readonly EnvVar[]): EnvVar[] => vars.map((x) => ({
+  key: x.key.trim(), value: x.secret ? null : x.value,
+  ...(x.secret ? { secret: true } : {}), ...(!x.secret && x.variants?.length ? { variants: [...x.variants] } : {}), ...(x.enabled === false ? { enabled: false } : {}),
+}));
 
 /** nama kosong / duplikat: baris ditandai merah, editor tidak menyimpan */
 export function validateVars(vars: readonly EnvVar[]): { index: number; message: string }[] {
@@ -62,9 +76,15 @@ export const clearedKey = (vars: readonly EnvVar[], key: string): EnvVar[] => va
 /** jadi secret: nilai keluar dari file (pemanggil memindahkannya ke SecretStorage) */
 export const withSecret = (vars: readonly EnvVar[], key: string, secret: boolean): EnvVar[] => vars.map((x) => {
   if (x.key !== key) return x;
-  const { secret: _old, ...rest } = x;
-  return secret ? { ...rest, value: null, secret: true } : rest;
+  const { secret: _old, variants, ...rest } = x;
+  return secret ? { ...rest, value: null, secret: true } : { ...rest, ...(variants?.length ? { variants } : {}) };
 });
+
+/** nilai alternatif satu key (dipilih dari dropdown jadi current value); kosong / duplikat / secret diabaikan */
+export const withVariant = (vars: readonly EnvVar[], key: string, value: string): EnvVar[] => vars.map((x) =>
+  x.key !== key || x.secret || !value.trim() || (x.variants ?? []).includes(value) ? x : { ...x, variants: [...(x.variants ?? []), value] });
+export const withoutVariant = (vars: readonly EnvVar[], key: string, value: string): EnvVar[] => vars.map((x) =>
+  x.key === key && x.variants ? { ...x, variants: x.variants.filter((v) => v !== value) } : x);
 
 // ---------- file ----------
 const fileOf = (dir: string, name: string) => {

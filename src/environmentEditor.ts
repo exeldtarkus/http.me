@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import { attachBackBar, COMPARE_KEY, forgetOpened } from './backBar';
 import { randomBytes } from 'node:crypto';
-import { clearedKey, parseEnvironment, persistAll, renamedKey, serializeEnvironment, validateVars, withKey, withoutKey, withSecret, type EnvVar } from './environments';
+import { clearedKey, normalizeEdited, parseEnvironment, persistAll, renamedKey, serializeEnvironment, validateVars, withKey, withoutKey, withSecret, withVariant, withoutVariant, type EnvVar } from './environments';
 import { GLOBALS, type Environments } from './envState';
 import { webviewPage } from './webviewPage';
 import { errMsg, errorLine } from './log';
@@ -27,6 +27,8 @@ export type EnvOp =
   | { type: 'deleteKey'; key: string; scope?: 'all' | 'this' }
   | { type: 'setSecret'; key: string; secret: boolean }
   | { type: 'setCurrent'; key: string; value?: string }
+  | { type: 'addVariant'; key: string; value: string }
+  | { type: 'removeVariant'; key: string; value: string }
   | { type: 'setSecretValue'; key: string; value?: string }
   | { type: 'resetCurrent' } | { type: 'persistAll' };
 
@@ -55,7 +57,7 @@ export async function envOp(doc: vscode.TextDocument, op: EnvOp, ask = true): Pr
   switch (op.type) {
     case 'edit': {
       if (!Array.isArray(op.vars) || validateVars(op.vars).length) return; // tidak valid: hanya ditandai merah di tabel, tidak disimpan
-      return writeDoc(doc, op.vars.map((x) => ({ key: x.key.trim(), value: x.secret ? null : x.value, ...(x.secret ? { secret: true } : {}), ...(x.enabled === false ? { enabled: false } : {}) })));
+      return writeDoc(doc, normalizeEdited(op.vars));
     }
     case 'addKey': {
       const key = op.key.trim();
@@ -122,6 +124,9 @@ export async function envOp(doc: vscode.TextDocument, op: EnvOp, ask = true): Pr
       return;
     }
     case 'setCurrent': return envs.setCurrent(name, op.key, op.value);
+    // variant = nilai alternatif di file Environment ini saja (tiap Environment punya host sendiri)
+    case 'addVariant': return writeDoc(doc, withVariant(vars, op.key, op.value));
+    case 'removeVariant': return writeDoc(doc, withoutVariant(vars, op.key, op.value));
     case 'setSecretValue': return envs.setSecret(name, op.key, op.value);
     case 'resetCurrent': return envs.resetCurrent(name);
     case 'persistAll': await writeDoc(doc, persistAll(vars, envs.current(name))); return envs.resetCurrent(name);

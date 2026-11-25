@@ -42,7 +42,16 @@
     return k === 'Enter' ? 'add-stay' : 'add-value';
   }
 
-  const api = { rowErrors, visibleRows, moveRow, addKeyAction };
+  /** isi dropdown variant satu baris: initial value lebih dulu, lalu variant; yang sedang dipakai (current ?? initial) ditandai */
+  function variantItems(x, current) {
+    const items = [];
+    if (x.value !== null && x.value !== undefined) items.push({ value: x.value, initial: true });
+    for (const v of x.variants || []) if (!items.some((i) => i.value === v)) items.push({ value: v, initial: false });
+    const used = current === undefined || current === '' ? x.value : current;
+    return items.map((i) => ({ ...i, selected: i.value === used }));
+  }
+
+  const api = { rowErrors, visibleRows, moveRow, addKeyAction, variantItems };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof acquireVsCodeApi !== 'function') return;
 
@@ -56,6 +65,7 @@
   let editTimer;
   const shown = {}; // secret yang sedang ditampilkan sementara
   let openNull = null; // key NULL yang sedang diisi
+  let openMenu = null; // key yang dropdown variant-nya terbuka
 
   function el(tag, props, children) {
     const e = document.createElement(tag);
@@ -112,8 +122,53 @@
     inp.onblur = () => { if (rendering || !inp.isConnected || !document.hasFocus()) return; flushEdit(); if (openNull === x.key) { openNull = null; if (x.value === null) render(); } };
     const setNull = el('button', { className: 'mini', type: 'button', textContent: '⊘', title: 'Set NULL' });
     setNull.onclick = () => { x.value = null; openNull = null; render(); sendEdit(); };
-    box.append(inp, setNull);
+    box.append(inp, setNull, variantButton(x));
+    if (openMenu === x.key) box.append(variantMenu(x));
     return box;
+  }
+
+  /** tombol ▾: buka daftar variant (nilai alternatif) baris ini */
+  function variantButton(x) {
+    const n = (x.variants || []).length;
+    const b = el('button', {
+      className: `mini${n || openMenu === x.key ? ' on' : ''}`, type: 'button', textContent: n ? `▾${n}` : '▾',
+      title: n ? `${n} variant value${n === 1 ? '' : 's'}: click to choose` : 'Variant values: click to add one',
+    });
+    b.onclick = (e) => { e.stopPropagation(); openMenu = openMenu === x.key ? null : x.key; render(); };
+    return b;
+  }
+
+  /** daftar variant: klik = pakai jadi current value, ✕ = hapus dari file, input = tambah */
+  function variantMenu(x) {
+    const menu = el('div', { className: 'vmenu' });
+    menu.onclick = (e) => e.stopPropagation();
+    for (const it of variantItems(x, st.current[x.key])) {
+      const row = el('div', { className: `vitem${it.selected ? ' sel' : ''}` });
+      const pick = el('button', { type: 'button', className: 'vpick', title: it.initial ? 'Use the initial value' : 'Use this value (current value)' }, [
+        el('span', { className: 'vmark', textContent: it.selected ? '✓' : '' }),
+        el('span', { className: 'vval', textContent: it.value }),
+        ...(it.initial ? [el('span', { className: 'vtag', textContent: 'initial' })] : []),
+      ]);
+      pick.onclick = () => { openMenu = null; post({ type: 'setCurrent', key: x.key, value: it.initial ? undefined : it.value }); };
+      row.append(pick);
+      if (!it.initial) {
+        const del = el('button', { className: 'mini on del-v', type: 'button', innerHTML: TRASH, title: 'Remove this variant', ariaLabel: 'Remove this variant' });
+        del.onclick = () => post({ type: 'removeVariant', key: x.key, value: it.value });
+        row.append(del);
+      }
+      menu.append(row);
+    }
+    const add = el('input', { type: 'text', className: 'vadd', placeholder: 'Add variant value (Enter)', spellcheck: false });
+    add.onkeydown = (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const v = add.value.trim();
+      if (v) post({ type: 'addVariant', key: x.key, value: v });
+      add.value = '';
+    };
+    menu.append(add);
+    setTimeout(() => menu.querySelector('.vadd')?.focus());
+    return menu;
   }
 
   let dragFrom = -1;
@@ -234,6 +289,7 @@
   $('save').onclick = () => { saving = true; render(); post({ type: 'save' }); };
   $('reset').onclick = () => post({ type: 'resetCurrent' });
   $('persist').onclick = () => post({ type: 'persistAll' });
+  document.addEventListener('click', () => { if (openMenu !== null) { openMenu = null; render(); } });
   $('search').oninput = render;
   $('nullOnly').onchange = render;
 

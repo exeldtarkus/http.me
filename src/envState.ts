@@ -157,7 +157,10 @@ export class Environments {
     const environments = await Promise.all((await this.names()).map(async (name) => {
       try {
         const vars = await this.vars(name);
-        return { name, values: environmentValues(vars, this.current(name), await this.secretsOf(name, vars)), secret: new Set(vars.filter((x) => x.secret).map((x) => x.key)) };
+        return {
+          name, values: environmentValues(vars, this.current(name), await this.secretsOf(name, vars)), secret: new Set(vars.filter((x) => x.secret).map((x) => x.key)),
+          variants: new Map(vars.filter((x) => x.variants?.length).map((x) => [x.key, x.variants!])),
+        };
       } catch (e) {
         log().error(errorLine(`Environments.context ${name}`, e)); // file rusak: dilewati, pesan JSON tampil saat dibuka
         return { name, values: new Map(), secret: new Set<string>() };

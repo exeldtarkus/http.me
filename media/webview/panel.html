@@ -387,6 +387,10 @@
   .penv { min-width: 80px; color: var(--muted); } .pactive .penv { color: var(--fg); font-weight: 600; }
   .pmsg { color: var(--err); } .pnull { color: var(--warn); }
   .plink { background: none; border: 0; padding: 0; color: var(--vscode-textLink-foreground, #3794ff); cursor: pointer; }
+  .pchips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .pchip { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 10px; padding: 0 8px; background: none; color: var(--fg); cursor: pointer; }
+  .pchip:hover { background: var(--hover, #8882); }
+  .pchip.on { border-color: var(--accent, #3794ff); color: var(--accent-fg, inherit); background: var(--accent, #3794ff); }
   .pfoot { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px !important; }
   .aclist { position: fixed; z-index: 21; min-width: 180px; max-height: 200px; overflow-y: auto; font: 12px var(--mono);
     background: var(--vscode-editorSuggestWidget-background, var(--bg)); border: 1px solid var(--vscode-editorSuggestWidget-border, var(--line)); }

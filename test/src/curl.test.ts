@@ -97,15 +97,15 @@ test('toCurl: header Cookie tidak ikut kecuali dicentang (withCookies); cookie j
 });
 
 test('quickRequest: URL polos = GET, "METHOD URL", curl, tanpa skema ditolak', () => {
-  const u = quickRequest('  https://auth.dev.karedoc.net  ');
+  const u = quickRequest('  https://auth.example.test  ');
   assert.equal(u.method, 'GET');
-  assert.equal(u.url, 'https://auth.dev.karedoc.net');
+  assert.equal(u.url, 'https://auth.example.test');
   const m = quickRequest('post http://a.test/x');
   assert.equal(m.method, 'POST');
   assert.equal(m.url, 'http://a.test/x');
   assert.equal(quickRequest(`curl -X PUT https://a.test -d 'x=1'`).method, 'PUT');
   assert.equal(quickRequest('https://a.test/{{path}}').url, 'https://a.test/{{path}}');
-  assert.throws(() => quickRequest('auth.dev.karedoc.net'), /curl command or a URL/);
+  assert.throws(() => quickRequest('auth.example.test'), /curl command or a URL/);
   assert.throws(() => quickRequest('   '), /curl command or a URL/);
 });
 

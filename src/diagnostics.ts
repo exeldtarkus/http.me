@@ -5,7 +5,7 @@ import { DYNAMIC_NAMES, dynamicValue, type VarValue } from './vars';
 export type VarToken = { name: string; args?: string; start: number; end: number; kind: 'var' | 'dynamic' | 'script' };
 export type VarContext = {
   active?: string;
-  environments: { name: string; values: ReadonlyMap<string, VarValue>; secret: ReadonlySet<string> }[];
+  environments: { name: string; values: ReadonlyMap<string, VarValue>; secret: ReadonlySet<string>; /** nilai alternatif per key */ variants?: ReadonlyMap<string, readonly string[]> }[];
   globals: ReadonlyMap<string, VarValue>;
   globalSecret?: ReadonlySet<string>;
   /** nama yang di-set script (httpme.vars) */ script?: ReadonlySet<string>;
@@ -127,7 +127,7 @@ export type HoverInfo = {
   script?: boolean;
   file?: string;
   /** value undefined = key tidak ada di Environment itu */
-  environments: { name: string; value: VarValue | undefined; secret: boolean; active: boolean }[];
+  environments: { name: string; value: VarValue | undefined; secret: boolean; active: boolean; variants?: readonly string[] }[];
   globals?: { value: VarValue; secret: boolean };
 };
 
@@ -138,7 +138,10 @@ export function hoverInfo(name: string, ctx: VarContext, file: ReadonlyMap<strin
     name, status,
     ...(ctx.script?.has(name) ? { script: true } : {}),
     ...(file.has(name) ? { file: file.get(name) } : {}),
-    environments: ctx.environments.map((e) => ({ name: e.name, value: e.values.get(name), secret: e.secret.has(name), active: e.name === ctx.active })),
+    environments: ctx.environments.map((e) => {
+      const variants = e.secret.has(name) ? undefined : e.variants?.get(name);
+      return { name: e.name, value: e.values.get(name), secret: e.secret.has(name), active: e.name === ctx.active, ...(variants?.length ? { variants } : {}) };
+    }),
     ...(ctx.globals.has(name) ? { globals: { value: ctx.globals.get(name)!, secret: !!ctx.globalSecret?.has(name) } } : {}),
   };
 }
@@ -160,6 +163,8 @@ export function hoverMarkdown(info: HoverInfo): string {
     const label = e.active ? `**${e.name}** (active)` : e.name;
     const value = e.value === null ? '_NULL_' : e.secret ? `${code('••••')} [Show](${cmd('httpme.showSecret', [e.name, info.name])})` : code(e.value);
     lines.push(`${label}: ${value}`);
+    // variant: klik = pakai nilai itu sebagai current value Environment tsb
+    if (e.variants?.length) lines.push(`  ${e.variants.map((v) => `[${v}](${cmd('httpme.useVariant', [e.name, info.name, v])})`).join(' · ')}`);
   }
   if (info.globals) {
     const g = info.globals;

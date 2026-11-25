@@ -48,6 +48,16 @@
   .val { display: flex; align-items: center; gap: 4px; }
   .val .mini { border: 0; background: none; color: var(--muted); padding: 0 3px; visibility: hidden; font-size: 12px; }
   tr:hover .val .mini, .val .mini.on { visibility: visible; }
+  .val { position: relative; }
+  .vmenu { position: absolute; z-index: 3; top: 100%; left: 0; min-width: 280px; max-width: 520px; padding: 4px; background: var(--input); border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 2px 8px #0006; }
+  .vitem { display: flex; align-items: center; gap: 2px; }
+  .vitem.sel { background: var(--hover); border-radius: 3px; }
+  .vpick { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; border: 0; background: none; text-align: left; padding: 2px 4px; border-radius: 3px; }
+  .vpick:hover { background: var(--hover); }
+  .vmark { width: 10px; color: var(--ok); }
+  .vval { flex: 1; font: 12px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vtag { font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 0 5px; }
+  .vmenu .vadd { width: 100%; margin-top: 2px; font: 12px var(--mono); font-style: italic; }
   .dots { font: 12px var(--mono); color: var(--muted); padding: 0 5px; }
   .del { border: 0; background: none; color: var(--muted); visibility: hidden; }
   tr:hover .del { visibility: visible; }

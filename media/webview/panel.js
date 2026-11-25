@@ -879,6 +879,13 @@
     for (const e of info.environments) {
       if (e.value === undefined) continue;
       rows.push(el('div', { className: e.active ? 'pactive' : '' }, [el('span', { className: 'penv', textContent: e.active ? `${e.name} (active)` : e.name }), value(e.name, e.value, e.secret)]));
+      // variant: klik = nilai itu dipakai sebagai current value Environment tsb
+      if (e.variants?.length) {
+        rows.push(el('div', { className: 'pvars' }, [el('span', { className: 'penv' }), el('span', { className: 'pchips' }, e.variants.map((v) => el('button', {
+          type: 'button', className: `pchip${v === e.value ? ' on' : ''}`, textContent: v, title: `Use this value in "${e.name}"`,
+          onclick: () => post({ type: 'useVariant', env: e.name, key: name, value: v }),
+        })))]));
+      }
     }
     if (info.globals) rows.push(el('div', {}, [el('span', { className: 'penv', textContent: 'Globals' }), value('', info.globals.value, info.globals.secret)]));
     const active = info.environments.find((e) => e.active);

@@ -105,3 +105,16 @@ test('completionNames: Environment aktif + Globals + variabel file + dinamis, un
   assert.deepEqual(completionNames(ctx, new Map([['host', 'a']])).slice(0, 6), ['apiKey', 'baseUrl', 'g', 'gn', 'host', 'token']);
   assert.ok(completionNames(ctx).includes('$uuid'));
 });
+
+test('hoverInfo: variant Environment ikut (hanya yang punya, secret tidak)', () => {
+  const withVar: VarContext = {
+    ...ctx,
+    environments: ctx.environments.map((e) => (e.name === 'uat' ? { ...e, variants: new Map([['baseUrl', ['https://uat-pos', 'https://uat-bjb1']]]) } : e)),
+  };
+  const info = hoverInfo('baseUrl', withVar);
+  assert.deepEqual(info.environments.map((e) => e.variants), [undefined, undefined, ['https://uat-pos', 'https://uat-bjb1']]);
+  assert.equal(hoverInfo('token', withVar).environments[2].variants, undefined, 'key tanpa variant');
+  const md = hoverMarkdown(info);
+  assert.match(md, /\[https:\/\/uat-pos\]\(command:httpme\.useVariant\?/, 'variant jadi link pilih');
+  assert.ok(!hoverMarkdown(hoverInfo('baseUrl', ctx)).includes('useVariant'), 'tanpa variant tidak ada link');
+});

@@ -132,3 +132,15 @@ test('editor Environment: tombol ikon Delete (tooltip "Delete Environment"), ter
   assert.match(ed, /m\.type === 'deleteEnv'[\s\S]{0,400}httpme\.deleteEnvironment/);
   assert.match(ed, /m\.type === 'deleteEnv'[\s\S]{0,600}panel\.dispose\(\)/, 'tab ditutup setelah dihapus');
 });
+
+test('editor Environment: dropdown variant = initial + daftar variant, yang dipakai ditandai', () => {
+  const e = env as unknown as { variantItems(x: unknown, current: string | undefined): { value: string; initial: boolean; selected: boolean }[] };
+  const x = { key: 'H', value: 'https://svc.example.test', variants: ['https://svc-b.example.test', 'https://svc.example.test'] };
+  assert.deepEqual(e.variantItems(x, undefined), [
+    { value: 'https://svc.example.test', initial: true, selected: true },
+    { value: 'https://svc-b.example.test', initial: false, selected: false },
+  ], 'initial di atas, duplikat dibuang, tanpa current value = initial yang dipakai');
+  assert.deepEqual(e.variantItems(x, 'https://svc-b.example.test').map((i) => i.selected), [false, true]);
+  assert.deepEqual(e.variantItems({ key: 'H', value: null, variants: ['https://a'] }, undefined), [{ value: 'https://a', initial: false, selected: false }], 'initial NULL tidak masuk daftar');
+  assert.deepEqual(e.variantItems({ key: 'H', value: 'x' }, undefined), [{ value: 'x', initial: true, selected: true }]);
+});

@@ -687,3 +687,12 @@ test('bodyError JSON: key ganda di objek yang sama = error, nama key digaris mer
   // objek berbeda / array: key sama boleh
   for (const ok of ['{"a":{"x":1},"b":{"x":2}}', '[{"x":1},{"x":2}]', '{"a":1,"b":2}']) assert.equal(panel.bodyError(ok, 'json'), undefined, ok);
 });
+
+test('popup variable: variant Environment jadi tombol pilih (useVariant) dan ditangani host', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const root = join(__dirname, '..', '..', '..');
+  const js = fs.readFileSync(join(root, 'media', 'webview', 'panel.js'), 'utf8');
+  assert.match(js, /type: 'useVariant', env: [\w.]+, key: name, value: /, 'tombol variant mengirim useVariant');
+  assert.match(fs.readFileSync(join(root, 'media', 'webview', 'panel.html'), 'utf8'), /\.pchip\b/, 'gaya tombol variant ada');
+  assert.match(fs.readFileSync(join(root, 'src', 'httpEditor.ts'), 'utf8'), /m\.type === 'useVariant'/, 'host meneruskan ke command');
+});

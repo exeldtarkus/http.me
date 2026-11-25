@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import {
   clearedKey, createEnvironment, deleteEnvironment, duplicateEnvironment, environmentValues, fromPostmanEnvironment, keyMismatch, listEnvironments,
   mismatchMessage, parseEnvironment, persistAll, readEnvironment, renameEnvironment, renamedKey, serializeEnvironment, syncKeys, updateAll,
-  statusText, stepEnvironment, validateVars, withKey, withoutKey, withSecret, writeEnvironment, type EnvVar,
+  normalizeEdited, statusText, stepEnvironment, validateVars, withKey, withoutKey, withSecret, withVariant, withoutVariant, writeEnvironment, type EnvVar,
 } from '../../src/environments';
 import { environmentFileName } from '../../src/store';
 import { withTempDir } from './helpers/tmp';
@@ -131,4 +131,43 @@ test('status bar & Next / Previous Environment', () => {
   const names = ['dev', 'prod', 'uat'];
   assert.deepEqual([stepEnvironment(names, 'dev', 1), stepEnvironment(names, 'uat', 1), stepEnvironment(names, 'dev', -1)], ['prod', 'dev', 'uat']);
   assert.deepEqual([stepEnvironment(names, undefined, 1), stepEnvironment(names, 'gone', -1), stepEnvironment([], 'x', 1)], ['dev', 'uat', undefined]);
+});
+
+test('variants: disimpan di file, kosong/duplikat/secret diabaikan', () => {
+  const parsed = parseEnvironment(JSON.stringify({
+    variables: [
+      { key: 'SVC_HOST', value: 'https://svc.example.test', variants: ['https://svc-b.example.test', 'https://svc-b.example.test', '', 1] },
+      { key: 'token', secret: true, variants: ['a'] },
+      { key: 'plain', value: 'x' },
+    ],
+  }));
+  assert.deepEqual(parsed[0].variants, ['https://svc-b.example.test'], 'duplikat & non-string dibuang');
+  assert.equal(parsed[1].variants, undefined, 'secret tidak punya variant');
+  assert.equal(parsed[2].variants, undefined);
+  assert.match(serializeEnvironment(parsed), /"variants": \[\s*"https:\/\/svc-b\.example\.test"\s*\]/);
+  assert.deepEqual(parseEnvironment(serializeEnvironment(parsed)), parsed, 'round-trip');
+});
+
+test('variants: tambah / hapus per key', () => {
+  const vars = [{ key: 'H', value: 'https://a' }, { key: 's', value: null, secret: true }];
+  const one = withVariant(vars, 'H', 'https://b');
+  assert.deepEqual(one[0].variants, ['https://b']);
+  assert.deepEqual(withVariant(one, 'H', 'https://b')[0].variants, ['https://b'], 'duplikat tidak ditambah');
+  assert.deepEqual(withVariant(one, 'H', '  ')[0].variants, ['https://b'], 'kosong tidak ditambah');
+  assert.equal(withVariant(vars, 's', 'x')[1].variants, undefined, 'secret tidak punya variant');
+  assert.deepEqual(withoutVariant(withVariant(one, 'H', 'https://c'), 'H', 'https://b')[0].variants, ['https://c']);
+  assert.equal(serializeEnvironment(withoutVariant(one, 'H', 'https://b')).includes('variants'), false, 'daftar kosong tidak ditulis');
+});
+
+test('variants: key jadi secret kehilangan daftar variant', () => {
+  assert.equal(withSecret(withVariant([{ key: 'H', value: 'https://a' }], 'H', 'https://b'), 'H', true)[0].variants, undefined);
+});
+
+test('variants: tetap ada setelah baris diedit dari tabel', () => {
+  const edited = normalizeEdited([
+    { key: ' H ', value: 'https://svc.example.test', variants: ['https://svc-b.example.test'] },
+    { key: 's', value: 'bocor', secret: true, variants: ['x'] },
+  ]);
+  assert.deepEqual(edited[0], { key: 'H', value: 'https://svc.example.test', variants: ['https://svc-b.example.test'] });
+  assert.deepEqual(edited[1], { key: 's', value: null, secret: true }, 'secret: nilai & variant tidak ikut ke file');
 });

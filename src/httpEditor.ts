@@ -861,7 +861,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
     attachBackBar(panel, () => backKey(doc.uri)),
     onRunnerChange(postOthers),
     onRunnerChange(postBlocks),
-    panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown; layout?: unknown; message?: unknown; index?: unknown; opts?: unknown }) => {
+    panel.webview.onDidReceiveMessage(async (m: ScriptsMessage & { req?: unknown; name?: unknown; env?: unknown; key?: unknown; value?: unknown; layout?: unknown; message?: unknown; index?: unknown; opts?: unknown }) => {
       try {
         if (await handleScriptsMessage(doc, m, postMsg)) return;
         if (await handleAuthMessage(doc, m, postMsg)) return;
@@ -872,6 +872,7 @@ function resolve(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
           void panel.webview.postMessage({ type: 'varHover', name: m.name, info });
         } else if (m.type === 'varGoto' && typeof m.name === 'string') await vscode.commands.executeCommand('httpme.gotoVariable', m.name);
         else if (m.type === 'showSecret' && typeof m.env === 'string' && typeof m.key === 'string') await vscode.commands.executeCommand('httpme.showSecret', m.env, m.key);
+        else if (m.type === 'useVariant' && typeof m.env === 'string' && typeof m.key === 'string' && typeof m.value === 'string') await vscode.commands.executeCommand('httpme.useVariant', m.env, m.key, m.value);
         else if (m.type === 'edit' && isRequest(m.req)) {
           written = blockCount() > 1 ? replaceBlock(doc.getText(), typeof m.index === 'number' ? m.index : active, m.req) : serializeRequest(m.req);
           await writeDocument(doc, written);
