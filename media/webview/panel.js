@@ -788,6 +788,17 @@
     input.addEventListener('scroll', () => { m.scrollTop = input.scrollTop; m.scrollLeft = input.scrollLeft; });
     input.addEventListener('mousemove', (e) => hoverAt(e, input));
     input.addEventListener('mouseleave', () => leaveToken());
+    // klik kanan di token: popup ditahan (tidak hilang saat pointer pergi) supaya isinya bisa dipakai
+    input.addEventListener('contextmenu', (e) => {
+      const t = tokenAt(e);
+      if (!t) return;
+      e.preventDefault();
+      clearTimeout(hoverTimer);
+      clearTimeout(hideTimer);
+      hoverTok = t;
+      pinned = true;
+      post({ type: 'varHover', name: t.dataset.name });
+    });
     input.addEventListener('mousedown', (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       const t = tokenAt(e);
@@ -838,11 +849,13 @@
   let hoverTok;
   let hoverTimer;
   let hideTimer;
+  let pinned = false; // klik kanan di token variable: popup menetap sampai Esc / klik di luar
   const pop = () => $('varPop');
   function tokenAt(e) {
     return document.elementsFromPoint(e.clientX, e.clientY).find((x) => x.classList?.contains('tok'));
   }
   function hoverAt(e, input) {
+    if (pinned) return;
     const t = tokenAt(e);
     document.querySelectorAll('.tok.link').forEach((x) => x !== t && x.classList.remove('link'));
     input.classList.toggle('linkable', !!t && (e.ctrlKey || e.metaKey));
@@ -855,6 +868,7 @@
     hoverTimer = setTimeout(() => post({ type: 'varHover', name: t.dataset.name }), 300);
   }
   function leaveToken() {
+    if (pinned) return;
     clearTimeout(hoverTimer);
     hoverTok = undefined;
     clearTimeout(hideTimer);
@@ -864,7 +878,7 @@
   let openVariants = null; // nama Environment yang daftar variant-nya sedang terbuka (default tertutup: popup tetap sempit)
   function showHover(name, info) {
     if (!hoverTok || hoverTok.dataset.name !== name) return;
-    if (lastHover?.name !== name) openVariants = null; // variable lain: daftar variant kembali tertutup
+    openVariants = null; // popup yang baru dibuka selalu dengan daftar variant tertutup
     lastHover = { name, info, anchor: hoverTok };
     drawHover();
   }
@@ -1093,6 +1107,7 @@
   document.addEventListener('selectionchange', () => { if (document.activeElement === $('bodyText')) paint($('bodyText'), $('bodyText')._mirror); });
   $('bodyText').addEventListener('blur', () => paint($('bodyText'), $('bodyText')._mirror));
   $('varPop').addEventListener('mouseleave', () => leaveToken());
+  document.addEventListener('mousedown', (e) => { if (pinned && !pop().contains(e.target)) { pinned = false; pop().hidden = true; } });
   document.addEventListener('keyup', (e) => { if (e.key === 'Control' || e.key === 'Meta') document.querySelectorAll('.tok.link, .linkable').forEach((x) => x.classList.remove('link', 'linkable')); });
   // menu method custom: klik / Enter memilih, panah atas-bawah pindah item, Escape menutup
   const mItems = () => [...$('methodMenu').children];
@@ -1364,7 +1379,7 @@
   $('send').onclick = () => (running ? cancel() : sendNow());
   $('ldCancel').onclick = cancel;
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$('varPop').hidden) { $('varPop').hidden = true; return; }
+    if (e.key === 'Escape' && !$('varPop').hidden) { pinned = false; $('varPop').hidden = true; return; }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendNow(); }
     else if (e.key === 'Escape' && running) { e.preventDefault(); cancel(); }
   });

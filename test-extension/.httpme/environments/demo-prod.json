@@ -41,8 +41,8 @@
       "key": "REPORT_SERVICE_HOST",
       "value": "https://reports.dev.karedoc.net",
       "variants": [
-        "reports-bima.dev.karedoc.net",
-        "reports-1.aku.bcalife.co.id"
+        "https://reports-bima-1.dev.karedoc.net",
+        "https://reports-2.dev.karedoc.net"
       ]
     },
     {
