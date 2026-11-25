@@ -860,9 +860,13 @@
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => { if (!pop().matches(':hover')) pop().hidden = true; }, 250);
   }
+  let lastHover; // isi popup terakhir: dipakai menggambar ulang saat daftar variant dibuka / ditutup
+  let openVariants = null; // nama Environment yang daftar variant-nya sedang terbuka (default tertutup: popup tetap sempit)
   function showHover(name, info) {
     const t = hoverTok;
     if (!t || t.dataset.name !== name) return;
+    if (lastHover?.name !== name) openVariants = null; // variable lain: daftar variant kembali tertutup
+    lastHover = { name, info };
     const p = pop();
     const rows = [];
     if (info.status.message) rows.push(el('div', { className: 'pmsg', textContent: info.status.message }));
@@ -879,17 +883,26 @@
     for (const e of info.environments) {
       if (e.value === undefined) continue;
       rows.push(el('div', { className: e.active ? 'pactive' : '' }, [el('span', { className: 'penv', textContent: e.active ? `${e.name} (active)` : e.name }), value(e.name, e.value, e.secret)]));
-      // variant: klik = nilai itu dipakai sebagai current value Environment tsb
-      if (e.variants?.length || (e.active && !e.secret && e.value !== undefined)) {
-        const chips = (e.variants || []).map((v) => el('button', {
-          type: 'button', className: `pchip${v === e.value ? ' on' : ''}`, textContent: v, title: `Use this value in "${e.name}"`,
-          onclick: () => { post({ type: 'useVariant', env: e.name, key: name, value: v }); pop().hidden = true; }, // nilai di popup sudah basi: tutup
+      // variant disembunyikan di balik tombol ▾ supaya popup tidak melebar saat variant-nya banyak
+      const canVary = !e.secret && e.value !== undefined;
+      if (canVary && (e.variants?.length || e.active)) {
+        const n = (e.variants || []).length;
+        const open = openVariants === e.name;
+        rows[rows.length - 1].append(el('button', {
+          type: 'button', className: 'pvtoggle', textContent: `${open ? '▴' : '▾'} ${n || 'add'}`,
+          title: open ? 'Hide variant values' : n ? `${n} variant value${n === 1 ? '' : 's'}` : 'Add a variant value',
+          onclick: () => { openVariants = open ? null : e.name; showHover(lastHover.name, lastHover.info); },
         }));
-        if (e.active && !e.secret) chips.push(el('button', {
-          type: 'button', className: 'pchip add', textContent: '+', title: `Add a variant value in "${e.name}"`,
-          onclick: () => { post({ type: 'addVariant', env: e.name, key: name }); pop().hidden = true; },
-        }));
-        rows.push(el('div', { className: 'pvars' }, [el('span', { className: 'penv' }), el('span', { className: 'pchips' }, chips)]));
+        if (open) rows.push(el('div', { className: 'pvars' }, [el('span', { className: 'pvlist' }, [
+          ...(e.variants || []).map((v) => el('button', {
+            type: 'button', className: `pchip${v === e.value ? ' on' : ''}`, textContent: v, title: `Use this value in "${e.name}"`,
+            onclick: () => { post({ type: 'useVariant', env: e.name, key: name, value: v }); pop().hidden = true; }, // nilai di popup sudah basi: tutup
+          })),
+          ...(e.active ? [el('button', {
+            type: 'button', className: 'pchip add', textContent: '+ Add variant…', title: `Add a variant value in "${e.name}"`,
+            onclick: () => { post({ type: 'addVariant', env: e.name, key: name }); pop().hidden = true; },
+          })] : []),
+        ])]));
       }
     }
     if (info.globals) rows.push(el('div', {}, [el('span', { className: 'penv', textContent: 'Globals' }), value('', info.globals.value, info.globals.secret)]));

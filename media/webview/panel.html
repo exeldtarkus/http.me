@@ -383,14 +383,18 @@
     border: 1px solid var(--vscode-editorHoverWidget-border, var(--line)); box-shadow: 0 2px 8px var(--vscode-widget-shadow, #0005); }
   .varpop[hidden], .aclist[hidden], .matching[hidden] { display: none; }
   .varpop > div { display: flex; gap: 8px; align-items: baseline; padding: 1px 0; overflow-wrap: anywhere; }
+  .varpop > div.pvars { padding-left: 88px; }
   .varpop code { font: 12px var(--mono); }
   .penv { min-width: 80px; color: var(--muted); } .pactive .penv { color: var(--fg); font-weight: 600; }
   .pmsg { color: var(--err); } .pnull { color: var(--warn); }
   .plink { background: none; border: 0; padding: 0; color: var(--vscode-textLink-foreground, #3794ff); cursor: pointer; }
-  .pchips { display: flex; flex-wrap: wrap; gap: 4px; }
-  .pchip { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 10px; padding: 0 8px; background: none; color: var(--fg); cursor: pointer; }
+  .pvtoggle { font-size: 10px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 8px; padding: 0 5px; cursor: pointer; margin-left: auto; white-space: nowrap; }
+  .pvtoggle:hover { color: var(--fg); }
+  .pvlist { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-height: 160px; overflow-y: auto; }
+  .pchip { display: block; max-width: 100%; font: 11px var(--mono); text-align: left; border: 1px solid var(--line); border-radius: 3px; padding: 1px 6px;
+    background: none; color: var(--fg); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pchip:hover { background: var(--hover, #8882); }
-  .pchip.add { font-weight: 600; padding: 0 9px; }
+  .pchip.add { color: var(--vscode-textLink-foreground, #3794ff); border-style: dashed; }
   .pchip.on { border-color: var(--accent, #3794ff); color: var(--accent-fg, inherit); background: var(--accent, #3794ff); }
   .pfoot { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px !important; }
   .aclist { position: fixed; z-index: 21; min-width: 180px; max-height: 200px; overflow-y: auto; font: 12px var(--mono);
