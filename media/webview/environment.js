@@ -66,6 +66,7 @@
   const shown = {}; // secret yang sedang ditampilkan sementara
   let openNull = null; // key NULL yang sedang diisi
   let openMenu = null; // key yang dropdown variant-nya terbuka
+  let editVariant = null; // variant yang sedang diubah: { key, value }
 
   function el(tag, props, children) {
     const e = document.createElement(tag);
@@ -134,7 +135,7 @@
       className: `mini${n || openMenu === x.key ? ' on' : ''}`, type: 'button', textContent: n ? `▾${n}` : '▾',
       title: n ? `${n} variant value${n === 1 ? '' : 's'}: click to choose` : 'Variant values: click to add one',
     });
-    b.onclick = (e) => { e.stopPropagation(); openMenu = openMenu === x.key ? null : x.key; render(); };
+    b.onclick = (e) => { e.stopPropagation(); editVariant = null; openMenu = openMenu === x.key ? null : x.key; render(); };
     return b;
   }
 
@@ -144,6 +145,24 @@
     menu.onclick = (e) => e.stopPropagation();
     for (const it of variantItems(x, st.current[x.key])) {
       const row = el('div', { className: `vitem${it.selected ? ' sel' : ''}` });
+      if (!it.initial && editVariant && editVariant.key === x.key && editVariant.value === it.value) {
+        // ubah di tempat: Enter simpan, Esc batal
+        const inp = el('input', { type: 'text', className: 'vedit', value: it.value, spellcheck: false });
+        inp.onkeydown = (e) => {
+          if (e.key === 'Escape') { editVariant = null; render(); return; }
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          const to = inp.value.trim();
+          editVariant = null;
+          if (!to || to === it.value) return render();
+          post({ type: 'renameVariant', key: x.key, from: it.value, to });
+          if (st.current[x.key] === it.value) post({ type: 'setCurrent', key: x.key, value: to }); // yang sedang dipakai ikut pindah
+        };
+        row.append(inp);
+        menu.append(row);
+        setTimeout(() => inp.select());
+        continue;
+      }
       const pick = el('button', { type: 'button', className: 'vpick', title: it.initial ? 'Use the initial value' : 'Use this value (current value)' }, [
         el('span', { className: 'vmark', textContent: it.selected ? '✓' : '' }),
         el('span', { className: 'vval', textContent: it.value }),
@@ -152,12 +171,15 @@
       pick.onclick = () => { openMenu = null; post({ type: 'setCurrent', key: x.key, value: it.initial ? undefined : it.value }); };
       row.append(pick);
       if (!it.initial) {
+        const edit = el('button', { className: 'mini on', type: 'button', textContent: '✎', title: 'Edit this variant', ariaLabel: 'Edit this variant' });
+        edit.onclick = () => { editVariant = { key: x.key, value: it.value }; render(); };
         const del = el('button', { className: 'mini on del-v', type: 'button', innerHTML: TRASH, title: 'Remove this variant', ariaLabel: 'Remove this variant' });
         del.onclick = () => post({ type: 'removeVariant', key: x.key, value: it.value });
-        row.append(del);
+        row.append(edit, del);
       }
       menu.append(row);
     }
+    if (editVariant && editVariant.key !== x.key) editVariant = null;
     const add = el('input', { type: 'text', className: 'vadd', placeholder: 'Add variant value (Enter)', spellcheck: false });
     add.onkeydown = (e) => {
       if (e.key !== 'Enter') return;
@@ -167,7 +189,7 @@
       add.value = '';
     };
     menu.append(add);
-    setTimeout(() => menu.querySelector('.vadd')?.focus());
+    if (!editVariant) setTimeout(() => menu.querySelector('.vadd')?.focus());
     return menu;
   }
 
@@ -289,7 +311,7 @@
   $('save').onclick = () => { saving = true; render(); post({ type: 'save' }); };
   $('reset').onclick = () => post({ type: 'resetCurrent' });
   $('persist').onclick = () => post({ type: 'persistAll' });
-  document.addEventListener('click', () => { if (openMenu !== null) { openMenu = null; render(); } });
+  document.addEventListener('click', () => { if (openMenu !== null) { openMenu = null; editVariant = null; render(); } });
   $('search').oninput = render;
   $('nullOnly').onchange = render;
 

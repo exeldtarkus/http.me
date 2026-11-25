@@ -863,10 +863,15 @@
   let lastHover; // isi popup terakhir: dipakai menggambar ulang saat daftar variant dibuka / ditutup
   let openVariants = null; // nama Environment yang daftar variant-nya sedang terbuka (default tertutup: popup tetap sempit)
   function showHover(name, info) {
-    const t = hoverTok;
-    if (!t || t.dataset.name !== name) return;
+    if (!hoverTok || hoverTok.dataset.name !== name) return;
     if (lastHover?.name !== name) openVariants = null; // variable lain: daftar variant kembali tertutup
-    lastHover = { name, info };
+    lastHover = { name, info, anchor: hoverTok };
+    drawHover();
+  }
+  /** gambar ulang popup dari isi terakhir: dipakai tombol di dalam popup, saat pointer sudah lepas dari token */
+  function drawHover() {
+    if (!lastHover) return;
+    const { name, info, anchor: t } = lastHover;
     const p = pop();
     const rows = [];
     if (info.status.message) rows.push(el('div', { className: 'pmsg', textContent: info.status.message }));
@@ -891,7 +896,7 @@
         rows[rows.length - 1].append(el('button', {
           type: 'button', className: 'pvtoggle', textContent: `${open ? '▴' : '▾'} ${n || 'add'}`,
           title: open ? 'Hide variant values' : n ? `${n} variant value${n === 1 ? '' : 's'}` : 'Add a variant value',
-          onclick: () => { openVariants = open ? null : e.name; showHover(lastHover.name, lastHover.info); },
+          onclick: () => { openVariants = open ? null : e.name; drawHover(); },
         }));
         if (open) rows.push(el('div', { className: 'pvars' }, [el('span', { className: 'pvlist' }, [
           ...(e.variants || []).map((v) => el('button', {

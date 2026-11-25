@@ -697,6 +697,9 @@ test('popup variable: variant Environment jadi tombol pilih (useVariant) dan dit
   assert.match(js, /type: 'addVariant', env: [\w.]+, key: name/, 'popup bisa menambah variant');
   assert.match(js, /openVariants = null/, 'daftar variant tertutup sampai tombolnya diklik (popup tetap sempit)');
   assert.match(js, /class="pvtoggle"|'pvtoggle'/, 'ada tombol buka daftar variant');
+  // tombol ▾ diklik saat pointer sudah lepas dari token: gambar ulang tidak boleh lewat showHover (yang butuh hoverTok)
+  assert.match(js, /function drawHover\(/, 'ada fungsi gambar ulang popup');
+  assert.doesNotMatch(js, /openVariants = open \? null : e\.name; showHover\(/, 'toggle tidak memanggil showHover');
   assert.match(fs.readFileSync(join(root, 'src', 'httpEditor.ts'), 'utf8'), /m\.type === 'addVariant'/, 'host meneruskan tambah variant');
   assert.match(fs.readFileSync(join(root, 'media', 'webview', 'panel.html'), 'utf8'), /\.pchip\b/, 'gaya tombol variant ada');
   assert.match(fs.readFileSync(join(root, 'src', 'httpEditor.ts'), 'utf8'), /m\.type === 'useVariant'/, 'host meneruskan ke command');

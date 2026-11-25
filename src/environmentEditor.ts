@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import { attachBackBar, COMPARE_KEY, forgetOpened } from './backBar';
 import { randomBytes } from 'node:crypto';
-import { clearedKey, normalizeEdited, parseEnvironment, persistAll, renamedKey, serializeEnvironment, validateVars, withKey, withoutKey, withSecret, withVariant, withoutVariant, type EnvVar } from './environments';
+import { clearedKey, normalizeEdited, parseEnvironment, persistAll, renamedKey, renamedVariant, serializeEnvironment, validateVars, withKey, withoutKey, withSecret, withVariant, withoutVariant, type EnvVar } from './environments';
 import { GLOBALS, type Environments } from './envState';
 import { webviewPage } from './webviewPage';
 import { errMsg, errorLine } from './log';
@@ -29,6 +29,7 @@ export type EnvOp =
   | { type: 'setCurrent'; key: string; value?: string }
   | { type: 'addVariant'; key: string; value: string }
   | { type: 'removeVariant'; key: string; value: string }
+  | { type: 'renameVariant'; key: string; from: string; to: string }
   | { type: 'setSecretValue'; key: string; value?: string }
   | { type: 'resetCurrent' } | { type: 'persistAll' };
 
@@ -127,6 +128,7 @@ export async function envOp(doc: vscode.TextDocument, op: EnvOp, ask = true): Pr
     // variant = nilai alternatif di file Environment ini saja (tiap Environment punya host sendiri)
     case 'addVariant': return writeDoc(doc, withVariant(vars, op.key, op.value));
     case 'removeVariant': return writeDoc(doc, withoutVariant(vars, op.key, op.value));
+    case 'renameVariant': return writeDoc(doc, renamedVariant(vars, op.key, op.from, op.to));
     case 'setSecretValue': return envs.setSecret(name, op.key, op.value);
     case 'resetCurrent': return envs.resetCurrent(name);
     case 'persistAll': await writeDoc(doc, persistAll(vars, envs.current(name))); return envs.resetCurrent(name);

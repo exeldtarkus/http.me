@@ -86,6 +86,10 @@ export const withVariant = (vars: readonly EnvVar[], key: string, value: string)
 /** pilihan nilai satu key (hover / popup): initial value lebih dulu, lalu variant; kosong bila key tidak punya variant */
 export const variantList = (x: EnvVar): string[] =>
   x.secret || !x.variants?.length ? [] : [...new Set([...(x.value === null ? [] : [x.value]), ...x.variants])];
+/** ubah satu variant di tempatnya; kosong / duplikat / tidak ada: dibiarkan */
+export const renamedVariant = (vars: readonly EnvVar[], key: string, from: string, to: string): EnvVar[] => vars.map((x) =>
+  x.key === key && x.variants?.includes(from) && to.trim() && !x.variants.includes(to.trim())
+    ? { ...x, variants: x.variants.map((v) => (v === from ? to.trim() : v)) } : x);
 export const withoutVariant = (vars: readonly EnvVar[], key: string, value: string): EnvVar[] => vars.map((x) =>
   x.key === key && x.variants ? { ...x, variants: x.variants.filter((v) => v !== value) } : x);
 

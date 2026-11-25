@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import {
   clearedKey, createEnvironment, deleteEnvironment, duplicateEnvironment, environmentValues, fromPostmanEnvironment, keyMismatch, listEnvironments,
   mismatchMessage, parseEnvironment, persistAll, readEnvironment, renameEnvironment, renamedKey, serializeEnvironment, syncKeys, updateAll,
-  normalizeEdited, statusText, variantList, stepEnvironment, validateVars, withKey, withoutKey, withSecret, withVariant, withoutVariant, writeEnvironment, type EnvVar,
+  normalizeEdited, renamedVariant, statusText, variantList, stepEnvironment, validateVars, withKey, withoutKey, withSecret, withVariant, withoutVariant, writeEnvironment, type EnvVar,
 } from '../../src/environments';
 import { environmentFileName } from '../../src/store';
 import { withTempDir } from './helpers/tmp';
@@ -178,4 +178,14 @@ test('variantList: initial value ikut jadi pilihan, tanpa duplikat / NULL / secr
   assert.deepEqual(variantList({ key: 'H', value: null, variants: ['https://svc-b.example.test'] }), ['https://svc-b.example.test']);
   assert.deepEqual(variantList({ key: 'H', value: 'https://svc.example.test' }), [], 'tanpa variant: tidak ada pilihan');
   assert.deepEqual(variantList({ key: 's', value: null, secret: true, variants: ['x'] }), []);
+});
+
+test('renamedVariant: ganti satu variant di tempatnya (urutan tetap), duplikat / kosong ditolak', () => {
+  const vars = [{ key: 'H', value: 'https://svc.example.test', variants: ['https://a.example.test', 'https://b.example.test'] }];
+  assert.deepEqual(renamedVariant(vars, 'H', 'https://a.example.test', 'https://c.example.test')[0].variants,
+    ['https://c.example.test', 'https://b.example.test'], 'posisi tidak berubah');
+  assert.deepEqual(renamedVariant(vars, 'H', 'https://a.example.test', 'https://b.example.test')[0].variants,
+    ['https://a.example.test', 'https://b.example.test'], 'jadi duplikat: tidak diubah');
+  assert.deepEqual(renamedVariant(vars, 'H', 'https://a.example.test', '  ')[0].variants, vars[0].variants, 'kosong: tidak diubah');
+  assert.deepEqual(renamedVariant(vars, 'H', 'tidak-ada', 'https://c.example.test')[0].variants, vars[0].variants);
 });
